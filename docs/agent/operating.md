@@ -5,8 +5,24 @@ This expands `CLAUDE.md` with the why behind the rules.
 Product direction comes from [the vision of record](../PRD.md); current implementation gaps and
 historical references are tracked in [the reconciliation record](../vision-reconciliation.md).
 The vision does not itself change runtime controls or grant a new merge/deployment permission.
-The 10% experimental-account pause is a target requiring implementation review; the current
-configured default is documented separately in that record.
+The 10% experimental-account pause is an owner-settled policy that Story 2.6 has yet to implement;
+the current configured default is documented separately in that record.
+
+**Authority routing (2026-10-30).** Hermes Kanban owns delegated engineering work, GitHub owns code
+and evidence, and Todoist holds only Lior's human commitments; no trial or experiment gets a task
+card. Every merge, deployment, credential change, destructive or external-sharing action and
+protected-authority change requires Lior's approval. Auto-merge and paper CI/CD are TARGET BLOCKED,
+not permissions.
+
+## Three harnesses
+
+The [approved design](../superpowers/specs/2026-10-30-algua-three-harness-design.md) gives each
+responsibility one owner: Hermes develops the machine, OpenCode operates research, and Algua's
+deterministic code owns data, simulation, promotion, portfolio, risk, execution and ledgers. That is
+target direction. The [observed-target report](../development/observed-target-report-2026-10-30-three-harness.md)
+records what exists today, including schedulers and merge routes that do not match it yet. Neither
+document changes a runtime control. A Hermes profile is a same-UID role, not an OS sandbox, so a role
+prompt is never a security boundary.
 
 ## The live gate
 Lifecycle stage lives in the SQLite registry (`algua/registry`). State is a *record*,

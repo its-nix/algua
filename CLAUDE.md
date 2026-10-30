@@ -18,8 +18,11 @@ drive the system through the **same** CLI. Every data command emits JSON on stdo
 - **Historical architecture rationale:** `docs/superpowers/specs/2026-05-29-algua-platform-architecture-design.md`.
   Dated plans preserve earlier decisions; the current roadmap is PRD §25.
 - **Why the rules exist (detail):** `docs/agent/operating.md`
-- **Delivering BMAD stories:** `docs/agent/story-delivery.md` — mirror actionable work to the shared
-  Algua Todoist board, implement with Claude, then hand the diff to Codex for independent review.
+- **Delivering BMAD stories:** `docs/agent/story-delivery.md` — route engineering through Hermes
+  Kanban, implement with Claude, then hand the diff to Codex for independent review.
+- **Three-harness target:** `docs/superpowers/specs/2026-10-30-algua-three-harness-design.md` and
+  its plan are approved direction, not operating permission. Current state and blockers:
+  `docs/development/observed-target-report-2026-10-30-three-harness.md`.
 - **How this foundation was built (task plan):** `docs/superpowers/plans/2026-05-29-foundation-command-surface.md`
 - **Reviewing/fixing the system?** Read `AGENTS.md` first (review mandate + invariants + deferred scope).
 - **Data contract:** `docs/contracts/bar-schema.md` — the shape of bars crossing the
@@ -33,9 +36,16 @@ drive the system through the **same** CLI. Every data command emits JSON on stdo
 - You may operate the lifecycle autonomously **up to and including `forward_tested`**.
 - You may **never** put a strategy live. The `forward_tested -> live` transition requires a
   verified human approval AND a fresh forward-test certificate; the system enforces this.
-- Research workers follow their narrower `candidate` ceiling. Autonomous merges stay inside
-  the existing diff allowlist; broader repair/deployment autonomy requires explicitly reviewed
-  implementation. PRD adoption does not change gates, capital, runtime settings or permissions.
+- Research workers follow their narrower `candidate` ceiling. The implemented research merge-back
+  stays inside the existing diff allowlist and is an unresolved migration blocker, not a precedent.
+  Any broader autonomous merge or repair/deployment autonomy is TARGET BLOCKED and requires
+  explicitly reviewed implementation. PRD adoption does not change gates, capital, runtime settings
+  or permissions.
+- **Authority routing (2026-10-30).** Hermes Kanban owns delegated engineering work, GitHub owns
+  code and evidence, and Todoist holds only Lior's human commitments; no trial or experiment gets a
+  task card. Every merge, deployment, credential change, destructive or external-sharing action and
+  protected-authority change requires Lior's approval. Auto-merge and paper CI/CD are TARGET
+  BLOCKED, not permissions.
 - Keep `algua/contracts` and `algua/features` pure (no I/O, no cross-module imports
   beyond contracts). Import-linter enforces boundaries; run `uv run lint-imports`.
 

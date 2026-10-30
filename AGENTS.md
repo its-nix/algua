@@ -38,8 +38,12 @@ Do not weaken a contract, delete a test, or `# type: ignore` your way to green �
 - `docs/superpowers/plans/2026-05-29-foundation-command-surface.md` — historical plan for the completed foundation, not the present scope limit.
 - `CLAUDE.md` — the agent operating contract (command surface, golden rules, live-gate summary).
 - `docs/agent/operating.md` — the *why* behind the rules (live-gate rationale, module boundaries, JSON convention).
-- `docs/agent/story-delivery.md` — Claude implementation, Codex review and Todoist mirroring. Read
-  whenever creating, implementing, reviewing or completing a BMAD story.
+- `docs/agent/story-delivery.md` — Hermes Kanban routing, Claude implementation and independent
+  Codex review. Read whenever creating, implementing, reviewing or completing a BMAD story.
+- `docs/superpowers/specs/2026-10-30-algua-three-harness-design.md` and
+  `docs/superpowers/plans/2026-10-30-algua-three-harness-implementation.md` — approved target
+  direction, not operating permission. Current state and blockers are in
+  `docs/development/observed-target-report-2026-10-30-three-harness.md`.
 - `docs/contracts/bar-schema.md` — **FROZEN** data contract for `DataProvider.get_bars`. The data
   lane's `get_bars` output MUST conform to this exact shape; it is the integration seam with the
   research lane. Do not change it (or `contracts/types.py::DataProvider`) without cross-lane agreement.
@@ -57,6 +61,12 @@ That ceiling applies to the isolated research worker. Operational commands may a
 the authenticated human ceremony. The vision's future merge/deployment autonomy does not expand
 today's allowlists or approvals. Document conflicts as implementation gaps, never permission
 to bypass a control.
+
+**Authority routing (2026-10-30).** Hermes Kanban owns delegated engineering work, GitHub owns code
+and evidence, and Todoist holds only Lior's human commitments; no trial or experiment gets a task
+card. Every merge, deployment, credential change, destructive or external-sharing action and
+protected-authority change requires Lior's approval. Auto-merge and paper CI/CD are TARGET BLOCKED,
+not permissions.
 
 **Agent runtime.** The autonomous loops (research, leap, forage) run on **OpenCode**, invoked
 through the single seam `.opencode/scripts/run_agent.sh`. That script is the only place in the repo

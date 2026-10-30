@@ -23,10 +23,21 @@ Use a bounded cycle for each independently reviewable delivery:
    update story status. A code merge is not authorization to deploy, trade or allocate capital.
 8. `bmad-retrospective`: capture reusable lessons after the epic and feed the next cycle.
 
-GitHub issues track implementation work and reviews. Repository artifacts retain specifications
-and acceptance evidence. The [Algua Todoist board](https://app.todoist.com/app/project/algua-6hGjQph9JgcgpC2G)
-tracks Lior's actual decisions/access actions. Avoid duplicating generic engineering chores onto
-the human board. Respect existing tasks and assignments; do not infer completion from a title.
+**Authority routing (2026-10-30).** Hermes Kanban owns delegated engineering work, GitHub owns code
+and evidence, and Todoist holds only Lior's human commitments; no trial or experiment gets a task
+card. Every merge, deployment, credential change, destructive or external-sharing action and
+protected-authority change requires Lior's approval. Auto-merge and paper CI/CD are TARGET BLOCKED,
+not permissions.
+
+Repository artifacts retain specifications and acceptance evidence. The
+[Algua Todoist board](https://app.todoist.com/app/project/algua-6hGjQph9JgcgpC2G) tracks Lior's
+actual decisions/access actions. Respect existing tasks and assignments; do not infer completion
+from a title.
+
+The three-harness redesign has a
+[readiness report](implementation-readiness-report-2026-10-30-three-harness.md) and an
+[observed-target report](observed-target-report-2026-10-30-three-harness.md). Neither admits a
+story.
 
 The 72-hour exercise and actual live sign-off are later acceptance events. Until they occur,
 reports must distinguish tests passing, code merged, deployment verified and capital authorized.
