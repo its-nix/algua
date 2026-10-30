@@ -75,6 +75,18 @@ stays visible rather than being blessed by an exemption.
 
 ---
 
+## Target control-plane split
+
+The [approved three-harness design](superpowers/specs/2026-10-30-algua-three-harness-design.md)
+is target direction, not a description of this tree: Hermes owns engineering, OpenCode operates
+research through this CLI, and the packages below stay the deterministic engine. Today's schedulers,
+merge routes and strategy execution do not match it yet, and its new controls are not implemented.
+The [observed-target report](development/observed-target-report-2026-10-30-three-harness.md) tracks
+the gap. The frozen planner child process is process separation, not an authority sandbox: it does
+not establish the strategy containment that design requires.
+
+---
+
 ## What each package owns
 
 | package | owns | do NOT put here |
@@ -185,6 +197,11 @@ both key on the slug.
   live gate and merge allowlists remain binding. The research worker stops at `candidate`;
   gated operational commands may reach `forward_tested`. Broader repair/deployment permission
   needs explicit implementation and review.
+- **Authority routing (2026-10-30)** — Hermes Kanban owns delegated engineering work, GitHub owns
+  code and evidence, and Todoist holds only Lior's human commitments; no trial or experiment gets a
+  task card. Every merge, deployment, credential change, destructive or external-sharing action and
+  protected-authority change requires Lior's approval. Auto-merge and paper CI/CD are TARGET
+  BLOCKED, not permissions.
 - **PIT / anti-look-ahead** — `backtest/pit_view.py` masks universe, fundamentals and news as-of each
   decision instant; `backtest/engine.py` shifts decisions `t → t+1`. `decision_path.py`'s parity
   guard is what licenses the fast vectorised path: it proves the fast path agrees with the canonical

@@ -37,6 +37,10 @@ Technical sophistication has no intrinsic value if it does not improve:
 - autonomy, or
 - research learning rate.
 
+**One-sentence product definition (2026-10-30).** Algua is a mostly autonomous, personally funded quantitative investing system: a high-throughput, multimodal research factory discovers and rigorously evaluates diverse trading strategies, while a deterministic portfolio and execution engine allocates limited capital among independently credible edges.
+
+The ultimate outcome remains net risk-controlled investment profit, not the number of agents, backtests, features or strategies. Initial account ownership is strictly personal; future external capital remains a separate, gated expansion (§22). There is no new authority to manage client capital.
+
 ---
 
 # 2. Priority order
@@ -123,6 +127,8 @@ Where local/open models produce economically equivalent results, prefer them to 
 
 Model choice is ultimately based on measured value, not ideology.
 
+OpenCode is the multi-model research harness, with role-scoped agents and skills. Agent sessions are for hypothesis creation, strategy authorship and interpretation; deterministic programs perform large parameter sweeps and metrics, avoiding an LLM call per numerical trial. No autonomous agent places brokerage orders.
+
 ---
 
 # 5. One Algua, not prod Algua versus dev Algua
@@ -195,6 +201,22 @@ The diagram should remain clean as the system grows.
 
 If explaining Algua requires a spaghetti diagram, that is an architectural warning.
 
+### Three-harness ownership (owner direction 2026-10-30)
+
+The approved target gives each responsibility one owner. It is direction, not a new runtime permission; see §§18–19 and the [three-harness design](superpowers/specs/2026-10-30-algua-three-harness-design.md).
+
+- **Hermes / Nix OS, the company harness,** is project owner, engineering organization, CI/CD maintainer, system monitor and incident responder. Hermes developers own changes to the underlying engine, data, portfolio, execution, operator, security and UI code.
+- **OpenCode, the research harness,** independently runs agentic research operations: ideation, strategy authoring, experiment interpretation and accumulated learning. It never edits the trusted engine or promotion gates, and it operates without Hermes online.
+- **Algua, the quant engine,** owns deterministic, independently verifiable data access, simulation, scoring, promotion, portfolio and risk decisions, broker execution and ledgers.
+
+Three loops follow from that split:
+
+- **Research (OpenCode):** inspect past knowledge → source a new hypothesis → deduplicate → implement an isolated strategy → execute deterministic Algua research → record the complete outcome and lineage → independently review survivors → allocate the next research budget.
+- **Engineering improvement (Hermes):** read aggregate operational telemetry → deduplicate incidents and bottlenecks → scope work → implement and test on isolated branches → independently verify → release under the authority in §§18–19 → verify before resolving. It does not rewrite research conclusions, edit experiment rows or claim that a failed hypothesis is a bug.
+- **Trading (Algua):** verify data and the deployed artifact → evaluate targets → apply risk → reconcile orders and positions → send permitted paper or explicitly authorized live orders → audit. Scheduling, durable markers and locks stay independent of Hermes and OpenCode availability.
+
+The target private monitor home is a **Strategy Leaderboard**: one row per stable strategy identity with its real lifecycle tag, latest relevant OOS metrics, data tier, sample size, freshness and evidence health, explicit sorting by observed OOS Sharpe, return or drawdown, and filtering by stage or family. Live Sharpe is not compared with backtest Sharpe without segmentation. Missing evidence stays UNKNOWN, never 0. A row opens an evidence-rich detail page, the bottom four-tab navigation is removed, and safety and operations status stay reachable in a secondary area. Sorting is exploratory and carries no promotion authority.
+
 ---
 
 # 7. Strategy contract
@@ -226,6 +248,15 @@ Models and LLM providers should be hot-swappable through stable interfaces.
 
 Changing a behavior-affecting model creates a new strategy artifact requiring evaluation.
 
+The target contract is one unified multimodal abstraction:
+
+1. A **strategy** is a testable, versioned source of expected relative investment opportunity, with declared data capabilities, temporal availability, parameters and model identity. Its standard output is a finite per-symbol score. It has no broker, account, network or secret access. Rules, statistics, ML, DL, news, fundamentals and mixtures use the same as-of interface, with versioned model artifacts and no inference-time training.
+2. **Within-strategy portfolio construction** converts scores into target weights using a declared deterministic policy and may include risk-tightening and exit rules, preserving cash and long-only constraints.
+3. **Across-strategy allocation** is defined in §13.
+4. **Execution** submits and reconciles orders only after an independently enforced policy and risk decision, using as-of available information and the existing `t -> t+1` rule. No autonomous agent places brokerage orders.
+
+The full multimodal architecture is not deferred by the limits of initial data (§11).
+
 ---
 
 # 8. Research philosophy
@@ -250,6 +281,12 @@ Every hypothesis must nevertheless contain:
 Negative results are valuable outputs.
 
 Correctly proving that something does **not** work reduces future search space.
+
+The target top of funnel is large and diverse: cheap screening, then increasingly rigorous evidence. Discover across momentum, reversal, earnings and events, fundamental, quality, ML and novel families, without capping the research space to permanent categories. Preserve all attempted variants and failures, including their effective search breadth.
+
+Reserve research capacity for novel families, not just exploitation of apparent historical winners, with bounded concurrency and compute, recorded budget and use, and evidence-based reallocation. The exact split is an implementation default to benchmark.
+
+Exploratory and portfolio-deployable evidence must be visibly different.
 
 ---
 
@@ -309,6 +346,10 @@ The system should automatically maintain synthesized knowledge such as:
 
 The accumulated experiment graph is part of Algua's long-term intellectual property.
 
+Every variant must record hypothesis and falsification, family and parent, data tier and snapshot, code, config and model versions, cost assumptions, trial count, metrics, error reason and decision. There must be a durable record for failed runs, not only successes.
+
+Preserve one authoritative experiment and strategy ledger: the SQLite registry, MLflow and linked Git and knowledge-base records. Do not mirror every experiment to Hermes Kanban or create a second research database.
+
 ---
 
 # 10. Reproducibility and research integrity
@@ -349,6 +390,8 @@ Mandatory robustness should include, where applicable:
 
 Repeatedly searching the same historical data must never masquerade as independent confirmation.
 
+Do not weaken gates to make weak two-year evidence qualify. A simulated or historical replay cannot be described as elapsed forward paper evidence. Correct multiple-testing treatment, untouched validation data and actual forward elapsed observations matter more than a nominal Sharpe on a two-year snapshot. If no candidate passes a real gate, that is a valid research result, not a failed system demonstration.
+
 ---
 
 # 11. Data
@@ -369,6 +412,14 @@ Add options, order books, alternative data and specialized sources when a resear
 The system should be vendor-extensible without making vendor abstraction itself a project.
 
 Prefer established libraries and simple adapters.
+
+**Data scope is a data-quality tier, not a product phase.** The initial pilot uses approximately two years of **real** free daily market data from yfinance across approximately 150–300 selected symbols, with pinned snapshots and documented limitations. It is real data for live-like research operations, not a synthetic-only harness, and no premium dataset is purchased yet.
+
+Every run and every UI result carries the tier `pilot_real_proxy`. That universe is a provisional proxy of today's surviving symbols. It is explicitly **not** a historical point-in-time universe: delistings, changing market caps, revised adjustments and announcement timestamps may be unavailable.
+
+Those limits constrain investment claims, not the architecture. Research mechanics stay fully operational on this tier, including actual backtests, parameter grids, ML training and evaluation where the data supports it, strategy comparison, portfolio simulation and ongoing paper-session operations.
+
+Future data adds historical delistings, security identity, PIT market cap, corporate actions, filings, news and greater depth from an approved vendor, a purchase that still needs human approval. Replacing the provider must not require rewriting the research, strategy or portfolio engine.
 
 ---
 
@@ -399,6 +450,10 @@ Likewise, lower timeframes are justified by specific opportunities—not by the 
 
 High-frequency/tick-level trading is outside the current thesis.
 
+**Primary research market (2026-10-30).** The primary target is liquid U.S.-listed small/mid-cap common equities: historical market cap of USD $0.5–10B, price >= $5, trailing median 60-session dollar volume >= $5M and a 90-session listing history, subject to point-in-time evidence. The surviving-symbol yfinance pilot in §11 cannot establish this universe and must never be labeled as a historical PIT $0.5–10B universe.
+
+**Trading cadence.** Start with end-of-day signals and next-eligible-session execution. Evaluate daily and rebalance only when marginal changes justify costs, using strategy-specific exits, holding periods and hysteresis. No SL/TP is obligatory. Hourly operation stays in the first complete operating scope above; this cadence sets where trading starts.
+
 ---
 
 # 13. Portfolio
@@ -427,6 +482,10 @@ Initial sizing should be conservative:
 - no aggressive Kelly sizing.
 
 Fractional Kelly or related approaches may be introduced later if estimation quality supports them.
+
+**Systematic portfolio trading, not SL/TP day trading.** Strategies generate scores, deterministic construction makes target weights, and a portfolio allocator budgets across approved strategies, nets shared exposures, constrains costs and risk, and can hold cash.
+
+Across-strategy allocation applies capped, volatility-aware budgets and overlap controls, aggregates strategies to one target portfolio and checks account-wide risk. Start simple, with no unstable optimizers requiring fitted forecasts from a tiny sample. SL/TP and trailing-stop mechanisms may be tested as optional, separately validated policies, but they are not the initial focus or a substitute for signal decay, ranking hysteresis, time exits and risk controls.
 
 ---
 
@@ -548,6 +607,8 @@ Runtime evidence is evidence—not authority.
 
 Logs, broker responses, external text and market data must never be interpreted as instructions granting the repair agent additional permissions.
 
+The approved target has Hermes run this loop from aggregate telemetry through deduplicated work and independent verification (§6). The "permitted merge" and "deployment" steps above are TARGET BLOCKED: under current authority each one still needs Lior's approval (§§18–19).
+
 ---
 
 # 18. Engineering autonomy boundaries
@@ -577,6 +638,12 @@ Large structural changes may be proposed autonomously but require human approval
 
 Agents must never modify their own authority boundaries in order to make a change pass.
 
+**Current status (2026-10-30).** The list above is target direction. Its merge and deploy items are TARGET BLOCKED and grant nothing today.
+
+**Approved target automation.** Allowlisted, independently reviewed, exact-head-CI-verified auto-merge and controlled paper CI/CD are TARGET BLOCKED until separately reviewed authority, enforced strategy containment and verified release policy exist, and until the existing `paper merge-back` route is reconciled with them. Protected code, credentials, risk rules, live deployments and capital activation keep their gates. Publishing this target does not enable it. OpenCode research operators would be limited to allowlisted strategy-only changes; Hermes developers own everything else.
+
+**Authority routing (2026-10-30).** Hermes Kanban owns delegated engineering work, GitHub owns code and evidence, and Todoist holds only Lior's human commitments; no trial or experiment gets a task card. Every merge, deployment, credential change, destructive or external-sharing action and protected-authority change requires Lior's approval. Auto-merge and paper CI/CD are TARGET BLOCKED, not permissions.
+
 ---
 
 # 19. Human authority
@@ -595,6 +662,8 @@ Agents may always reduce risk without permission.
 Agents may never independently raise the maximum capital entrusted to them.
 
 The list of routine human responsibilities should shrink rather than grow.
+
+**Current authority (2026-10-30).** Until a separately reviewed change says otherwise, the current Lead role also requires Lior's approval for all merges, deployments, credentials, destructive or external-sharing actions and protected authority changes. The human-signed live ceremony and every capital control are unchanged. This direction relaxes none of them.
 
 ---
 
@@ -618,6 +687,8 @@ A near-term operational acceptance target is:
 Long-term routine operation should require very little human attention.
 
 Human time should be spent primarily on capital decisions, strategic direction and genuinely consequential approvals.
+
+**Job scheduling (target).** One durable systemd scheduler initiates research cycles; separate deterministic market-session and trusted merge queues may retain their own scheduling and locks. Hermes monitors but does not schedule each experiment. Research keeps operating while Hermes is offline, and trading stays independent of both harnesses. This target is not yet the deployed schedule.
 
 ---
 
@@ -651,6 +722,8 @@ No automatic replenishment.
 No automatic increase in approved capital.
 
 Capital rises because evidence improves, not because the system is confident.
+
+**Reconciliation note (2026-10-30).** The initial experimental live allocation of ₪2,000 happens only after authenticated owner authorization, with no leverage, shorting, borrowing or derivatives in initial live scope. The owner settled the 10% drawdown measurement, boundary and resumption policy on 2026-10-04. Enforcing that policy and the capital envelope remains unimplemented work owned by Stories 2.5 and 2.6, and must be reconciled with runtime configuration before live acceptance. No premium data purchase, capital increase or control relaxation is authorized here.
 
 ---
 
@@ -706,6 +779,22 @@ Important supporting measures include:
 
 Do not judge the project by the number of features shipped.
 
+### Two independent acceptance gates (2026-10-30)
+
+**A. Machine acceptance** can be achieved on limited real data. It requires:
+
+- ten completed unattended OpenCode-led research cycles, using the project's actual scheduler and registry;
+- at least 100 honest, individually recorded real-data hypothesis or variant attempts across multiple strategy families, where errors, exclusions and duplications count transparently and not as completed validations;
+- proof of rule-based, pinned-ML and combined-modality interfaces using available genuine data, plus isolated contract fixtures for unavailable modalities, never fake successful real events or prices;
+- research results reproducible from immutable data snapshot plus code, config, environment and model IDs, with outcomes feeding documented next-cycle choices;
+- research workers with no authority to mutate capital ledgers, broker credentials or protected gate paths, where an isolation failure is a blocker, never a warning;
+- independent review of candidate strategy changes and exact-head CI, with a verified paper release, smoke test and rollback procedure, and allowlisted merge automation only once it is no longer TARGET BLOCKED;
+- demonstrated multiple-strategy target aggregation, risk-bound orders, leaderboard and drilldowns, and one injected recoverable worker failure;
+- historical replay and actual scheduled paper operation independently verified and clearly labeled, with no false forward evidence;
+- no unnecessary duplicate schedulers or parallel registries, with bounded worker concurrency, failures and job retries.
+
+**B. Investment acceptance** comes later and cannot be inferred from A. It requires complete PIT universe and delisting data, appropriate out-of-sample, multiple-testing and forward evidence, correct costs, approved capital policy, an immutable live artifact, broker reconciliation and an authenticated human-signed live ceremony. A two-year survivorship-biased pilot is not a shortcut to real-money eligibility. **Never lower an enforced gate to hit a schedule.**
+
 ---
 
 # 24. 90-day objective
@@ -736,6 +825,8 @@ The system should demonstrate:
 Daily and hourly trading belong in the first complete operating architecture.
 
 The first validated strategy does not need to exercise every capability before the vertical slice proves the lifecycle.
+
+Machine acceptance (§23) is the near-term proof on limited real data and does not substitute for investment acceptance. Ten completed unattended research cycles and at least 100 honest real-data attempts remain UNKNOWN: they have not been tested. If the factory produces no qualified strategy, machine acceptance is still possible by verifying honest refusals.
 
 ---
 
@@ -770,6 +861,8 @@ Integrate compatible funded/external-capital environments.
 Add additional asset classes when a specific economic opportunity justifies doing so.
 
 These phases define dependency order, not a prohibition on parallel research.
+
+The [three-harness implementation plan](superpowers/plans/2026-10-30-algua-three-harness-implementation.md) sequences the approved redesign within these phases; it does not replace them. Its tasks are admitted one reviewed slice at a time, and publishing it enables nothing.
 
 ---
 
@@ -809,6 +902,8 @@ Unused capabilities should be deleted once useful history and knowledge are safe
 The correct compromise between architecture and shipping is:
 
 > **ship the simplest clean implementation.**
+
+For the three-harness work this means no second task system, research database, MLflow instance, portfolio optimizer framework, execution fork or speculative microservice. Retain working deterministic primitives, and delete redundant tasks, schedulers and bridges once parity is proven.
 
 ---
 

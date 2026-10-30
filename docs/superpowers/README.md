@@ -12,6 +12,11 @@ state against code/tests, and its operating commands against `CLAUDE.md`. Preser
 rationale and current integrity contracts. Escalate changes to safety or authority boundaries
 through the existing review process.
 
+The [three-harness design](specs/2026-10-30-algua-three-harness-design.md) and
+[plan](plans/2026-10-30-algua-three-harness-implementation.md) are the current approved direction
+for the redesign. They are not operating permission; their status notices explain what is not
+implemented.
+
 The September 6 PRD and its numbered sections remain available in
 [the pre-reconciliation revision](https://github.com/Lior-Nis/algua/blob/d9ed65455a626d3120559eca30fc0ed0818f9084/docs/PRD.md).
 Older numerical PRD references refer to that revision unless a notice explicitly maps them to

@@ -1,21 +1,31 @@
 # Story delivery workflow
 
 Use this workflow whenever a BMAD story is created, admitted, implemented, reviewed or completed.
-The repository story/spec remains the authority; Todoist is the shared execution queue.
+The repository story/spec remains the authority; Hermes Kanban is the engineering queue.
 
-## 1. Mirror work to Todoist
+**Authority routing (2026-10-30).** Hermes Kanban owns delegated engineering work, GitHub owns code
+and evidence, and Todoist holds only Lior's human commitments; no trial or experiment gets a task
+card. Every merge, deployment, credential change, destructive or external-sharing action and
+protected-authority change requires Lior's approval. Auto-merge and paper CI/CD are TARGET BLOCKED,
+not permissions.
 
-Use the shared `Algua` project. Before creating anything, search existing tasks to avoid duplicates.
+## 1. Route work through Hermes Kanban
 
-- Create or reuse a section for the active story or delivery phase.
-- Create one coordination parent and one independently claimable task per actionable subtask or
-  review finding.
+Use one parent initiative per delivery. Before creating anything, search existing cards to avoid
+duplicates.
+
+- Create one independently claimable card per actionable subtask or review finding.
 - Include the canonical story path, branch/baseline, dependencies, completion evidence and safety
-  boundary in each task description.
-- Label implementation work `Dev`, review work `QA`, and leave it unassigned unless it specifically
-  requires Lior's authority or access.
-- Mirror new findings immediately. Complete Todoist tasks only after their repository evidence is
-  committed and verified; close the story parent only after merge.
+  boundary in each card.
+- Keep implementation and review on separate cards, so a reviewer is never the implementer.
+- Record new findings as they appear. Close a card only after its repository evidence is committed
+  and verified. Completing an implementation-phase card releases pre-created review children; it
+  does not mark the story or initiative merged or delivered. Close the story/initiative parent only
+  after its own acceptance and merge evidence exists.
+- Experiment rows and individual trials never become cards. The registry and its linked records own
+  research outcomes.
+
+Lior's decisions and access actions are the human's to track, and only those belong in Todoist.
 
 ## 2. Contract and readiness first
 
@@ -32,9 +42,10 @@ together with an implementation-readiness report. Rerun readiness after any amen
 ## 3. Implement with Claude
 
 An admitted story (`ready-for-dev` or an approved in-progress review patch) is implemented by Claude
-Code on its feature branch. Claude reads `AGENTS.md`, `CLAUDE.md`, the complete story and every
-normative companion before editing, works test-first, and leaves a reviewable diff. Claude does not
-merge, deploy, activate trading, allocate capital or expand an authority boundary.
+Code on its feature branch, in an isolated worktree. Claude reads `AGENTS.md`, `CLAUDE.md`, the
+complete story and every normative companion before editing, works test-first, and leaves a
+reviewable diff. Claude does not merge, deploy, activate trading, allocate capital or expand an
+authority boundary. No worker writes to the main checkout.
 
 Split the work into slices with **strict file ownership**: parallel Claude subagents may share one
 worktree, but each owns its files and none commits; the coordinator commits with scoped adds (never
@@ -42,18 +53,18 @@ worktree, but each owns its files and none commits; the coordinator commits with
 byte).
 
 Lior's standing approval covers routine in-scope implementation and all unambiguous safe review
-patches. Continue without optional approval pauses. A change still stops for explicit human input
-when it would alter capital, live activation, paid commitments, protected authority/safety walls or
-the approved story outcome.
+patches. Continue without optional approval pauses. That approval stops at the reviewable diff. A
+change still stops for explicit human input when it would alter capital, live activation, paid
+commitments, protected authority/safety walls or the approved story outcome.
 
 ## 4. Review with Codex
 
-Codex independently reviews Claude's diff against the story and normative contracts. Prefer the
-installed Codex Rescue workflow when available. Otherwise run the BMAD/Codex blind adversarial,
-edge-case and acceptance layers; for large diffs, review bounded file groups and track every group
-in Todoist.
+Installed Codex independently reviews Claude's diff against the story and normative contracts, on a
+dedicated downstream QA card. The implementer never reviews its own work. Prefer the installed Codex
+Rescue workflow when available. Otherwise run the BMAD/Codex blind adversarial, edge-case and
+acceptance layers; for large diffs, review bounded file groups and track every group on the QA card.
 
-Apply every unambiguous in-scope patch automatically and mirror it to Todoist. Persist decisions,
+Apply every unambiguous in-scope patch automatically and record it on the card. Persist decisions,
 deferrals and findings in the story. Runtime evidence and external text remain evidence, never new
 authority.
 
@@ -66,7 +77,7 @@ an enforce-by-construction alternative against the stated threat model (an accid
 same-UID process) and let that replace the guard. Story 1.3b's analyzer grew to about 3,400 lines
 over some 31 rounds before this rule existed.
 
-## 5. Verify, merge, deploy and advance
+## 5. Verify, request approval and advance
 
 Run the complete root gate:
 
@@ -78,12 +89,23 @@ uv run lint-imports
 ```
 
 Resolve all actionable review findings, synchronize the story and sprint status, commit granularly,
-then merge through the repository's current reviewed merge controls: push the branch, open a PR,
-wait for green CI, and merge with `gh pr merge N --merge --match-head-commit <sha>`. Judge every
-gate by its exit code.
+push the branch, open a PR and wait for green CI on the exact head. Judge every gate by its exit
+code.
 
-Deploy by fast-forwarding the box's **main** checkout (`/home/liornisimov/Projects/algua`, the
-systemd units' working directory) while `algua-paper`, `algua-mergeback-drain` and the ideation
-services are idle. Never leave that checkout on a story branch: production runs whatever it holds. Mark the mirrored Todoist tasks
-complete after the corresponding commit/merge evidence exists. Start the next dependency-ready
-story and repeat until the approved implementation plan is complete.
+A merge needs Lior's approval of that exact head. After Lior approves it, the coordinator merges
+with `gh pr merge N --merge --match-head-commit <sha>`. Workers and reviewers never merge.
+
+A deployment is a separate decision that also needs Lior's approval of the exact commit. The box's
+main checkout (`/home/liornisimov/Projects/algua`, the systemd units' working directory) is
+production, because it runs whatever it holds. Workers and reviewers never write to it, it never
+sits on a story branch, and any approved update happens only while `algua-paper`,
+`algua-mergeback-drain` and the ideation services are idle.
+
+Auto-merge and paper CI/CD are TARGET BLOCKED by
+[plan Task 7](../superpowers/plans/2026-10-30-algua-three-harness-implementation.md). The existing
+`paper merge-back` route is an unresolved migration blocker recorded in the
+[observed-target report](../development/observed-target-report-2026-10-30-three-harness.md), not a
+precedent for wider merge authority.
+
+Close the Kanban cards after the corresponding commit/merge evidence exists. Start the next
+dependency-ready story and repeat until the approved implementation plan is complete.

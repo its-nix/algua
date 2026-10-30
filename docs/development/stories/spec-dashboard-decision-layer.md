@@ -67,6 +67,11 @@ context:
 
 ## Spec Change Log
 
+**2026-10-30 — supersession notice (outside the frozen block, which is unchanged).** The approved
+target strategy leaderboard supersedes this story's lifecycle-order default for the future home UI
+only, and current behavior stands until a separately admitted UI contract. See the
+[reconciliation record](../../vision-reconciliation.md#strategy-leaderboard-supersession-2026-10-30).
+
 ## Design Notes
 
 Use three explicit layers: **decision** (graphical and immediately visible), **supporting evidence** (charts and gate summaries), and **raw evidence** (dense histories, reasons, IDs and hashes). Progressive disclosure changes visibility, never truth or availability. Snapshot stage counts are inventory, not conversion rates.

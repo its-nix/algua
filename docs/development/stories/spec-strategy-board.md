@@ -88,6 +88,12 @@ add actions that promote, retire, allocate, trade, or otherwise mutate system st
 
 ## Spec Change Log
 
+**2026-10-30 — supersession notice (outside the frozen block, which is unchanged).** Owner direction
+approved a target strategy leaderboard that supersedes this story's lifecycle-order default and
+no-leaderboard intent for the future home UI only. This story stays historically accurate and its
+contract stays current until a separately admitted UI contract replaces it. See the
+[reconciliation record](../../vision-reconciliation.md#strategy-leaderboard-supersession-2026-10-30).
+
 ## Design Notes
 
 Keep the existing true-black, Inter/IBM Plex Mono, Electric-for-data language. The distinctive mark
