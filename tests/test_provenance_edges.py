@@ -9,6 +9,8 @@ import pytest
 
 from algua.data.files import BARS_STREAMED_HASH_ALGO
 from algua.data.manifest import SnapshotManifest
+from algua.data.models import Dataset, Kind, SnapshotMetadata
+from algua.data.provenance_binding import attach_declared_provenance
 from algua.data.refresh import _reusable
 from algua.data.research_provenance import (
     DataTier,
@@ -92,6 +94,63 @@ def test_streamed_declaration_roundtrip_and_dedup(tmp_path):
     assert (decoded.coverage_start, decoded.coverage_end) == ("2026-01-02", "2026-01-05")
     assert first.metadata.source_metadata["content_hash_algorithm"] == BARS_STREAMED_HASH_ALGO
     assert len(store.list_snapshots()) == 1
+
+
+def test_half_open_declaration_accepts_equivalent_basic_date_bounds(tmp_path):
+    store = DataStore(tmp_path / "data")
+
+    rec = _ingest(store, start="20260101", end="20260106")
+
+    assert (rec.start, rec.end) == ("20260101", "20260106")
+    decoded = decode_research_provenance(rec.metadata.source_metadata)
+    assert (decoded.coverage_start, decoded.coverage_end) == ("2026-01-02", "2026-01-05")
+
+
+def test_streamed_exact_window_compares_iso_dates_without_changing_identity_fields():
+    metadata = SnapshotMetadata(
+        dataset=Dataset.BARS,
+        provider="yfinance",
+        symbols=("AAPL", "MSFT"),
+        start="2026-W01-5",
+        end="20260105",
+        as_of="2026-01-07T00:00:00+00:00",
+        source="pilot",
+        kind=Kind.BARS,
+    )
+
+    attached = attach_declared_provenance(
+        metadata,
+        _declaration(),
+        observed_start="2026-01-02",
+        observed_end="2026-01-05",
+        observed_symbols={"AAPL", "MSFT"},
+        exact_window=True,
+    )
+
+    assert (attached.start, attached.end) == ("2026-W01-5", "20260105")
+    with pytest.raises(
+        ResearchProvenanceError, match="research_provenance_coverage_mismatch"
+    ):
+        attach_declared_provenance(
+            replace(metadata, end="2026-W02-2"),
+            _declaration(),
+            observed_start="2026-01-02",
+            observed_end="2026-01-05",
+            observed_symbols={"AAPL", "MSFT"},
+            exact_window=True,
+        )
+
+
+def test_half_open_end_boundary_alias_is_rejected_before_publication(tmp_path):
+    store = DataStore(tmp_path / "data")
+
+    with pytest.raises(
+        ResearchProvenanceError, match="research_provenance_coverage_mismatch"
+    ):
+        _ingest(store, end="20260105")
+
+    assert not (store.data_dir / "snapshots").exists()
+    assert not store.manifest.path.exists()
 
 
 def test_manifest_refuses_verified_pit_and_mismatched_id_before_write(tmp_path):

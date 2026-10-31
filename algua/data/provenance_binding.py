@@ -43,10 +43,14 @@ def attach_declared_provenance(
             "research_provenance_symbol_mismatch",
             f"observed {sorted(observed_symbols)!r}, requested {list(metadata.symbols)!r}",
         )
+    metadata_start = date.fromisoformat(metadata.start)
+    metadata_end = date.fromisoformat(metadata.end)
+    coverage_start = date.fromisoformat(observed_start)
+    coverage_end = date.fromisoformat(observed_end)
     if exact_window:
-        coverage_ok = metadata.start == observed_start and metadata.end == observed_end
+        coverage_ok = metadata_start == coverage_start and metadata_end == coverage_end
     else:
-        coverage_ok = metadata.start <= observed_start and observed_end < metadata.end
+        coverage_ok = metadata_start <= coverage_start and coverage_end < metadata_end
     if not coverage_ok:
         raise ResearchProvenanceError(
             "research_provenance_coverage_mismatch", "observed bars fall outside the declaration"
