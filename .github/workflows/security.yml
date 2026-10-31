@@ -1,14 +1,13 @@
 name: Security
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 # Supply-chain gates (issue #395, OWASP 2025 A03):
 #   sca         — dependency-vulnerability scan of the locked environment (pip-audit)
-#   secret-scan — secret detection over the diff/push range (gitleaks)
-# Both jobs fail the build on findings. Mark them as required checks in branch protection.
+#   secret-scan — secret detection over repository history (gitleaks)
+# Owner choice: run these scans manually only; they are not required PR checks.
+# Both jobs still fail on findings.
 
 jobs:
   sca:
