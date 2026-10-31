@@ -54,5 +54,16 @@ sample counts, gate dates, stage, or family.
   family/stage filters, unavailable sorting, links/routes, visible operational warnings, and
   loading/stale/error/empty/retry states.
 - Required evidence is `npm run check`, `npm run build`, `npm run build:demo`,
-  `npm run verify:demo-build`, and the 390px viewport script. Root and backend gates are owned by
-  the parent integration run.
+  `npm run verify:demo-build`, and viewport coverage at 390px plus the leaderboard's
+  860px desktop boundary and 1440px. Root and backend gates are owned by the parent integration run.
+
+### Bounded independent QA corrections (F1/F2)
+
+Identity-error Retry revalidates both the board mapping and the name-keyed detail, including when
+that mapping has not changed. The exact registry-ID guard remains unchanged: null/mismatched
+identity displays no evidence and starts no series request. Integrated resolver/detail tests hold
+the recovery response pending to assert that boundary before accepting matching recovered detail.
+Desktop board columns use flexible minima rather than fixed widths that exceed the 860px viewport.
+Focused red/green reproduces the original missing second detail read and 860→864px overflow;
+unchanged parent QA evidence remains applicable outside these corrections. Independent focused
+fix-verification is still required; this does not expand partial Task 8 acceptance.

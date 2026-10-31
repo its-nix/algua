@@ -49,7 +49,13 @@ const browser = await chromium.launch({ channel: 'chrome' })
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
 const failures = []
 
-for (const route of ROUTES) {
+const cases = [
+  ...ROUTES.map((route) => ({ route, width: 390 })),
+  { route: '/', width: 860 },
+  { route: '/', width: 1440 },
+]
+for (const { route, width } of cases) {
+  await page.setViewportSize({ width, height: 900 })
   await page.goto(base + route, { waitUntil: 'networkidle' })
   await page.waitForTimeout(600)
 
@@ -123,7 +129,7 @@ await browser.close()
 server.close()
 
 if (failures.length) {
-  console.error(`\nHorizontal overflow at 390px:\n  ${failures.join('\n  ')}`)
+  console.error(`\nHorizontal overflow:\n  ${failures.join('\n  ')}`)
   process.exit(1)
 }
-console.log(`\nok: ${ROUTES.length} routes, no horizontal overflow at 390px`)
+console.log(`\nok: ${cases.length} route/viewport cases, no horizontal overflow (390/860/1440px)`)

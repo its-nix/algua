@@ -70,13 +70,17 @@ export default function StrategyDetail({
     )
   }
 
+  const retryIdentity = () => {
+    onIdentityRetry?.()
+    detail.refetch()
+  }
   const d = detail.data
   const registry = d.registry
   if (expectedStrategyId !== undefined && registry === null) {
     return (
       <IdentityError
         message="strategy identity unverified"
-        onRetry={onIdentityRetry ?? detail.refetch}
+        onRetry={retryIdentity}
       />
     )
   }
@@ -85,7 +89,7 @@ export default function StrategyDetail({
     return (
       <IdentityError
         message="strategy identity mismatch"
-        onRetry={onIdentityRetry ?? detail.refetch}
+        onRetry={retryIdentity}
       />
     )
   }
