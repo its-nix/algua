@@ -15,16 +15,18 @@ import { readFileSync, existsSync } from 'node:fs'
 import { extname, join, normalize } from 'node:path'
 import { chromium } from 'playwright'
 
-const ROUTES = ['/', '/fleet', '/money', '/research', '/s/liquid10_adj_momentum']
+const ROUTES = ['/', '/now', '/fleet', '/money', '/research', '/strategy/1', '/s/liquid10_adj_momentum']
 
 // One string per route that only appears if the real fixture data rendered — picked from
 // src/fixtures/steady-state.ts (kept as literals here rather than imported: this script runs
 // as plain Node against the BUILT demo bundle, not through the TS/Vitest module graph).
 const ROUTE_CONTENT = {
-  '/': 'cross_horizon_low_vol', // TRIAGE.items[0].title after the worst-first sort (FIX 3/5)
+  '/': 'liquid10_adj_momentum', // BOARD.data.rows[0], proving the leaderboard rendered
+  '/now': 'cross_horizon_low_vol', // TRIAGE.items[0].title after the worst-first sort
   '/fleet': 'liquid10_adj_momentum', // a real "every strategy" row (FLEET.data.rows)
   '/money': 'liquid10_adj_momentum', // BOOK.data.slices[0].strategy
   '/research': 'liquid10_adj_momentum', // RUNS.data.runs[0].strategy_name
+  '/strategy/1': 'Cross-sectional momentum over the liquid10 universe', // ID resolver -> detail
   '/s/liquid10_adj_momentum': 'Cross-sectional momentum over the liquid10 universe', // registry.description
 }
 const DIR = 'dist-demo'
@@ -43,7 +45,9 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r))
 const base = `http://127.0.0.1:${server.address().port}`
 
-const browser = await chromium.launch({ channel: 'chrome' })
+// Use Playwright's lock-pinned Chromium. The host Chrome may carry machine-specific crash/report
+// configuration and is not part of the frontend toolchain this check is meant to verify.
+const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
 const failures = []
 
@@ -83,7 +87,7 @@ for (const route of ROUTES) {
         offenders.push(`${el.tagName}.${String(el.className).slice(0, 40)} right=${Math.round(r.right)}`)
       }
     })
-    const shortTargets = [...document.querySelectorAll('.tab, .back-btn')]
+    const shortTargets = [...document.querySelectorAll('.secondary-link, .back-btn')]
       .map((el) => ({ name: el.className, height: el.getBoundingClientRect().height }))
       .filter(({ height }) => height < 44)
     const ideaDates = currentRoute === '/research'

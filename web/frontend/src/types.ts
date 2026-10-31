@@ -172,7 +172,7 @@ export interface GatesPayload {
 export interface StrategyDetailResponse {
   ok: boolean
   strategy: string
-  registry: RegistryDetail
+  registry: RegistryDetail | null
   paper: PaperRollup | null
   gates: GatesPayload | null
   /** Rows requested PER LEDGER. A ledger holding exactly this many rows is truncated,

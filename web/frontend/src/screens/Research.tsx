@@ -148,7 +148,7 @@ export default function Research() {
         <ScatterISOOSView query={gateRuns} />
       </div>
 
-      <StrategyBoardView query={board} />
+      <StrategyBoardView query={board} compact />
 
       <IdeaPool query={ideas} />
     </main>
