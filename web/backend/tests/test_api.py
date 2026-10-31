@@ -655,6 +655,43 @@ async def test_strategy_board_forwards_no_query_params_to_the_cli(
     assert seen == [("runs", "board")]
 
 
+async def test_strategy_board_include_evidence_forwards_only_the_fixed_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    envelope = _env(
+        {
+            "schema_version": "strategy-board/v1",
+            "evidence_schema_version": "strategy-board-evidence/v1",
+            "count": 0,
+            "rows": [],
+        }
+    )
+    seen = _route_cli(monkeypatch, {("runs", "board", "--include-evidence"): envelope})
+    async with _client() as client:
+        resp = await client.get("/api/strategy-board", params={"include_evidence": "true"})
+    assert resp.status_code == 200
+    assert resp.json() == envelope
+    assert seen == [("runs", "board", "--include-evidence")]
+
+
+async def test_strategy_board_false_keeps_legacy_cli_invocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    envelope = _env({"schema_version": "strategy-board/v1", "count": 0, "rows": []})
+    seen = _route_cli(monkeypatch, {("runs", "board"): envelope})
+    async with _client() as client:
+        resp = await client.get("/api/strategy-board", params={"include_evidence": "false"})
+    assert resp.status_code == 200
+    assert seen == [("runs", "board")]
+
+
+async def test_strategy_board_rejects_malformed_include_evidence_boolean() -> None:
+    async with _client() as client:
+        resp = await client.get("/api/strategy-board", params={"include_evidence": "sometimes"})
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "invalid_param"
+
+
 async def test_strategy_board_is_cached_for_sixty_seconds(monkeypatch: pytest.MonkeyPatch) -> None:
     ttls: list[float] = []
 
