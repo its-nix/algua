@@ -45,9 +45,7 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r))
 const base = `http://127.0.0.1:${server.address().port}`
 
-// Use Playwright's lock-pinned Chromium. The host Chrome may carry machine-specific crash/report
-// configuration and is not part of the frontend toolchain this check is meant to verify.
-const browser = await chromium.launch()
+const browser = await chromium.launch({ channel: 'chrome' })
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
 const failures = []
 
