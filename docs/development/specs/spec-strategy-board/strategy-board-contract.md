@@ -65,7 +65,10 @@ The member is `null` when `latest_gate` is `null`; otherwise it is anchored to t
 `evaluation.value` is the stored full requested `period_start`, `period_end`, `timeframe`, and
 positive `metric_schema_version`. `oos_interval.value` is the inclusive `holdout_start`,
 `holdout_end`, and positive `n_bars` reached only through the selected run's exact holdout pointer,
-after strategy-identity and `n_obs_oos` count agreement. `snapshot_provenance.value` is the typed
+then its associated committed holdout evaluation, after strategy identity, selected snapshot, full
+requested period, actual OOS interval, and `n_obs_oos` count all agree. The holdout evaluation's
+burn-workflow config hash is a distinct identity and is not compared to the gate run config hash.
+`snapshot_provenance.value` is the typed
 `pilot-provenance/v1` allowlist (`schema_version`, `data_tier`, `universe_method`, all
 `limitations`, `coverage_start`, `coverage_end`, `provider`) reached only through the selected
 run's exact bars-snapshot pointer. Existing parsers and identity/binding checks are rerun; provider,
@@ -77,6 +80,7 @@ Wrapper status is `VALID`, `UNAVAILABLE`, or `INVALID`; non-valid values are ato
 Bounded reasons are: `missing_fields`, `no_holdout_pointer`, `missing_run_oos_count`,
 `no_snapshot_pointer`, `snapshot_not_found`, `provenance_absent`, `source_unavailable`,
 `malformed_fields`, `dangling_holdout_pointer`, `strategy_mismatch`, `count_mismatch`,
+`dangling_evaluation_pointer`, `evaluation_binding_mismatch`, `interval_binding_mismatch`,
 `malformed_provenance`, `unsupported_provenance_schema`, `snapshot_binding_mismatch`,
 `pit_verifier_unavailable`, and `conflicting_snapshot_records`. Evaluation span, OOS interval, and
 snapshot coverage are distinct concepts. A valid wrapper means well-formed metadata bound under

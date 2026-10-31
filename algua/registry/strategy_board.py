@@ -62,7 +62,11 @@ SELECT s.id AS strategy_id, s.name, s.family, s.stage,
        r.metric_schema_version, r.timeframe, r.period_start, r.period_end, r.snapshot_id,
        r.series_holdout_id,
        h.id AS holdout_id, h.strategy_id AS holdout_strategy_id,
-       h.holdout_start, h.holdout_end, h.n_bars AS holdout_n_bars
+       h.holdout_start, h.holdout_end, h.n_bars AS holdout_n_bars,
+       he.id AS evaluation_id, he.strategy_id AS evaluation_strategy_id,
+       he.snapshot_id AS evaluation_snapshot_id, he.committed_at AS evaluation_committed_at,
+       he.period_start AS evaluation_period_start, he.period_end AS evaluation_period_end,
+       he.holdout_start AS evaluation_holdout_start, he.holdout_end AS evaluation_holdout_end
 FROM strategies s
 LEFT JOIN runs r ON r.id = (
     SELECT g.id FROM runs g
@@ -70,6 +74,7 @@ LEFT JOIN runs r ON r.id = (
     ORDER BY g.created_at DESC, g.id DESC
     LIMIT 1)
 LEFT JOIN holdout_returns h ON h.id = r.series_holdout_id
+LEFT JOIN holdout_evaluations he ON he.id = h.holdout_evaluation_id
 """
 
 
@@ -173,16 +178,48 @@ def _oos_interval(row: sqlite3.Row) -> dict[str, Any]:
         return _wrapper("INVALID", "dangling_holdout_pointer", None)
     if row["holdout_strategy_id"] != row["strategy_id"]:
         return _wrapper("INVALID", "strategy_mismatch", None)
+    if row["evaluation_id"] is None:
+        return _wrapper("INVALID", "dangling_evaluation_pointer", None)
+    if row["evaluation_strategy_id"] != row["strategy_id"]:
+        return _wrapper("INVALID", "strategy_mismatch", None)
+    evaluation_snapshot = row["evaluation_snapshot_id"]
+    run_snapshot = row["snapshot_id"]
+    if (
+        _valid_created_at(row["evaluation_committed_at"]) is None
+        or not isinstance(evaluation_snapshot, str)
+        or not evaluation_snapshot
+        or not isinstance(run_snapshot, str)
+        or not run_snapshot
+    ):
+        return _wrapper("INVALID", "malformed_fields", None)
+    if evaluation_snapshot != run_snapshot:
+        return _wrapper("INVALID", "snapshot_binding_mismatch", None)
+    evaluation_start = _canonical_date(row["evaluation_period_start"])
+    evaluation_end = _canonical_date(row["evaluation_period_end"])
+    run_start = _canonical_date(row["period_start"])
+    run_end = _canonical_date(row["period_end"])
+    if (
+        evaluation_start is None or evaluation_end is None
+        or evaluation_start > evaluation_end
+        or run_start is None or run_end is None
+        or run_start > run_end
+    ):
+        return _wrapper("INVALID", "malformed_fields", None)
+    if (evaluation_start, evaluation_end) != (run_start, run_end):
+        return _wrapper("INVALID", "evaluation_binding_mismatch", None)
     run_count = row["n_obs_oos"]
     if run_count is None:
         return _wrapper("UNAVAILABLE", "missing_run_oos_count", None)
     start = _canonical_date(row["holdout_start"])
     end = _canonical_date(row["holdout_end"])
+    evaluation_holdout_start = _canonical_date(row["evaluation_holdout_start"])
+    evaluation_holdout_end = _canonical_date(row["evaluation_holdout_end"])
     holdout_count = row["holdout_n_bars"]
     if (
-        start is None
-        or end is None
+        start is None or end is None
         or start > end
+        or evaluation_holdout_start is None or evaluation_holdout_end is None
+        or evaluation_holdout_start > evaluation_holdout_end
         or isinstance(run_count, bool)
         or not isinstance(run_count, int)
         or run_count <= 0
@@ -191,6 +228,8 @@ def _oos_interval(row: sqlite3.Row) -> dict[str, Any]:
         or holdout_count <= 0
     ):
         return _wrapper("INVALID", "malformed_fields", None)
+    if (start, end) != (evaluation_holdout_start, evaluation_holdout_end):
+        return _wrapper("INVALID", "interval_binding_mismatch", None)
     if holdout_count != run_count:
         return _wrapper("INVALID", "count_mismatch", None)
     return _wrapper(

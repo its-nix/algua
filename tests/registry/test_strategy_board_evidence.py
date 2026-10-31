@@ -19,23 +19,37 @@ def repo() -> SqliteStrategyRepository:
     return SqliteStrategyRepository(conn)
 
 
-def _holdout(repo: SqliteStrategyRepository, strategy_id: int) -> int:
+def _holdout(
+    repo: SqliteStrategyRepository,
+    strategy_id: int,
+    *,
+    snapshot_id: object = "snapshot-exact",
+    period_start: object = "2025-01-01",
+    period_end: object = "2025-12-31",
+    committed_at: object = "2026-01-01T00:00:00+00:00",
+    evaluation_holdout_start: object = "2025-10-01",
+    evaluation_holdout_end: object = "2025-12-31",
+    return_holdout_start: object = "2025-10-01",
+    return_holdout_end: object = "2025-12-31",
+) -> int:
     with repo.connection:
         burn = repo.connection.execute(
             "INSERT INTO holdout_evaluations("
             "strategy_id,data_source,snapshot_id,period_start,period_end,holdout_frac,"
-            "config_hash,created_at,holdout_start,holdout_end) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "config_hash,created_at,committed_at,holdout_start,holdout_end) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (
                 strategy_id,
                 "fixture",
-                "snapshot-exact",
-                "2025-01-01",
-                "2025-12-31",
+                snapshot_id,
+                period_start,
+                period_end,
                 0.2,
-                "cfg",
+                "burn-workflow-config-hash-deliberately-not-run-config-hash",
                 "2026-01-01T00:00:00+00:00",
-                "2025-10-01",
-                "2025-12-31",
+                committed_at,
+                evaluation_holdout_start,
+                evaluation_holdout_end,
             ),
         ).lastrowid
         assert burn is not None
@@ -46,8 +60,8 @@ def _holdout(repo: SqliteStrategyRepository, strategy_id: int) -> int:
             (
                 burn,
                 strategy_id,
-                "2025-10-01",
-                "2025-12-31",
+                return_holdout_start,
+                return_holdout_end,
                 63,
                 b"not-read",
                 b"not-read",
@@ -68,6 +82,7 @@ def test_opt_in_projects_complete_valid_evidence_for_the_selected_run(
         "alpha",
         strategy_id=strategy.id,
         provenance={
+            "config_hash": "gate-run-config-hash-deliberately-not-burn-config-hash",
             "snapshot_id": "snapshot-exact",
             "timeframe": "1d",
             "period_start": "2025-01-01",
@@ -131,6 +146,54 @@ def test_opt_in_projects_complete_valid_evidence_for_the_selected_run(
             ],
         },
     }
+
+
+@pytest.mark.parametrize(
+    ("holdout_context", "expected_reason"),
+    [
+        ({"snapshot_id": "snapshot-wrong"}, "snapshot_binding_mismatch"),
+        ({"period_start": "2024-01-01"}, "evaluation_binding_mismatch"),
+    ],
+)
+def test_oos_interval_rejects_same_strategy_and_count_from_wrong_evaluation_context(
+    repo: SqliteStrategyRepository,
+    holdout_context: dict[str, object],
+    expected_reason: str,
+) -> None:
+    strategy = repo.add("alpha")
+    valid_holdout_id = _holdout(repo, strategy.id)
+    holdout_id = _holdout(repo, strategy.id, **holdout_context)
+    run_id = repo.record_run(
+        "gate",
+        "alpha",
+        strategy_id=strategy.id,
+        provenance={
+            "snapshot_id": "snapshot-exact",
+            "timeframe": "1d",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+        },
+        metrics={"n_obs_oos": 63},
+        series_holdout_id=valid_holdout_id,
+    )
+    assert strategy_board_payload(
+        repo, snapshot_evidence=lambda _: {}
+    )["rows"][0]["evidence"]["oos_interval"]["status"] == "VALID"
+    with repo.connection:
+        repo.connection.execute(
+            "UPDATE runs SET series_holdout_id=? WHERE id=?", (holdout_id, run_id)
+        )
+
+    interval = strategy_board_payload(
+        repo,
+        snapshot_evidence=lambda _snapshot_id: {
+            "status": "UNAVAILABLE",
+            "reason": "provenance_absent",
+            "value": None,
+        },
+    )["rows"][0]["evidence"]["oos_interval"]
+
+    assert interval == {"status": "INVALID", "reason": expected_reason, "value": None}
 
 
 def test_default_projection_is_legacy_shape_and_never_resolves_snapshot(
@@ -295,12 +358,145 @@ def _run_with_holdout(
         "gate",
         "alpha",
         strategy_id=strategy.id,
+        provenance={
+            "snapshot_id": "snapshot-exact",
+            "timeframe": "1d",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+        },
         metrics={"n_obs_oos": 63},
         series_holdout_id=holdout_id,
     )
     with repo.connection:
         repo.connection.execute("UPDATE runs SET n_obs_oos=? WHERE id=?", (run_count, run_id))
     return run_id, strategy.id, foreign.id
+
+
+@pytest.mark.parametrize(
+    ("holdout_context", "expected_reason"),
+    [
+        ({"committed_at": None}, "malformed_fields"),
+        ({"committed_at": "not-a-timestamp"}, "malformed_fields"),
+        ({"snapshot_id": None}, "malformed_fields"),
+        ({"snapshot_id": b"snapshot-exact"}, "malformed_fields"),
+        ({"period_start": ""}, "malformed_fields"),
+        ({"period_end": "2025-1-1"}, "malformed_fields"),
+        ({"evaluation_holdout_start": None}, "malformed_fields"),
+        ({"evaluation_holdout_start": "2025-10-02"}, "interval_binding_mismatch"),
+        ({"return_holdout_end": "2025-12-30"}, "interval_binding_mismatch"),
+    ],
+)
+def test_oos_interval_fails_closed_for_malformed_or_mismatched_burn_context(
+    repo: SqliteStrategyRepository,
+    holdout_context: dict[str, object],
+    expected_reason: str,
+) -> None:
+    strategy = repo.add("alpha")
+    holdout_id = _holdout(repo, strategy.id, **holdout_context)
+    repo.record_run(
+        "gate",
+        "alpha",
+        strategy_id=strategy.id,
+        provenance={
+            "snapshot_id": "snapshot-exact",
+            "timeframe": "1d",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+        },
+        metrics={"n_obs_oos": 63},
+        series_holdout_id=holdout_id,
+    )
+
+    interval = strategy_board_payload(
+        repo,
+        snapshot_evidence=lambda _snapshot_id: {
+            "status": "UNAVAILABLE",
+            "reason": "provenance_absent",
+            "value": None,
+        },
+    )["rows"][0]["evidence"]["oos_interval"]
+
+    assert interval == {"status": "INVALID", "reason": expected_reason, "value": None}
+
+
+def test_oos_interval_rejects_mismatched_associated_evaluation_strategy(
+    repo: SqliteStrategyRepository,
+) -> None:
+    strategy = repo.add("alpha")
+    foreign = repo.add("foreign")
+    holdout_id = _holdout(repo, strategy.id)
+    with repo.connection:
+        repo.connection.execute(
+            "UPDATE holdout_evaluations SET strategy_id=? WHERE id=("
+            "SELECT holdout_evaluation_id FROM holdout_returns WHERE id=?)",
+            (foreign.id, holdout_id),
+        )
+    repo.record_run(
+        "gate",
+        "alpha",
+        strategy_id=strategy.id,
+        provenance={
+            "snapshot_id": "snapshot-exact",
+            "timeframe": "1d",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+        },
+        metrics={"n_obs_oos": 63},
+        series_holdout_id=holdout_id,
+    )
+
+    interval = strategy_board_payload(
+        repo,
+        snapshot_evidence=lambda _snapshot_id: {
+            "status": "UNAVAILABLE",
+            "reason": "provenance_absent",
+            "value": None,
+        },
+    )["rows"][0]["evidence"]["oos_interval"]
+
+    assert interval == {"status": "INVALID", "reason": "strategy_mismatch", "value": None}
+
+
+def test_oos_interval_rejects_dangling_associated_evaluation(
+    repo: SqliteStrategyRepository,
+) -> None:
+    strategy = repo.add("alpha")
+    holdout_id = _holdout(repo, strategy.id)
+    repo.record_run(
+        "gate",
+        "alpha",
+        strategy_id=strategy.id,
+        provenance={
+            "snapshot_id": "snapshot-exact",
+            "timeframe": "1d",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+        },
+        metrics={"n_obs_oos": 63},
+        series_holdout_id=holdout_id,
+    )
+    evaluation_id = repo.connection.execute(
+        "SELECT holdout_evaluation_id FROM holdout_returns WHERE id=?", (holdout_id,)
+    ).fetchone()[0]
+    repo.connection.execute("PRAGMA foreign_keys=OFF")
+    with repo.connection:
+        repo.connection.execute("DELETE FROM holdout_evaluations WHERE id=?", (evaluation_id,))
+    repo.connection.execute("PRAGMA foreign_keys=ON")
+
+    interval = strategy_board_payload(
+        repo,
+        snapshot_evidence=lambda _snapshot_id: {
+            "status": "UNAVAILABLE",
+            "reason": "provenance_absent",
+            "value": None,
+        },
+    )["rows"][0]["evidence"]["oos_interval"]
+
+    assert interval == {
+        "status": "INVALID",
+        "reason": "dangling_evaluation_pointer",
+        "value": None,
+    }
 
 
 @pytest.mark.parametrize(
@@ -350,9 +546,36 @@ def test_oos_interval_identity_and_count_validation(
 
     interval = strategy_board_payload(
         repo,
-        snapshot_evidence=lambda _snapshot_id: pytest.fail("snapshot pointer is absent"),
+        snapshot_evidence=lambda _snapshot_id: {
+            "status": "UNAVAILABLE",
+            "reason": "provenance_absent",
+            "value": None,
+        },
     )["rows"][0]["evidence"]["oos_interval"]
     assert interval == {"status": expected[0], "reason": expected[1], "value": None}
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("snapshot_id", None),
+        ("snapshot_id", ""),
+        ("snapshot_id", b"snapshot-exact"),
+        ("period_start", None),
+        ("period_start", "2025-1-1"),
+        ("period_end", "2024-12-31"),
+    ],
+)
+def test_oos_interval_requires_authoritative_selected_run_context(
+    repo: SqliteStrategyRepository, column: str, value: object,
+) -> None:
+    run_id, _, _ = _run_with_holdout(repo)
+    with repo.connection:
+        repo.connection.execute(f"UPDATE runs SET {column}=? WHERE id=?", (value, run_id))
+    interval = strategy_board_payload(
+        repo, snapshot_evidence=lambda _: {}
+    )["rows"][0]["evidence"]["oos_interval"]
+    assert interval == {"status": "INVALID", "reason": "malformed_fields", "value": None}
 
 
 def test_projection_never_reads_holdout_vectors_or_writes(
@@ -361,12 +584,22 @@ def test_projection_never_reads_holdout_vectors_or_writes(
     strategy = repo.add("alpha")
     holdout_id = _holdout(repo, strategy.id)
     repo.record_run(
-        "gate", "alpha", strategy_id=strategy.id, metrics={"n_obs_oos": 63},
+        "gate", "alpha", strategy_id=strategy.id,
+        provenance={
+            "snapshot_id": "snapshot-exact",
+            "timeframe": "1d",
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+        },
+        metrics={"n_obs_oos": 63},
         series_holdout_id=holdout_id,
     )
     forbidden = {"returns_blob", "bar_dates_blob"}
+    reads: set[tuple[str, str]] = set()
 
     def authorize(action: int, table: str, column: str, _db: str, _trigger: str) -> int:
+        if action == sqlite3.SQLITE_READ:
+            reads.add((table, column))
         if action == sqlite3.SQLITE_READ and table == "holdout_returns" and column in forbidden:
             return sqlite3.SQLITE_DENY
         if action in {sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE}:
@@ -377,10 +610,32 @@ def test_projection_never_reads_holdout_vectors_or_writes(
     before = repo.connection.total_changes
     payload = strategy_board_payload(
         repo,
-        snapshot_evidence=lambda _snapshot_id: pytest.fail("snapshot pointer is absent"),
+        snapshot_evidence=lambda _snapshot_id: {
+            "status": "UNAVAILABLE",
+            "reason": "provenance_absent",
+            "value": None,
+        },
     )
     assert payload["rows"][0]["evidence"]["oos_interval"]["status"] == "VALID"
     assert repo.connection.total_changes == before
+    assert {column for table, column in reads if table == "holdout_returns"} == {
+        "id",
+        "holdout_evaluation_id",
+        "strategy_id",
+        "holdout_start",
+        "holdout_end",
+        "n_bars",
+    }
+    assert {column for table, column in reads if table == "holdout_evaluations"} == {
+        "id",
+        "strategy_id",
+        "snapshot_id",
+        "period_start",
+        "period_end",
+        "committed_at",
+        "holdout_start",
+        "holdout_end",
+    }
 
 
 def test_default_projection_does_not_read_any_opt_in_evidence_columns(
@@ -413,6 +668,7 @@ def test_default_projection_does_not_read_any_opt_in_evidence_columns(
     def authorize(action: int, table: str, column: str, _db: str, _trigger: str) -> int:
         if action == sqlite3.SQLITE_READ and (
             table == "holdout_returns"
+            or table == "holdout_evaluations"
             or (table == "runs" and column in evidence_run_columns)
         ):
             return sqlite3.SQLITE_DENY
