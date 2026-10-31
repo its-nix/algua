@@ -34,6 +34,9 @@ environment; it does not call write APIs directly.
 Defaults are count 150, batch size 150, attempts 2, timeout 300 seconds, and Wikipedia's current
 `List_of_S%26P_400_companies` page. End is half-open and may not exceed the current UTC date. The
 recipe validates the real ingest/inspect/verify help surfaces before downloading the source.
+The source URL and every redirect must remain HTTPS. Source retrieval has both curl's total
+transfer deadline and a monotonic parent-process deadline, and the response is capped at 8 MiB
+while streaming regardless of its advertised size.
 
 The default parser requires the actual HTML `table#constituents` and its unique `Symbol` header. A
 strict CSV with a unique `Symbol` header remains supported for a configured source. The original

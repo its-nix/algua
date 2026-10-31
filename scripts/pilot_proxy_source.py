@@ -6,18 +6,24 @@ import argparse
 import csv
 import hashlib
 import io
+import os
 import re
+import subprocess
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 
 from bs4 import BeautifulSoup
 
+from algua.primitives.bounded_subprocess import OutputLimitExceeded, run_bounded
+
 _SYMBOL = re.compile(r"^[A-Z0-9][A-Z0-9.-]*$")
+_MAX_SOURCE_BYTES = 8 * 1024 * 1024
+_MAX_ERROR_BYTES = 64 * 1024
 
 
 class RecipeError(ValueError):
@@ -95,21 +101,57 @@ def download_source(
     timeout: int,
     state: dict[str, Any],
     save: Callable[[], None],
+    curl_executable: Path = Path("/usr/bin/curl"),
 ) -> bytes:
     """Download exact source bytes with bounded, durable failure accounting."""
     request: dict[str, Any] = {"label": "source-download", "url": url, "attempts": []}
     state["requests"].append(request)
     save()
+    if urlsplit(url).scheme.lower() != "https" or not urlsplit(url).netloc:
+        request["status"] = "failed"
+        state.update({"status": "failed", "failure": "source_download_failed"})
+        save()
+        raise RecipeError("source URL must use HTTPS")
     for number in range(1, attempts + 1):
         started = datetime.now(UTC)
         stdout_log = output / "logs" / f"source-download.attempt-{number}.stdout.log"
         stderr_log = output / "logs" / f"source-download.attempt-{number}.stderr.log"
         try:
-            source_request = Request(url, headers={"User-Agent": "AlguaResearchProxy/1.0"})
-            with urlopen(source_request, timeout=timeout) as response:  # noqa: S310
-                payload = response.read()
-            status, error = "success", ""
-        except OSError as exc:
+            result = run_bounded(
+                [
+                    str(curl_executable),
+                    "--disable",
+                    "--location",
+                    "--fail",
+                    "--silent",
+                    "--show-error",
+                    "--max-time",
+                    str(timeout),
+                    "--max-filesize",
+                    str(_MAX_SOURCE_BYTES),
+                    "--proto",
+                    "=https",
+                    "--proto-redir",
+                    "=https",
+                    "--user-agent",
+                    "AlguaResearchProxy/1.0",
+                    "--url",
+                    url,
+                ],
+                env=os.environ,
+                timeout=timeout,
+                max_stdout=_MAX_SOURCE_BYTES,
+                max_stderr=_MAX_ERROR_BYTES,
+            )
+            payload = result.stdout
+            status = "success" if result.returncode == 0 else "network_error"
+            error = result.stderr.decode(errors="replace")
+            if result.returncode and not error:
+                error = f"curl exited with status {result.returncode}"
+        except subprocess.TimeoutExpired:
+            payload = b""
+            status, error = "network_error", f"source download timed out after {timeout} seconds"
+        except (OSError, OutputLimitExceeded) as exc:
             payload = b""
             status, error = "network_error", str(exc)
         stdout_log.write_text("", encoding="utf-8")

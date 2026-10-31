@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 import time
+from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import cast
-from urllib.error import URLError
+from typing import Any, cast
 
 import pandas as pd
 import pytest
@@ -49,6 +51,13 @@ def _html(*symbols: str) -> bytes:
         '<html><table id="constituents"><tr><th>Symbol</th><th>Security</th></tr>'
         f"{rows}</table></html>"
     ).encode()
+
+
+def _fake_curl(tmp_path: Path, body: str) -> Path:
+    executable = tmp_path / "curl"
+    executable.write_text(f"#!{sys.executable}\n{body}\n", encoding="utf-8")
+    executable.chmod(0o755)
+    return executable
 
 
 def test_default_source_and_batch_are_current_wikipedia_single_campaign() -> None:
@@ -263,23 +272,37 @@ def test_long_request_label_and_symbols_are_checkpointed_before_subprocess(
     assert label.startswith("batch-1-") and len(label) < 80
 
 
-def test_source_download_identifies_research_client(tmp_path: Path, monkeypatch) -> None:
-    from io import BytesIO
-    from urllib.request import Request
-
+def test_source_download_enforces_https_for_initial_and_redirect_urls(tmp_path: Path) -> None:
     from scripts.pilot_proxy_source import download_source
 
     (tmp_path / "logs").mkdir()
-    state = {"requests": []}
+    state: dict[str, Any] = {"requests": []}
+    curl = _fake_curl(
+        tmp_path,
+        """
+import sys
+required = {
+    "--location", "--fail", "--silent", "--show-error",
+    "--max-time", "5", "--max-filesize", "8388608",
+    "--proto", "=https", "--proto-redir", "=https",
+    "--user-agent", "AlguaResearchProxy/1.0",
+}
+if not required.issubset(sys.argv[1:]):
+    raise SystemExit(91)
+sys.stdout.buffer.write(b"original source response")
+""",
+    )
 
-    def source_server(request, **kwargs):
-        assert isinstance(request, Request)
-        assert request.get_header("User-agent") == "AlguaResearchProxy/1.0"
-        assert request.full_url == DEFAULT_SOURCE_URL
-        assert kwargs["timeout"] == 5
-        return BytesIO(b"original source response")
-
-    monkeypatch.setattr("scripts.pilot_proxy_source.urlopen", source_server)
+    with pytest.raises(RecipeError, match="HTTPS"):
+        download_source(
+            "http://example.com/source",
+            output=tmp_path,
+            attempts=1,
+            timeout=5,
+            state=state,
+            save=lambda: None,
+            curl_executable=curl,
+        )
     payload = download_source(
         DEFAULT_SOURCE_URL,
         output=tmp_path,
@@ -287,9 +310,140 @@ def test_source_download_identifies_research_client(tmp_path: Path, monkeypatch)
         timeout=5,
         state=state,
         save=lambda: None,
+        curl_executable=curl,
     )
     assert payload == b"original source response"
-    assert state["requests"][0]["status"] == "success"
+    assert state["requests"][1]["status"] == "success"
+
+
+def test_source_download_ignores_ambient_curl_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from algua.primitives.bounded_subprocess import BoundedCompletion, run_bounded
+    from scripts import pilot_proxy_source
+
+    curl = Path("/usr/bin/curl")
+    assert curl.is_file()
+    marker = b"ambient-curlrc-loaded"
+    curl_home = tmp_path / "curl-home"
+    curl_home.mkdir()
+    (curl_home / ".curlrc").write_text(
+        f'write-out = "{marker.decode()}"\n', encoding="utf-8"
+    )
+    monkeypatch.setenv("CURL_HOME", str(curl_home))
+    url = "https://127.0.0.1:1/source"
+
+    control = run_bounded(
+        [str(curl), "--max-time", "1", "--proto", "=https", "--url", url],
+        env=os.environ,
+        timeout=1,
+        max_stdout=1024,
+        max_stderr=64 * 1024,
+    )
+    assert control.returncode != 0
+    assert marker in control.stdout
+
+    observed_stdout: list[bytes] = []
+
+    def recording_run_bounded(
+        argv: Sequence[str],
+        *,
+        env: Mapping[str, str],
+        timeout: float,
+        max_stdout: int,
+        max_stderr: int,
+    ) -> BoundedCompletion:
+        result = run_bounded(
+            argv,
+            env=env,
+            timeout=timeout,
+            max_stdout=max_stdout,
+            max_stderr=max_stderr,
+        )
+        observed_stdout.append(result.stdout)
+        return result
+
+    monkeypatch.setattr(pilot_proxy_source, "run_bounded", recording_run_bounded)
+    (tmp_path / "logs").mkdir()
+    state: dict[str, Any] = {"requests": []}
+
+    with pytest.raises(RecipeError, match="source download failed"):
+        pilot_proxy_source.download_source(
+            url,
+            output=tmp_path,
+            attempts=1,
+            timeout=1,
+            state=state,
+            save=lambda: None,
+            curl_executable=curl,
+        )
+
+    assert len(observed_stdout) == 1
+    assert marker not in observed_stdout[0]
+
+
+def test_source_download_rejects_oversized_response_during_streaming(tmp_path: Path) -> None:
+    from scripts.pilot_proxy_source import download_source
+
+    (tmp_path / "logs").mkdir()
+    state: dict[str, Any] = {"requests": []}
+    curl = _fake_curl(
+        tmp_path,
+        """
+import os
+chunk = b"x" * 65536
+for _ in range(129):
+    os.write(1, chunk)
+""",
+    )
+
+    with pytest.raises(RecipeError, match="source download failed"):
+        download_source(
+            DEFAULT_SOURCE_URL,
+            output=tmp_path,
+            attempts=1,
+            timeout=5,
+            state=state,
+            save=lambda: None,
+            curl_executable=curl,
+        )
+
+    assert state["requests"][0]["attempts"][0]["status"] == "network_error"
+    assert "byte bound" in (tmp_path / "logs/source-download.attempt-1.stderr.log").read_text()
+
+
+def test_source_download_stops_slow_stream_at_total_deadline(tmp_path: Path) -> None:
+    from scripts.pilot_proxy_source import download_source
+
+    (tmp_path / "logs").mkdir()
+    state: dict[str, Any] = {"requests": []}
+    curl = _fake_curl(
+        tmp_path,
+        """
+import os
+import time
+while True:
+    os.write(1, b"x")
+    time.sleep(0.2)
+""",
+    )
+    started = time.monotonic()
+
+    with pytest.raises(RecipeError, match="source download failed"):
+        download_source(
+            DEFAULT_SOURCE_URL,
+            output=tmp_path,
+            attempts=1,
+            timeout=1,
+            state=state,
+            save=lambda: None,
+            curl_executable=curl,
+        )
+
+    elapsed = time.monotonic() - started
+    assert 0.8 <= elapsed < 1.8
+    assert state["requests"][0]["attempts"][0]["status"] == "network_error"
+    assert "timed out" in (tmp_path / "logs/source-download.attempt-1.stderr.log").read_text()
 
 
 def test_source_download_failure_is_bounded_checkpointed_and_never_success(
@@ -300,12 +454,12 @@ def test_source_download_failure_is_bounded_checkpointed_and_never_success(
         (output / name).mkdir(parents=True, exist_ok=True)
     calls = 0
 
-    def failing_open(*_args: object, **_kwargs: object) -> object:
+    def failing_download(*_args: object, **_kwargs: object) -> object:
         nonlocal calls
         calls += 1
-        raise URLError("offline")
+        raise OSError("offline")
 
-    monkeypatch.setattr("scripts.pilot_proxy_source.urlopen", failing_open)
+    monkeypatch.setattr("scripts.pilot_proxy_source.run_bounded", failing_download, raising=False)
     campaign = Campaign(
         output=output,
         executable=Path("/venv/bin/algua"),
