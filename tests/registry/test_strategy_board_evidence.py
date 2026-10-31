@@ -681,3 +681,60 @@ def test_default_projection_does_not_read_any_opt_in_evidence_columns(
     assert payload["rows"][0]["latest_gate"]["n_obs_oos"] == 63
     assert "evidence_schema_version" not in payload
     assert "evidence" not in payload["rows"][0]
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "valid"),
+    [
+        ("2024-10-01", "2024-12-31", False),
+        ("2026-01-01", "2026-03-31", False),
+        ("2024-12-31", "2025-10-01", False),
+        ("2025-10-01", "2026-01-01", False),
+        ("2025-01-01", "2025-12-31", True),
+        ("2025-01-01", "2025-01-01", True),
+        ("2025-12-31", "2025-12-31", True),
+        ("2025-10-01", "2025-12-31", True),
+        ("2025-12-31", "2025-01-01", False),
+        ("2025-02-30", "2025-12-31", False),
+        ("20250101", "2025-12-31", False),
+        ("", "2025-12-31", False),
+        (b"bad", "2025-12-31", False),
+    ],
+)
+@pytest.mark.parametrize("source", ["both", "returns", "evaluation"])
+def test_matching_oos_interval_requires_containment(
+    repo: SqliteStrategyRepository, start: object, end: object, valid: bool, source: str,
+) -> None:
+    strategy = repo.add("alpha")
+    pointer = _holdout(repo, strategy.id)
+    repo.record_run(
+        "gate", "alpha", strategy_id=strategy.id,
+        provenance={"snapshot_id": "snapshot-exact", "timeframe": "1d",
+                    "period_start": "2025-01-01", "period_end": "2025-12-31"},
+        metrics={"n_obs_oos": 63}, series_holdout_id=pointer,
+    )
+    def interval() -> dict[str, object]:
+        return strategy_board_payload(repo, snapshot_evidence=lambda _: {})[
+            "rows"][0]["evidence"]["oos_interval"]
+
+    assert interval()["status"] == "VALID"
+    if valid and source != "both":
+        return  # Valid controls above; changed single-source intervals must disagree.
+    with repo.connection:
+        if source in {"both", "returns"}:
+            repo.connection.execute(
+                "UPDATE holdout_returns SET holdout_start=?,holdout_end=? WHERE id=?",
+                (start, end, pointer),
+            )
+        if source in {"both", "evaluation"}:
+            repo.connection.execute(
+                "UPDATE holdout_evaluations SET holdout_start=?,holdout_end=? "
+                "WHERE id=(SELECT holdout_evaluation_id FROM holdout_returns WHERE id=?)",
+                (start, end, pointer),
+            )
+    result = interval()
+    if valid:
+        assert result == {"status": "VALID", "reason": None, "value": {
+            "holdout_start": start, "holdout_end": end, "n_bars": 63}}
+    else:
+        assert result == {"status": "INVALID", "reason": "malformed_fields", "value": None}

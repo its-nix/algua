@@ -66,7 +66,10 @@ The member is `null` when `latest_gate` is `null`; otherwise it is anchored to t
 positive `metric_schema_version`. `oos_interval.value` is the inclusive `holdout_start`,
 `holdout_end`, and positive `n_bars` reached only through the selected run's exact holdout pointer,
 then its associated committed holdout evaluation, after strategy identity, selected snapshot, full
-requested period, actual OOS interval, and `n_obs_oos` count all agree. The holdout evaluation's
+requested period, actual OOS interval, and `n_obs_oos` count all agree. Both matching OOS intervals
+must be canonical inclusive intervals contained in the full requested period:
+`period_start <= holdout_start <= holdout_end <= period_end`; otherwise the wrapper is atomic
+`INVALID`/`malformed_fields`/null. The holdout evaluation's
 burn-workflow config hash is a distinct identity and is not compared to the gate run config hash.
 `snapshot_provenance.value` is the typed
 `pilot-provenance/v1` allowlist (`schema_version`, `data_tier`, `universe_method`, all

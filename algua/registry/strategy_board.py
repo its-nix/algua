@@ -138,10 +138,15 @@ def _canonical_date(value: Any) -> str | None:
     return value if parsed.isoformat() == value else None
 
 
+def _contained_interval(start: Any, end: Any, lower: str, upper: str) -> tuple[str, str] | None:
+    first, last = _canonical_date(start), _canonical_date(end)
+    if first is None or last is None or not lower <= first <= last <= upper:
+        return None
+    return first, last
+
+
 def _evaluation(row: sqlite3.Row) -> dict[str, Any]:
-    values = (
-        row["period_start"], row["period_end"], row["timeframe"], row["metric_schema_version"]
-    )
+    values = row["period_start"], row["period_end"], row["timeframe"], row["metric_schema_version"]
     if any(value is None or value == "" for value in values):
         return _wrapper("UNAVAILABLE", "missing_fields", None)
     start = _canonical_date(row["period_start"])
@@ -210,16 +215,14 @@ def _oos_interval(row: sqlite3.Row) -> dict[str, Any]:
     run_count = row["n_obs_oos"]
     if run_count is None:
         return _wrapper("UNAVAILABLE", "missing_run_oos_count", None)
-    start = _canonical_date(row["holdout_start"])
-    end = _canonical_date(row["holdout_end"])
-    evaluation_holdout_start = _canonical_date(row["evaluation_holdout_start"])
-    evaluation_holdout_end = _canonical_date(row["evaluation_holdout_end"])
+    interval = _contained_interval(
+        row["holdout_start"], row["holdout_end"], evaluation_start, evaluation_end)
+    evaluation_interval = _contained_interval(
+        row["evaluation_holdout_start"], row["evaluation_holdout_end"],
+        evaluation_start, evaluation_end)
     holdout_count = row["holdout_n_bars"]
     if (
-        start is None or end is None
-        or start > end
-        or evaluation_holdout_start is None or evaluation_holdout_end is None
-        or evaluation_holdout_start > evaluation_holdout_end
+        interval is None or evaluation_interval is None
         or isinstance(run_count, bool)
         or not isinstance(run_count, int)
         or run_count <= 0
@@ -228,15 +231,12 @@ def _oos_interval(row: sqlite3.Row) -> dict[str, Any]:
         or holdout_count <= 0
     ):
         return _wrapper("INVALID", "malformed_fields", None)
-    if (start, end) != (evaluation_holdout_start, evaluation_holdout_end):
+    if interval != evaluation_interval:
         return _wrapper("INVALID", "interval_binding_mismatch", None)
     if holdout_count != run_count:
         return _wrapper("INVALID", "count_mismatch", None)
-    return _wrapper(
-        "VALID",
-        None,
-        {"holdout_start": start, "holdout_end": end, "n_bars": holdout_count},
-    )
+    return _wrapper("VALID", None, {
+        "holdout_start": interval[0], "holdout_end": interval[1], "n_bars": holdout_count})
 
 
 def _evidence(row: sqlite3.Row, resolve_snapshot: SnapshotEvidenceResolver) -> dict[str, Any]:
