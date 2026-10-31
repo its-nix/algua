@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, useFetch } from '../api'
 import type { UseFetchResult } from '../api'
-import { num, pct } from '../format'
+import { num, pct, utcDate } from '../format'
 import type { ApiEnvelope, StrategyBoardGate, StrategyBoardPayload, StrategyBoardRow } from '../types'
 import PassMark from './PassMark'
 import Sparkline from './Sparkline'
@@ -16,25 +16,22 @@ type MetricKey = Exclude<keyof StrategyBoardGate, 'run_id' | 'created_at' | 'pas
 interface SortOption {
   key: MetricKey
   label: string
-  format: (v: number | null) => string
 }
 
-/** Exploratory comparison axes. Every axis is HIGHER-first — drawdown included, because
- * `max_drawdown_oos` is stored negative, so the shallowest drawdown is the highest value. Nulls
- * sort last on every axis (see `orderBoardRows`). Picking one reorders rows only; it never picks
- * a different run for a strategy and never feeds a promotion path. */
+/** Approved observed comparison axes. strategy-board/v1 lacks the period/tier metadata required
+ * to compare them, so the controls remain visible but disabled until a reviewed contract carries
+ * that metadata. No client-side ranking implementation exists in this slice. */
 export const SORT_OPTIONS: SortOption[] = [
-  { key: 'sharpe_oos', label: 'oos sharpe', format: (v) => num(v) },
-  { key: 'total_return_oos', label: 'oos return', format: (v) => pct(v) },
-  { key: 'max_drawdown_oos', label: 'oos drawdown', format: (v) => pct(v) },
+  { key: 'sharpe_oos', label: 'oos sharpe' },
+  { key: 'total_return_oos', label: 'oos return' },
+  { key: 'max_drawdown_oos', label: 'oos drawdown' },
 ]
 
 const LIFECYCLE_ORDER = [
   'idea', 'backtested', 'candidate', 'paper', 'forward_tested', 'live', 'dormant', 'retired',
 ]
 
-const SPARKLINE_LABEL =
-  'sparkline: worst walk-forward window → mean window → holdout result, against zero'
+const UNKNOWN_FAMILY = '__unknown_family__'
 
 function finite(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null
@@ -76,7 +73,7 @@ function ErrorCode({ error }: { error: Error | null }) {
   return <div className="error-code">{code}</div>
 }
 
-function RefreshError({ error }: { error: Error | null }) {
+export function RefreshError({ error }: { error: Error | null }) {
   if (error === null) return null
   return (
     <section className="banner-stale">
@@ -86,32 +83,11 @@ function RefreshError({ error }: { error: Error | null }) {
   )
 }
 
-/** Pure, stable comparison order. `null` keeps the server's lifecycle order untouched. Otherwise:
- * finite values higher-first, missing/non-finite values last (never coerced to 0), ties and
- * the missing group keep their incoming (lifecycle) order. Returns a new array. */
-export function orderBoardRows(
-  rows: readonly StrategyBoardRow[],
-  sortKey: MetricKey | null,
-): StrategyBoardRow[] {
-  if (sortKey === null) return [...rows]
-  return rows
-    .map((row, index) => ({ row, index, value: finite(row.latest_gate?.[sortKey]) }))
-    .sort((a, b) => {
-      if (a.value === null || b.value === null) {
-        if (a.value === b.value) return a.index - b.index
-        return a.value === null ? 1 : -1
-      }
-      return b.value - a.value || a.index - b.index
-    })
-    .map((entry) => entry.row)
-}
-
 /**
  * The research strategy board: exactly one row per registered strategy, joined to that
- * identity's latest gate run (`runs board`). Stage filtering and comparison ordering are
- * client-side over the complete payload — they reorder rows and never replace which run
- * represents a strategy. Read-only: rows navigate to the existing drill-down and nothing here
- * mutates state.
+ * identity's latest gate run (`runs board`). Stage/family filtering is client-side over the
+ * complete payload and never replaces which run represents a strategy. Read-only: rows navigate
+ * through the stable-ID resolver and nothing here mutates state.
  */
 export default function StrategyBoard() {
   const query = useFetch<ApiEnvelope<StrategyBoardPayload>>('/api/strategy-board')
@@ -120,18 +96,24 @@ export default function StrategyBoard() {
 
 export function StrategyBoardView({
   query,
+  compact = false,
 }: {
   query: UseFetchResult<ApiEnvelope<StrategyBoardPayload>>
+  compact?: boolean
 }) {
   const [stage, setStage] = useState<string | null>(null)
-  const [sortKey, setSortKey] = useState<MetricKey | null>(null)
+  const [family, setFamily] = useState<string | null>(null)
   const [controlsOpen, setControlsOpen] = useState(false)
 
   const board = isBoardPayload(query.data?.data) ? query.data.data : undefined
 
   if (board === undefined) {
     if (query.data === undefined && query.loading) {
-      return <div className="skeleton-block" style={{ height: 220 }} aria-hidden="true" />
+      return (
+        <div className="skeleton-block" style={{ height: 220 }} role="status">
+          <span className="sr-only">loading strategy leaderboard</span>
+        </div>
+      )
     }
     // A failed or unrecognised read is an error, never an empty board.
     return (
@@ -164,25 +146,41 @@ export function StrategyBoardView({
     ...new Set(board.rows.map((r) => r.stage).filter((s) => !LIFECYCLE_ORDER.includes(s))),
   ]
   const activeStage = stage !== null && stages.includes(stage) ? stage : null
-  const filtered = activeStage === null ? board.rows : board.rows.filter((r) => r.stage === activeStage)
-  const visible = orderBoardRows(filtered, sortKey)
-  const sortOption = SORT_OPTIONS.find((o) => o.key === sortKey)
-  const extra = sortOption !== undefined && sortOption.key !== 'sharpe_oos'
-    ? sortOption
-    : undefined
+  const families = [...new Set(board.rows.map((r) => r.family).filter((f): f is string => f !== null))]
+    .sort((a, b) => a.localeCompare(b))
+  const hasUnknownFamily = board.rows.some((r) => r.family === null)
+  const activeFamily = family === UNKNOWN_FAMILY && hasUnknownFamily
+    ? family
+    : family !== null && families.includes(family) ? family : null
+  const visible = board.rows.filter((row) =>
+    (activeStage === null || row.stage === activeStage) &&
+    (activeFamily === null || (activeFamily === UNKNOWN_FAMILY ? row.family === null : row.family === activeFamily)),
+  )
+  const familyLabel = activeFamily === UNKNOWN_FAMILY ? 'unknown family' : activeFamily ?? 'all families'
 
   return (
     <section aria-labelledby="strategy-board-heading">
       <StaleNotice env={query.data} />
       <RefreshError error={query.error} />
-      <h2 id="strategy-board-heading" className="micro-label" style={{ marginBottom: 6 }}>
-        strategy board
+      <h2 id="strategy-board-heading" className={compact ? 'micro-label' : 'board-heading'}>
+        {compact ? 'strategy board' : 'Strategy evidence'}
       </h2>
       <div className="dim-note num">
-        {activeStage === null ? board.count : `${visible.length} of ${board.count}`} strategies ·
+        {activeStage === null && activeFamily === null ? board.count : `${visible.length} of ${board.count}`} strategies ·
         latest gate run each
       </div>
-      <div className="dim-note">oos = holdout sample · wf = walk-forward windows</div>
+      {compact ? (
+        <p className="board-disclosure">
+          Noncomparable: period/tier unavailable. Metric sorting disabled; exploratory only,
+          never promotion or expected profit.
+        </p>
+      ) : (
+        <p className="board-disclosure">
+          Exploratory evidence only — not a promotion signal or expected-profit claim. All current
+          rows are noncomparable because comparison period and data tier are unavailable; metric
+          sorting is disabled and registry order is retained.
+        </p>
+      )}
 
       <button
         type="button"
@@ -193,7 +191,7 @@ export function StrategyBoardView({
       >
         <span>board controls</span>
         <span className="num">{activeStage === null ? 'all stages' : activeStage}</span>
-        <span className="num">{sortOption?.label ?? 'lifecycle'}</span>
+        <span className="num">{familyLabel}</span>
       </button>
 
       {controlsOpen && (
@@ -205,7 +203,7 @@ export function StrategyBoardView({
             aria-pressed={activeStage === null}
             onClick={() => setStage(null)}
           >
-            all <span className="num">{board.count}</span>
+            all stages <span className="num">{board.count}</span>
           </button>
           {stages.map((s) => (
             <button
@@ -220,12 +218,43 @@ export function StrategyBoardView({
           ))}
           </div>
 
+          <div className="chip-row" role="group" aria-label="strategy family">
+            <button
+              type="button"
+              className={activeFamily === null ? 'filter-chip active' : 'filter-chip'}
+              aria-pressed={activeFamily === null}
+              onClick={() => setFamily(null)}
+            >
+              all families <span className="num">{board.count}</span>
+            </button>
+            {families.map((value) => (
+              <button
+                key={value}
+                type="button"
+                className={value === activeFamily ? 'filter-chip active' : 'filter-chip'}
+                aria-pressed={value === activeFamily}
+                onClick={() => setFamily(value === activeFamily ? null : value)}
+              >
+                {value} <span className="num">{board.rows.filter((r) => r.family === value).length}</span>
+              </button>
+            ))}
+            {hasUnknownFamily && (
+              <button
+                type="button"
+                className={activeFamily === UNKNOWN_FAMILY ? 'filter-chip active' : 'filter-chip'}
+                aria-pressed={activeFamily === UNKNOWN_FAMILY}
+                onClick={() => setFamily(activeFamily === UNKNOWN_FAMILY ? null : UNKNOWN_FAMILY)}
+              >
+                unknown family <span className="num">{board.rows.filter((r) => r.family === null).length}</span>
+              </button>
+            )}
+          </div>
+
           <div className="chip-row" role="group" aria-label="comparison order">
           <button
             type="button"
-            className={sortKey === null ? 'filter-chip active' : 'filter-chip'}
-            aria-pressed={sortKey === null}
-            onClick={() => setSortKey(null)}
+            className="filter-chip active"
+            aria-pressed="true"
           >
             lifecycle
           </button>
@@ -233,9 +262,10 @@ export function StrategyBoardView({
             <button
               key={opt.key}
               type="button"
-              className={opt.key === sortKey ? 'filter-chip active' : 'filter-chip'}
-              aria-pressed={opt.key === sortKey}
-              onClick={() => setSortKey(opt.key === sortKey ? null : opt.key)}
+              className="filter-chip"
+              aria-pressed="false"
+              disabled
+              title="Unavailable: comparison period and data tier are not present in strategy-board/v1"
             >
               {opt.label}
             </button>
@@ -243,63 +273,80 @@ export function StrategyBoardView({
           </div>
         </div>
       )}
-      {sortKey !== null && (
-        <div className="dim-note" style={{ marginBottom: 8 }}>
-          exploratory order only — not a promotion signal
-        </div>
-      )}
 
       <div className="row-list">
-        {visible.map((row) => (
-          <BoardRow key={row.strategy_id} row={row} extra={extra} />
-        ))}
+        {visible.length === 0 ? (
+          <div className="panel board-filter-empty">no strategies match this stage and family</div>
+        ) : visible.map((row) => <BoardRow key={row.strategy_id} row={row} compact={compact} />)}
       </div>
     </section>
   )
 }
 
-function BoardRow({ row, extra }: { row: StrategyBoardRow; extra: SortOption | undefined }) {
+function BoardMetric({ label, value }: { label: string; value: string }) {
+  return <span className="board-metric"><span className="board-k">{label}</span>{value}</span>
+}
+
+function known(value: number | null, format: (metric: number | null) => string): string {
+  return value === null ? 'UNKNOWN' : format(value)
+}
+
+function BoardRow({ row, compact }: { row: StrategyBoardRow; compact: boolean }) {
   const gate = row.latest_gate
+  if (compact) {
+    return (
+      <Link
+        to={`/strategy/${row.strategy_id}`}
+        className="board-row"
+        data-testid="board-row"
+        data-strategy={row.name}
+        data-run={gate === null ? '' : String(gate.run_id)}
+      >
+        <div className="board-row-head">
+          <span className="row-link board-name" data-testid="board-row-name">{row.name}</span>
+          <StageChip stage={row.stage} />
+        </div>
+        {gate === null ? <div className="dim-note">no usable gate evidence</div> : (
+          <div className="board-rail">
+            <BoardMetric label="oos" value={known(finite(gate.sharpe_oos), num)} />
+            <BoardMetric label="wf" value={known(finite(gate.mean_window_sharpe), num)} />
+            <Sparkline
+              values={[finite(gate.min_window_sharpe), finite(gate.mean_window_sharpe), finite(gate.sharpe_oos)]}
+              label="latest gate: worst walk-forward, mean walk-forward, OOS Sharpe"
+            />
+            <PassMark passed={gate.passed} />
+          </div>
+        )}
+      </Link>
+    )
+  }
   return (
     <Link
-      to={`/s/${encodeURIComponent(row.name)}`}
+      to={`/strategy/${row.strategy_id}`}
       className="board-row"
       data-testid="board-row"
       data-strategy={row.name}
       data-run={gate === null ? '' : String(gate.run_id)}
     >
       <div className="board-row-head">
-        <span className="row-link board-name" data-testid="board-row-name">
-          {row.name}
-        </span>
-        <StageChip stage={row.stage} />
-      </div>
-      {gate === null ? (
-        <div className="dim-note">no usable gate evidence</div>
-      ) : (
-        <div className="board-rail">
-          <span className="board-metric">
-            <span className="board-k">oos</span>
-            {num(finite(gate.sharpe_oos))}
-            <span className="board-n"> n={gate.n_obs_oos ?? '—'}</span>
-          </span>
-          <span className="board-metric">
-            <span className="board-k">wf</span>
-            {num(finite(gate.mean_window_sharpe))}
-          </span>
-          {extra !== undefined && (
-            <span className="board-metric">
-              <span className="board-k">{extra.label}</span>
-              {extra.format(finite(gate[extra.key]))}
-            </span>
-          )}
-          <Sparkline
-            values={[finite(gate.min_window_sharpe), finite(gate.mean_window_sharpe), finite(gate.sharpe_oos)]}
-            label={SPARKLINE_LABEL}
-          />
-          <PassMark passed={gate.passed} />
+        <div>
+          <span className="row-link board-name" data-testid="board-row-name">{row.name}</span>
+          <span className="board-identity num">ID {row.strategy_id} · {row.family ?? 'UNKNOWN family'}</span>
         </div>
-      )}
+        <div className="board-tags"><StageChip stage={row.stage} />{gate !== null && <PassMark passed={gate.passed} />}</div>
+      </div>
+      <div className="board-rail">
+        <BoardMetric label="sharpe" value={known(finite(gate?.sharpe_oos), num)} />
+        <BoardMetric label="return" value={known(finite(gate?.total_return_oos), pct)} />
+        <BoardMetric label="drawdown" value={known(finite(gate?.max_drawdown_oos), pct)} />
+        <BoardMetric label="sample" value={gate?.n_obs_oos == null ? 'UNKNOWN' : num(gate.n_obs_oos)} />
+      </div>
+      <div className="board-meta num">
+        <span>tier UNKNOWN</span><span>period UNKNOWN</span>
+        <span>observed {gate === null ? 'UNKNOWN' : utcDate(gate.created_at)}</span>
+        <span>age UNKNOWN</span>
+      </div>
+      {gate === null && <div className="dim-note">no usable gate evidence</div>}
     </Link>
   )
 }

@@ -15,16 +15,18 @@ import { readFileSync, existsSync } from 'node:fs'
 import { extname, join, normalize } from 'node:path'
 import { chromium } from 'playwright'
 
-const ROUTES = ['/', '/fleet', '/money', '/research', '/s/liquid10_adj_momentum']
+const ROUTES = ['/', '/now', '/fleet', '/money', '/research', '/strategy/1', '/s/liquid10_adj_momentum']
 
 // One string per route that only appears if the real fixture data rendered — picked from
 // src/fixtures/steady-state.ts (kept as literals here rather than imported: this script runs
 // as plain Node against the BUILT demo bundle, not through the TS/Vitest module graph).
 const ROUTE_CONTENT = {
-  '/': 'cross_horizon_low_vol', // TRIAGE.items[0].title after the worst-first sort (FIX 3/5)
+  '/': 'liquid10_adj_momentum', // BOARD.data.rows[0], proving the leaderboard rendered
+  '/now': 'cross_horizon_low_vol', // TRIAGE.items[0].title after the worst-first sort
   '/fleet': 'liquid10_adj_momentum', // a real "every strategy" row (FLEET.data.rows)
   '/money': 'liquid10_adj_momentum', // BOOK.data.slices[0].strategy
   '/research': 'liquid10_adj_momentum', // RUNS.data.runs[0].strategy_name
+  '/strategy/1': 'Cross-sectional momentum over the liquid10 universe', // ID resolver -> detail
   '/s/liquid10_adj_momentum': 'Cross-sectional momentum over the liquid10 universe', // registry.description
 }
 const DIR = 'dist-demo'
@@ -47,7 +49,13 @@ const browser = await chromium.launch({ channel: 'chrome' })
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
 const failures = []
 
-for (const route of ROUTES) {
+const cases = [
+  ...ROUTES.map((route) => ({ route, width: 390 })),
+  { route: '/', width: 860 },
+  { route: '/', width: 1440 },
+]
+for (const { route, width } of cases) {
+  await page.setViewportSize({ width, height: 900 })
   await page.goto(base + route, { waitUntil: 'networkidle' })
   await page.waitForTimeout(600)
 
@@ -83,7 +91,7 @@ for (const route of ROUTES) {
         offenders.push(`${el.tagName}.${String(el.className).slice(0, 40)} right=${Math.round(r.right)}`)
       }
     })
-    const shortTargets = [...document.querySelectorAll('.tab, .back-btn')]
+    const shortTargets = [...document.querySelectorAll('.secondary-link, .back-btn')]
       .map((el) => ({ name: el.className, height: el.getBoundingClientRect().height }))
       .filter(({ height }) => height < 44)
     const ideaDates = currentRoute === '/research'
@@ -121,7 +129,7 @@ await browser.close()
 server.close()
 
 if (failures.length) {
-  console.error(`\nHorizontal overflow at 390px:\n  ${failures.join('\n  ')}`)
+  console.error(`\nHorizontal overflow:\n  ${failures.join('\n  ')}`)
   process.exit(1)
 }
-console.log(`\nok: ${ROUTES.length} routes, no horizontal overflow at 390px`)
+console.log(`\nok: ${cases.length} route/viewport cases, no horizontal overflow (390/860/1440px)`)
