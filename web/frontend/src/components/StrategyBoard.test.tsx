@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { clearFetchCache } from '../api'
 import type { ApiEnvelope, StrategyBoardGate, StrategyBoardPayload, StrategyBoardRow } from '../types'
-import StrategyBoard, { SORT_OPTIONS, orderBoardRows } from './StrategyBoard'
+import StrategyBoard, { SORT_OPTIONS } from './StrategyBoard'
 
 function gate(overrides: Partial<StrategyBoardGate> & { run_id: number }): StrategyBoardGate {
   return {
@@ -25,8 +25,9 @@ function row(
   name: string,
   stage: string,
   latest_gate: StrategyBoardGate | null,
+  family: string | null = null,
 ): StrategyBoardRow {
-  return { strategy_id: id, name, family: null, stage, latest_gate }
+  return { strategy_id: id, name, family, stage, latest_gate }
 }
 
 // Lifecycle order, as the server returns it.
@@ -35,15 +36,15 @@ const rows: StrategyBoardRow[] = [
   row(2, 'mined_above', 'paper', gate({ run_id: 902, sharpe_oos: 1.42, mean_window_sharpe: 0.08,
                                          min_window_sharpe: -0.1, total_return_oos: 0.2,
                                          max_drawdown_oos: -0.3, pct_positive_windows: 0.25,
-                                         n_obs_oos: 126, passed: false })),
+                                         n_obs_oos: 126, passed: false }), 'momentum'),
   row(3, 'honest_neg', 'paper', gate({ run_id: 903, sharpe_oos: -0.24, mean_window_sharpe: -0.18,
-                                        min_window_sharpe: -0.4, total_return_oos: -0.02,
+                                        min_window_sharpe: -0.4, total_return_oos: 0,
                                         max_drawdown_oos: -0.05, pct_positive_windows: 0.5,
-                                        passed: false })),
+                                        passed: false }), 'reversal'),
   row(4, 'unmeasured', 'paper', gate({ run_id: 904, passed: null })),
   row(5, 'steady', 'live', gate({ run_id: 905, sharpe_oos: 0.61, mean_window_sharpe: 0.52,
                                    min_window_sharpe: 0.2, total_return_oos: 0.1,
-                                   max_drawdown_oos: -0.08, pct_positive_windows: 0.75 })),
+                                   max_drawdown_oos: -0.08, pct_positive_windows: 0.75 }), 'momentum'),
   row(6, 'tied_a', 'live', gate({ run_id: 906, sharpe_oos: 0.61, mean_window_sharpe: 0.3 })),
 ]
 
@@ -81,19 +82,27 @@ function openControls() {
   fireEvent.click(screen.getByRole('button', { name: /board controls/i }))
 }
 
-it('keeps stage and exploratory ordering behind one control while the active query stays visible', async () => {
+it('announces loading without presenting an empty board', () => {
+  vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})) as unknown as typeof fetch)
+  renderBoard()
+  expect(screen.getByRole('status').textContent).toContain('loading strategy leaderboard')
+  expect(screen.queryByText(/no strategies registered/i)).toBeNull()
+})
+
+it('keeps stage and family filters behind one control and explains why metric sorting is unavailable', async () => {
   mockBoard(populated)
   renderBoard()
   await screen.findAllByTestId('board-row')
-  const controls = screen.getByRole('button', { name: /board controls.*all stages.*lifecycle/i })
+  const controls = screen.getByRole('button', { name: /board controls.*all stages.*all families/i })
   expect(controls.getAttribute('aria-expanded')).toBe('false')
   expect(screen.queryByRole('button', { name: 'oos sharpe' })).toBeNull()
   fireEvent.click(controls)
   expect(controls.getAttribute('aria-expanded')).toBe('true')
+  expect(screen.getByRole('button', { name: 'oos sharpe' }).hasAttribute('disabled')).toBe(true)
+  expect(screen.getByText(/period and data tier are unavailable/i)).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: /^live/ }))
-  fireEvent.click(screen.getByRole('button', { name: 'oos sharpe' }))
-  expect(screen.getByRole('button', { name: /board controls.*live.*oos sharpe/i })).toBeTruthy()
-  expect(screen.getByText(/exploratory order only/i)).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: /^momentum/ }))
+  expect(screen.getByRole('button', { name: /board controls.*live.*momentum/i })).toBeTruthy()
 })
 
 it('renders exactly one row per registered strategy, including ones with no gate evidence', async () => {
@@ -112,18 +121,34 @@ it('keeps a missing metric unavailable instead of rendering it as zero', async (
   await screen.findAllByTestId('board-row')
   const unmeasured = screen.getAllByTestId('board-row')[3]
   expect(unmeasured.textContent).not.toMatch(/\b0(\.0+)?\b/)
-  expect(unmeasured.textContent).toContain('—')
+  expect(unmeasured.textContent).toContain('UNKNOWN')
 })
 
-it('links each row to the existing read-only strategy drill-down', async () => {
+it('preserves an observed zero while keeping absent and non-finite metrics unknown', async () => {
+  mockBoard(populated)
+  renderBoard()
+  const honest = (await screen.findAllByTestId('board-row'))[2]
+  expect(honest.textContent).toMatch(/return0\.0%/i)
+
+  cleanup()
+  clearFetchCache()
+  const malformed = structuredClone(populated) as unknown as Record<string, unknown>
+  const data = malformed.data as { rows: Array<{ latest_gate: { sharpe_oos: number } }> }
+  data.rows[1].latest_gate.sharpe_oos = Number.POSITIVE_INFINITY
+  mockBoard(malformed)
+  renderBoard()
+  expect(await screen.findByText('unsupported_schema')).toBeTruthy()
+})
+
+it('links each row by stable strategy identity', async () => {
   mockBoard(populated)
   renderBoard()
   const first = (await screen.findAllByTestId('board-row'))[1]
   expect(first.tagName).toBe('A')
-  expect(first.getAttribute('href')).toBe('/s/mined_above')
+  expect(first.getAttribute('href')).toBe('/strategy/2')
 })
 
-it('filters by stage without fetching again or touching representative runs', async () => {
+it('filters by stage and family including UNKNOWN, and explains empty intersections', async () => {
   const fetchMock = mockBoard(populated)
   renderBoard()
   await screen.findAllByTestId('board-row')
@@ -131,21 +156,29 @@ it('filters by stage without fetching again or touching representative runs', as
   fireEvent.click(screen.getByRole('button', { name: /^live/ }))
   expect(screen.getByRole('button', { name: /^live/ }).getAttribute('aria-pressed')).toBe('true')
   expect(names()).toEqual(['steady', 'tied_a'])
-  fireEvent.click(screen.getByRole('button', { name: /^all/ }))
-  expect(names()).toEqual(rows.map((r) => r.name))
+  fireEvent.click(screen.getByRole('button', { name: /^momentum/ }))
+  expect(names()).toEqual(['steady'])
+  fireEvent.click(screen.getByRole('button', { name: /^reversal/ }))
+  expect(screen.queryByTestId('board-row')).toBeNull()
+  expect(screen.getByText(/no strategies match this stage and family/i)).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: /^all stages/ }))
+  expect(names()).toEqual(['honest_neg'])
+  fireEvent.click(screen.getByRole('button', { name: /^unknown family/i }))
+  expect(names()).toEqual(['bare_idea', 'unmeasured', 'tied_a'])
   expect(fetchMock).toHaveBeenCalledTimes(1)
 })
 
-it('orders by a chosen metric higher-first, nulls last, ties kept in lifecycle order', async () => {
-  const fetchMock = mockBoard(populated)
+it('keeps deterministic server order because every current row is noncomparable', async () => {
+  mockBoard(populated)
   renderBoard()
   await screen.findAllByTestId('board-row')
   openControls()
-  fireEvent.click(screen.getByRole('button', { name: 'oos sharpe' }))
-  expect(names()).toEqual([
-    'mined_above', 'steady', 'tied_a', 'honest_neg', 'bare_idea', 'unmeasured',
-  ])
-  expect(fetchMock).toHaveBeenCalledTimes(1)
+  for (const opt of SORT_OPTIONS) {
+    const button = screen.getByRole('button', { name: opt.label })
+    expect(button.hasAttribute('disabled')).toBe(true)
+    fireEvent.click(button)
+  }
+  expect(names()).toEqual(rows.map((r) => r.name))
 })
 
 it('never changes which run represents a strategy when the comparison order changes', async () => {
@@ -157,34 +190,24 @@ it('never changes which run represents a strategy when the comparison order chan
     Object.fromEntries(
       screen.getAllByTestId('board-row').map((el) => [el.getAttribute('data-strategy'), el.getAttribute('data-run')]),
     )
-  const before = runIds()
-  for (const opt of SORT_OPTIONS) fireEvent.click(screen.getByRole('button', { name: opt.label }))
-  expect(runIds()).toEqual(before)
-  expect(before.mined_above).toBe('902')
-  expect(before.bare_idea).toBe('')
+  expect(runIds().mined_above).toBe('902')
+  expect(runIds().bare_idea).toBe('')
 })
 
-it('states that comparison ordering is exploratory only, and returns to lifecycle order', async () => {
+it('shows the latest observed OOS evidence with unavailable comparison metadata', async () => {
   mockBoard(populated)
   renderBoard()
   await screen.findAllByTestId('board-row')
-  openControls()
-  expect(screen.queryByText(/exploratory/i)).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: 'oos return' }))
-  expect(screen.getByRole('button', { name: 'oos return' }).getAttribute('aria-pressed')).toBe('true')
-  expect(screen.getByText(/exploratory/i)).toBeTruthy()
-  fireEvent.click(screen.getByRole('button', { name: 'lifecycle' }))
-  expect(names()).toEqual(rows.map((r) => r.name))
-  expect(screen.queryByText(/exploratory/i)).toBeNull()
-})
-
-it('labels the oos and walk-forward samples', async () => {
-  mockBoard(populated)
-  renderBoard()
-  await screen.findAllByTestId('board-row')
-  expect(screen.getByText(/oos = holdout/i)).toBeTruthy()
-  expect(screen.getByText(/wf = walk-forward/i)).toBeTruthy()
-  expect(within(screen.getAllByTestId('board-row')[1]).getByText(/n=126/)).toBeTruthy()
+  const measured = within(screen.getAllByTestId('board-row')[1])
+  expect(measured.getByText((_, node) => node?.textContent === 'sharpe1.42')).toBeTruthy()
+  expect(measured.getByText((_, node) => node?.textContent === 'return20.0%')).toBeTruthy()
+  expect(measured.getByText((_, node) => node?.textContent === 'drawdown-30.0%')).toBeTruthy()
+  expect(measured.getByText((_, node) => node?.textContent === 'sample126')).toBeTruthy()
+  expect(measured.getByText('tier UNKNOWN')).toBeTruthy()
+  expect(measured.getByText('period UNKNOWN')).toBeTruthy()
+  expect(measured.getByText('observed 2026-10-15')).toBeTruthy()
+  expect(measured.getByText('age UNKNOWN')).toBeTruthy()
+  expect(screen.getByText(/exploratory evidence only.*not a promotion.*expected-profit/i)).toBeTruthy()
 })
 
 it('shows a directed empty state for an empty registry, not an error', async () => {
@@ -234,16 +257,6 @@ it('refuses null or malformed versioned data instead of throwing while rendering
   mockBoard({ ...populated, data: { ...populated.data, count: 1, rows: [null] } })
   renderBoard()
   expect(await screen.findByText('unsupported_schema')).toBeTruthy()
-})
-
-it('orderBoardRows is a pure stable ordering that leaves the input untouched', () => {
-  const copy = [...rows]
-  expect(orderBoardRows(rows, null)).toEqual(rows)
-  const ordered = orderBoardRows(rows, 'max_drawdown_oos')
-  // Higher (shallower) drawdown first; nulls last.
-  expect(ordered.slice(0, 3).map((r) => r.name)).toEqual(['honest_neg', 'steady', 'mined_above'])
-  expect(ordered.slice(3).every((r) => r.latest_gate?.max_drawdown_oos == null)).toBe(true)
-  expect(rows).toEqual(copy)
 })
 
 it('exposes no action that mutates state', async () => {

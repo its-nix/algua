@@ -421,6 +421,11 @@ const BOARD_STAGE_ORDER = [
  * identity (`strategy_id`). The three research-stage seeds have no gate run — `latest_gate: null`
  * is the explicit "no evidence" the board must render, not a missing row. */
 export const BOARD: ApiEnvelope<StrategyBoardPayload> = (() => {
+  // DEMO/TEST VALUES ONLY. They exercise finite, zero and missing UI states and are never
+  // inferred from yfinance or presented as production evidence. strategy-board/v1 does not
+  // carry period/tier metadata, so the UI must keep every fixture row noncomparable too.
+  const demoReturns = [0.08, 0, -0.03, 0.14, null]
+  const demoDrawdowns = [-0.06, -0.11, 0, -0.18, null]
   const rows = SEEDS.map((s, i): StrategyBoardRow => {
     const run = runs
       .filter((r) => r.kind === 'gate' && r.strategy_id === s.id)
@@ -439,8 +444,8 @@ export const BOARD: ApiEnvelope<StrategyBoardPayload> = (() => {
               created_at: run.created_at,
               passed: run.passed === null ? null : run.passed === true || run.passed === 1,
               sharpe_oos: oos,
-              total_return_oos: oos === null ? null : Number((oos * 0.12).toFixed(4)),
-              max_drawdown_oos: oos === null ? null : Number((-0.04 - oos * 0.05).toFixed(4)),
+              total_return_oos: oos === null ? null : demoReturns[i % demoReturns.length],
+              max_drawdown_oos: oos === null ? null : demoDrawdowns[i % demoDrawdowns.length],
               // One run carries no holdout length: the nullable-metric path stays exercised.
               n_obs_oos: i % 5 === 4 ? null : 126 + i,
               mean_window_sharpe: run.mean_window_sharpe,
