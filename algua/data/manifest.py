@@ -7,6 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from algua.data.models import Dataset, SnapshotRecord
+from algua.data.provenance_binding import validate_declared_manifest_record
 from algua.primitives import flock
 from algua.primitives.atomic_io import fsync_dir
 
@@ -67,6 +68,7 @@ class SnapshotManifest:
         manifest's directory entry entirely — and the manifest is the single commit point for
         ALL snapshots. One extra dir fsync per commit is negligible on this flock-serialized
         path. A `_repair` rewrite makes its own parent fsync (see `_repair`)."""
+        validate_declared_manifest_record(rec)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         lock_fd = self._acquire_lock()
         try:

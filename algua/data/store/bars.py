@@ -16,6 +16,8 @@ from algua.data.files import (
 )
 from algua.data.manifest import SnapshotManifest
 from algua.data.models import Dataset, Kind, SnapshotRecord
+from algua.data.provenance_binding import attach_declared_provenance
+from algua.data.research_provenance import ProvenanceDeclaration
 from algua.data.schema import empty_bars, to_bar_schema
 from algua.data.staging import SnapshotStagingLease
 from algua.data.store.identity import build_metadata, compute_snapshot_id
@@ -44,6 +46,7 @@ class BarsStoreMixin:
         timeframe: str = "1d",
         adjustment: str = "none",
         source_metadata: dict[str, str] | None = None,
+        provenance: ProvenanceDeclaration | None = None,
     ) -> SnapshotRecord:
         validate_timeframe(timeframe)
         metadata = build_metadata(
@@ -64,6 +67,14 @@ class BarsStoreMixin:
             .reset_index()
             .rename(columns={"timestamp": "ts"})
         )
+        if provenance is not None:
+            metadata = attach_declared_provenance(
+                metadata,
+                provenance,
+                observed_start=canon["ts"].min().date().isoformat() if len(canon) else "",
+                observed_end=canon["ts"].max().date().isoformat() if len(canon) else "",
+                observed_symbols={str(symbol) for symbol in canon["symbol"].unique()},
+            )
         content_hash = logical_bars_hash(canon)
         snapshot_id = compute_snapshot_id(metadata, content_hash)
 
