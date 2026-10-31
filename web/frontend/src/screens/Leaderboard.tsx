@@ -7,8 +7,8 @@ export default function Leaderboard() {
       <header className="leaderboard-intro">
         <h1>Strategy leaderboard</h1>
         <p>
-          Latest identity-bound out-of-sample evidence. Rows are deliberately unranked until the
-          API supplies a comparable period and data tier.
+          Latest identity-bound out-of-sample evidence. Rows remain unranked because historical
+          cost and homogeneous comparison context are unavailable.
         </p>
       </header>
       <OperationalHealth updateHeader />
