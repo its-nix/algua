@@ -9,6 +9,7 @@ import {
   FIXTURE_SENTINEL,
   FLEET,
   IDEAS,
+  LEGACY_BOARD,
   OPERATIONAL_STAGES,
   OPS,
   RUNS,
@@ -280,7 +281,8 @@ export function resolveFixture(url: string): unknown | undefined {
     case '/api/ideas':       return IDEAS
     case '/api/strategies':  return STRATEGIES
     case '/api/runs':        return RUNS
-    case '/api/strategy-board': return BOARD
+    case '/api/strategy-board': return new URLSearchParams(url.split('?')[1] ?? '')
+      .get('include_evidence') === 'true' ? BOARD : LEGACY_BOARD
     case '/api/activity':    return ACTIVITY
     // The run-ledger series endpoint deliberately never returns a per-bar OOS vector
     // (holdout_returns.returns_blob is SENSITIVE) — an empty series map is the honest fixture.

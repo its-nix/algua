@@ -149,6 +149,23 @@ Adversarial review evidence:
 
 ## Suggested Review Order
 
+**Evidence extension UI**
+
+- Start at the opt-in board seam shared by leaderboard and compact Research inventory.
+  [`StrategyBoard.tsx:22`](../../../web/frontend/src/components/StrategyBoard.tsx#L22)
+
+- Review exact allowlists, run/count binding and atomic malformed-state handling.
+  [`StrategyBoard.tsx:503`](../../../web/frontend/src/components/StrategyBoard.tsx#L503)
+
+- Confirm metadata-only labeling and fully visible tier, spans and limitations.
+  [`StrategyBoard.tsx:556`](../../../web/frontend/src/components/StrategyBoard.tsx#L556)
+
+- Verify responsive visibility and stable-ID keyboard activation in the browser harness.
+  [`verify-viewport.mjs:101`](../../../web/frontend/scripts/verify-viewport.mjs#L101)
+
+- Check additive response types and legacy-optional extension members.
+  [`types.ts:415`](../../../web/frontend/src/types.ts#L415)
+
 **Projection contract**
 
 - Start with the identity-safe latest-gate projection and malformed-evidence handling.
@@ -187,3 +204,24 @@ Adversarial review evidence:
 
 - Review demo-mode parity with production latest-gate semantics.
   [`steady-state.ts:423`](../../../web/frontend/src/fixtures/steady-state.ts#L423)
+
+## Bounded evidence UI slice — 2026-11-01
+
+- The leaderboard and Research board now opt into
+  `GET /api/strategy-board?include_evidence=true`; stable-ID detail routing remains unchanged.
+- The primary leaderboard renders requested evaluation, lineage-valid OOS, snapshot coverage,
+  declared data tier/source context, every limitation and the always-UNKNOWN comparison context.
+  `VALID` is labeled metadata-bound only, never payload/PIT proof or qualification.
+- Legacy absence, malformed extension/schema/run binding, atomic `INVALID`/`UNAVAILABLE` wrappers,
+  unavailable PIT verification and reused names with distinct identities fail closed without
+  fallback inference. Metric sorting remains disabled.
+- Demo evidence is explicitly `synthetic_fixture`; the production-bundle fixture exclusion guard
+  remains in place. React rendering, word budget, mutation checks and 390/860/1440 viewport
+  evidence visibility are covered by the frontend tests and viewport script.
+- Scope is frontend production code, tests/fixtures and this existing-story note only. Backend and
+  root gates are unchanged and intentionally left to the frozen-source coordinator.
+
+Review fix: the frontend now mirrors the canonical `pilot-provenance/v1` syntax, limitation
+vocabulary/order and tier completeness rules; demo provenance is contract-valid synthetic data.
+Evidence/schema/member incoherence is visibly `INVALID`, including unsupported schemas on an empty
+board, while a genuinely extension-free legacy response remains accepted.

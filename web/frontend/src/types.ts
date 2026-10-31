@@ -412,6 +412,51 @@ export interface StrategyBoardGate {
   pct_positive_windows: number | null
 }
 
+export type StrategyBoardEvidenceStatus = 'VALID' | 'UNAVAILABLE' | 'INVALID'
+
+export interface StrategyBoardEvidenceWrapper<T> {
+  status: StrategyBoardEvidenceStatus
+  reason: string | null
+  value: T | null
+}
+
+export interface StrategyBoardEvaluationEvidence {
+  period_start: string
+  period_end: string
+  timeframe: string
+  metric_schema_version: number
+}
+
+export interface StrategyBoardOosEvidence {
+  holdout_start: string
+  holdout_end: string
+  n_bars: number
+}
+
+export interface StrategyBoardSnapshotEvidence {
+  schema_version: 'pilot-provenance/v1'
+  data_tier: 'pilot_real_proxy' | 'verified_pit' | 'synthetic_fixture'
+  universe_method: string
+  limitations: string[]
+  coverage_start: string
+  coverage_end: string
+  provider: string
+}
+
+export interface StrategyBoardComparisonEvidence {
+  status: 'UNKNOWN'
+  observed_metric_sort_enabled: false
+  reasons: string[]
+}
+
+export interface StrategyBoardEvidence {
+  run_id: number
+  evaluation: StrategyBoardEvidenceWrapper<StrategyBoardEvaluationEvidence>
+  oos_interval: StrategyBoardEvidenceWrapper<StrategyBoardOosEvidence>
+  snapshot_provenance: StrategyBoardEvidenceWrapper<StrategyBoardSnapshotEvidence>
+  comparison: StrategyBoardComparisonEvidence
+}
+
 /** One registered strategy identity; `latest_gate` is `null` when it has no identity-bound gate. */
 export interface StrategyBoardRow {
   strategy_id: number
@@ -419,6 +464,8 @@ export interface StrategyBoardRow {
   family: string | null
   stage: string
   latest_gate: StrategyBoardGate | null
+  /** Absent on the legacy response; null when the selected identity has no usable gate. */
+  evidence?: StrategyBoardEvidence | null
 }
 
 /** GET /api/strategy-board — `runs board` payload, schema `strategy-board/v1`
@@ -426,6 +473,8 @@ export interface StrategyBoardRow {
  * registered strategies, not runs; rows arrive in lifecycle order. */
 export interface StrategyBoardPayload {
   schema_version: 'strategy-board/v1'
+  /** Present only for the explicit `include_evidence=true` extension. */
+  evidence_schema_version?: 'strategy-board-evidence/v1'
   count: number
   rows: StrategyBoardRow[]
 }

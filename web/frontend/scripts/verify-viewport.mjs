@@ -101,12 +101,31 @@ for (const { route, width } of cases) {
           height: el.getBoundingClientRect().height,
         }))
       : []
+    const evidence = currentRoute === '/'
+      ? [...document.querySelectorAll('.board-evidence')].map((block) => ({
+          trustVisible: [...block.querySelectorAll('.board-evidence-trust')].some((el) => {
+            const style = getComputedStyle(el)
+            return style.display !== 'none' && style.visibility !== 'hidden' &&
+              el.getBoundingClientRect().height > 0 && el.textContent.includes('not payload or PIT proof')
+          }),
+          limitations: [...block.querySelectorAll('.board-evidence-limitations li')].map((el) => {
+            const style = getComputedStyle(el)
+            return {
+              text: el.textContent.trim(),
+              visible: style.display !== 'none' && style.visibility !== 'hidden' &&
+                el.getBoundingClientRect().height > 0,
+              hiddenInTitle: el.hasAttribute('title'),
+            }
+          }),
+        }))
+      : []
     return {
       vw,
       scrollWidth: document.documentElement.scrollWidth,
       offenders: offenders.slice(0, 5),
       shortTargets,
       ideaDates,
+      evidence,
     }
   }, route)
   // scrollWidth is the authoritative signal for "did the PAGE overflow" (the actual /money
@@ -123,6 +142,44 @@ for (const { route, width } of cases) {
   )) {
     failures.push(`${route}: idea created_at is not visibly reachable at 390px`)
   }
+  if (route === '/') {
+    const expectedLimitations = [
+      'synthetic_not_market_data',
+    ]
+    if (m.evidence.length === 0) {
+      failures.push(`${route} at ${width}px: no evidence ledger rendered`)
+    }
+    for (const [index, block] of m.evidence.entries()) {
+      if (!block.trustVisible) {
+        failures.push(`${route} at ${width}px: evidence ${index} lacks visible metadata-only warning`)
+      }
+      const visible = block.limitations.filter((item) => item.visible).map((item) => item.text)
+      if (JSON.stringify(visible) !== JSON.stringify(expectedLimitations)) {
+        failures.push(
+          `${route} at ${width}px: evidence ${index} limitations are missing/hidden/order-drifted: ` +
+            JSON.stringify(visible),
+        )
+      }
+      if (block.limitations.some((item) => item.hiddenInTitle)) {
+        failures.push(`${route} at ${width}px: evidence ${index} hides a limitation in title`)
+      }
+    }
+  }
+}
+
+// Native row links are the preserved keyboard seam: focus one, activate it with Enter, and
+// require the stable-ID resolver route rather than a name-derived path.
+await page.setViewportSize({ width: 390, height: 844 })
+await page.goto(base + '/', { waitUntil: 'networkidle' })
+const firstStrategyLink = page.locator('[data-testid="board-row"]').first()
+await firstStrategyLink.focus()
+const keyboardTarget = await page.evaluate(() => document.activeElement?.getAttribute('href'))
+if (!/^\/strategy\/\d+$/.test(keyboardTarget ?? '')) {
+  failures.push(`/: first strategy row did not receive stable-ID keyboard focus: ${keyboardTarget}`)
+} else {
+  await page.keyboard.press('Enter')
+  await page.waitForURL(new RegExp(`${keyboardTarget.replace('/', '\\/')}$`))
+  console.log(`ok   / keyboard Enter -> ${new URL(page.url()).pathname}`)
 }
 
 await browser.close()
