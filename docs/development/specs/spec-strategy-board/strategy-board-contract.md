@@ -47,3 +47,51 @@
 
 Client-side stage filtering and exploratory ordering operate only over this complete payload. They
 may reorder rows but may never replace `latest_gate` or feed a promotion path.
+
+## Opt-in evidence extension
+
+The default command and API response above remain unchanged. `algua runs board
+--include-evidence` and `GET /api/strategy-board?include_evidence=true` add top-level
+`evidence_schema_version = strategy-board-evidence/v1` and an `evidence` member to every row.
+The member is `null` when `latest_gate` is `null`; otherwise it is anchored to that exact
+`latest_gate.run_id` and contains only:
+
+- `run_id`;
+- atomic `{status, reason, value}` wrappers for `evaluation`, `oos_interval`, and
+  `snapshot_provenance`;
+- `comparison = {status: UNKNOWN, observed_metric_sort_enabled: false, reasons:
+  [historical_cost_context_unavailable, homogeneous_comparison_context_unavailable]}`.
+
+`evaluation.value` is the stored full requested `period_start`, `period_end`, `timeframe`, and
+positive `metric_schema_version`. `oos_interval.value` is the inclusive `holdout_start`,
+`holdout_end`, and positive `n_bars` reached only through the selected run's exact holdout pointer,
+then its associated committed holdout evaluation, after strategy identity, selected snapshot, full
+requested period, actual OOS interval, and `n_obs_oos` count all agree. Both matching OOS intervals
+must be canonical inclusive intervals contained in the full requested period:
+`period_start <= holdout_start <= holdout_end <= period_end`; otherwise the wrapper is atomic
+`INVALID`/`malformed_fields`/null. The holdout evaluation's
+burn-workflow config hash is a distinct identity and is not compared to the gate run config hash.
+`snapshot_provenance.value` is the typed
+`pilot-provenance/v1` allowlist (`schema_version`, `data_tier`, `universe_method`, all
+`limitations`, `coverage_start`, `coverage_end`, `provider`) reached only through the selected
+run's exact bars-snapshot pointer. Existing parsers and identity/binding checks are rerun; provider,
+name, current artifact, newest snapshot, older run, best metric, or burn-ledger records are never
+fallbacks. Readable `verified_pit` metadata remains invalid here because no independent verifier
+exists.
+
+Wrapper status is `VALID`, `UNAVAILABLE`, or `INVALID`; non-valid values are atomically `null`.
+Bounded reasons are: `missing_fields`, `no_holdout_pointer`, `missing_run_oos_count`,
+`no_snapshot_pointer`, `snapshot_not_found`, `provenance_absent`, `source_unavailable`,
+`malformed_fields`, `dangling_holdout_pointer`, `strategy_mismatch`, `count_mismatch`,
+`dangling_evaluation_pointer`, `evaluation_binding_mismatch`, `interval_binding_mismatch`,
+`malformed_provenance`, `unsupported_provenance_schema`, `snapshot_binding_mismatch`,
+`pit_verifier_unavailable`, and `conflicting_snapshot_records`. Evaluation span, OOS interval, and
+snapshot coverage are distinct concepts. A valid wrapper means well-formed metadata bound under
+these checks, not payload/PIT verification or investment qualification.
+
+The extension exposes no paths, raw configuration, hashes, snapshot IDs, lineage, vectors, cost
+placeholders, ranks, or promotion authority. Historical cost and homogeneous comparison context
+are absent, so every row remains unranked/UNKNOWN; missing evidence is never zero. Enrichment adds
+no writes, migrations, DDL, audit rows, burns, network/provider calls, or broker calls. The existing
+CLI bootstrap still opens and migrates the registry before its read, so the command is not claimed
+to be globally physically read-only; this extension does not change that legacy behavior.
