@@ -6,6 +6,11 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from algua.data.research_provenance import (
+    RESEARCH_PROVENANCE_KEY,
+    ResearchProvenanceError,
+)
+
 SCHEMA_VERSION = 2
 
 
@@ -123,6 +128,14 @@ class SnapshotRecord:
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> SnapshotRecord:
         row_count = payload["row_count"]
+        raw_source_metadata = payload.get("source_metadata", {})
+        if (
+            RESEARCH_PROVENANCE_KEY in raw_source_metadata
+            and not isinstance(raw_source_metadata[RESEARCH_PROVENANCE_KEY], str)
+        ):
+            raise ResearchProvenanceError(
+                "research_provenance_malformed", "stored envelope must be a string"
+            )
         metadata = SnapshotMetadata(
             dataset=Dataset(str(payload["dataset"])),
             provider=str(payload["provider"]),
@@ -135,7 +148,7 @@ class SnapshotRecord:
             timeframe=_optional_str(payload.get("timeframe")),
             adjustment=_optional_str(payload.get("adjustment")),
             universe=_optional_str(payload.get("universe")),
-            source_metadata={str(k): str(v) for k, v in payload.get("source_metadata", {}).items()},
+            source_metadata={str(k): str(v) for k, v in raw_source_metadata.items()},
         )
         return cls(
             snapshot_id=str(payload["snapshot_id"]),

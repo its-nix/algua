@@ -13,6 +13,8 @@ from algua.data.files import (
     write_partitioned_bars,
 )
 from algua.data.models import Dataset, Kind, SnapshotRecord
+from algua.data.provenance_binding import attach_declared_provenance
+from algua.data.research_provenance import ProvenanceDeclaration
 from algua.data.schema import to_bar_schema
 from algua.data.store.bars import BarsStoreMixin
 from algua.data.store.identity import build_metadata, compute_snapshot_id
@@ -33,6 +35,7 @@ class BarsStreamedStoreMixin(BarsStoreMixin):
         start: str | None = None,
         end: str | None = None,
         source_metadata: dict[str, str] | None = None,
+        provenance: ProvenanceDeclaration | None = None,
     ) -> SnapshotRecord:
         """Stream per-symbol bar chunks into one hive-partitioned-by-symbol bars snapshot.
 
@@ -126,6 +129,15 @@ class BarsStreamedStoreMixin(BarsStoreMixin):
                 adjustment=adjustment,
                 source_metadata=meta_extra,
             )
+            if provenance is not None:
+                metadata = attach_declared_provenance(
+                    metadata,
+                    provenance,
+                    observed_start=observed_start,
+                    observed_end=observed_end,
+                    observed_symbols=seen_symbols_set,
+                    exact_window=True,
+                )
             content_hash = compose_bars_symbol_hash(leaves)
             snapshot_id = compute_snapshot_id(metadata, content_hash)
 

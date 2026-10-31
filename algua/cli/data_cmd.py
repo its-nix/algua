@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import hashlib
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -20,10 +19,12 @@ from algua.data.contracts import (
     FirstRateImportRequest,
     ImportRequest,
 )
+from algua.data.files import sha256_file
 from algua.data.hindsight import query_fundamentals, query_news
 from algua.data.importers import get_importer
 from algua.data.models import Dataset
 from algua.data.providers import get_provider
+from algua.data.research_provenance import declaration_from_options
 from algua.data.store import DataStore, normalize_symbols
 from algua.primitives.timeparse import now_iso
 
@@ -39,14 +40,6 @@ def _store() -> DataStore:
 
 def _bar_provider(name: str) -> BarProvider:
     return get_provider(name, get_settings())
-
-
-def _sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 @data_app.command("ingest")
@@ -93,8 +86,12 @@ def ingest_bars(
     timeframe: str = typer.Option("1d", "--timeframe"),
     adjustment: str = typer.Option("none", "--adjustment"),
     as_of: str = typer.Option(None, "--as-of", help="point-in-time ISO datetime"),
+    data_tier: str = typer.Option(None, "--data-tier"),
+    universe_method: str = typer.Option(None, "--universe-method"),
+    limitation: list[str] | None = typer.Option(None, "--limitation"),
 ) -> None:
     """Fetch provider bars and persist a reproducible parquet snapshot."""
+    provenance = declaration_from_options(data_tier, universe_method, limitation)
     request = BarRequest(
         symbols=tuple(normalize_symbols(symbols.split(","))),
         start=start,
@@ -114,6 +111,7 @@ def ingest_bars(
         timeframe=timeframe,
         adjustment=adjustment,
         source_metadata=result.source_metadata,
+        provenance=provenance,
     )
     emit(ok({"snapshot": rec.to_dict()}))
 
@@ -169,7 +167,7 @@ def import_bars(
             "vendor": importer.vendor_label,
             "raw_dir": raw_dir.name,
             "corp_actions_file": corp_actions.name,
-            "corp_actions_sha256": _sha256(corp_actions),
+            "corp_actions_sha256": sha256_file(corp_actions),
             "ca_schema_version": "1",
         }
     else:
