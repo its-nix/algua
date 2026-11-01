@@ -14,15 +14,70 @@ import json
 import shlex
 import subprocess
 from collections.abc import Callable
+from datetime import datetime
+from hashlib import sha256
 
 from algua.observability import get_logger
+from algua.operator.loop_health import _digest_stamp
 
-__all__ = ["emit_alert"]
+__all__ = ["emit_alert", "research_incidents"]
 
 log = get_logger(__name__)
 
 _ALERT_TIMEOUT_SECONDS = 10.0
 _OUTPUT_CAP = 500
+
+
+def research_fault(record: dict) -> str | None:
+    """Classify driver failures, never hypothesis economics or unstructured error text."""
+    if record.get("rate_limited") is True:
+        return "rate_limited"
+    if record.get("timed_out") is True:
+        return "worker_timeout"
+    outcome = record.get("outcome")
+    if outcome in ("setup_failed", "claim_failed"):
+        return outcome
+    if type(record.get("exit_code")) is int:
+        return "worker_failed" if record["exit_code"] != 0 else None
+    return None
+
+
+def _evidence_digest(parts: tuple[str, ...]) -> str:
+    return sha256(json.dumps(parts, separators=(",", ":")).encode()).hexdigest()
+
+
+def research_incidents(records: list[dict], *, now: datetime) -> list[dict]:
+    """Project repeated systemic observations into public incident payloads, without delivery.
+
+    The original cycle (legacy: firing stamp) is the independence unit, never a retry/run ID.
+    Lineage covers the retained digest; no incident store is created by this read. A clean run or
+    claimed merged/deployed fix cannot close an incident: no recovery verifier is available here.
+    """
+    groups: dict[str, list[tuple[datetime, str]]] = {}
+    for record in records:
+        cause, stamp = research_fault(record), _digest_stamp(record)
+        origin = record.get("research_cycle_id", record.get("stamp"))
+        if cause is None or stamp is None or stamp > now:
+            continue
+        if not isinstance(origin, str) or not 1 <= len(origin) <= 128:
+            continue
+        groups.setdefault(cause, []).append((stamp, _evidence_digest(("research", cause, origin))))
+    incidents = []
+    for cause, observations in sorted(groups.items()):
+        refs = sorted({ref for _, ref in observations})
+        if len(refs) < 2:
+            continue
+        incidents.append({
+            "fingerprint": _evidence_digest(("machine-health/v1", "research", cause)),
+            "severity": "important", "source": "research", "cause": cause,
+            "first_seen": min(at for at, _ in observations).isoformat(),
+            "last_seen": max(at for at, _ in observations).isoformat(),
+            "evidence_refs": refs,
+            "reproduction": {"method": "distinct_cycles", "observations": len(refs)},
+            "owner": "algua-lead", "required_action": "reproduce_test_repair_verify_deployment",
+            "status": "open", "recovery": "unverified",
+        })
+    return incidents
 
 
 def _default_runner(cmd: str, payload: str) -> int:

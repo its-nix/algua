@@ -11,6 +11,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import typer
+from typer._click.core import Context
+from typer._click.exceptions import UsageError
+from typer.core import TyperCommand
 
 from algua.calendar.factory import get_calendar
 from algua.cli._common import ok
@@ -19,6 +22,7 @@ from algua.cli.errors import json_errors
 from algua.config.settings import get_settings
 from algua.execution.book import book_status
 from algua.operator.loop_health import loop_status
+from algua.operator.machine_health import machine_health
 from algua.registry.db import registry_conn
 
 ops_app = typer.Typer(help="Machine liveness: are the autonomous loops still running?",
@@ -27,6 +31,22 @@ book_app = typer.Typer(help="Book capital: who holds a slice, and who should but
                        no_args_is_help=True)
 app.add_typer(ops_app, name="ops")
 app.add_typer(book_app, name="book")
+
+
+def _machine_health_error() -> None:
+    emit({"ok": False, "error": "machine_health_unavailable",
+          "code": "machine_health_unavailable", "retryable": False})
+
+
+class _MachineHealthCommand(TyperCommand):
+    """Keep arbitrary argv out of this public command's pre-callback error envelope."""
+
+    def parse_args(self, ctx: Context, args: list[str]) -> list[str]:
+        try:
+            return super().parse_args(ctx, args)
+        except UsageError:
+            _machine_health_error()
+            raise typer.Exit(1) from None
 
 
 @ops_app.command("status")
@@ -43,6 +63,26 @@ def ops_status() -> None:
     """
     settings = get_settings()
     emit(ok(loop_status(settings.data_dir, get_calendar(), now=datetime.now(UTC))))
+
+
+@ops_app.command("machine-health", cls=_MachineHealthCommand)
+def machine_health_cmd(
+    now: str | None = typer.Option(None, help="Aware ISO instant for evidence replay."),
+    fixture: bool = typer.Option(False, help="Label disposable evidence FIXTURE."),
+) -> None:
+    """Public aggregate health and engineering incidents. Pure read; exits 1 unless healthy."""
+    try:
+        instant = datetime.now(UTC) if now is None else datetime.fromisoformat(now)
+        if instant.tzinfo is None:
+            raise ValueError("aware instant required")
+        payload = machine_health(get_settings().data_dir, get_calendar(),
+                                 now=instant.astimezone(UTC), fixture=fixture)
+    except Exception:  # noqa: BLE001 — this public boundary must never echo raw exception text
+        _machine_health_error()
+        raise typer.Exit(1) from None
+    emit(payload)
+    if not payload["ok"]:
+        raise typer.Exit(1)
 
 
 @book_app.command("status")

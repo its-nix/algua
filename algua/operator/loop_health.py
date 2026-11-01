@@ -1,24 +1,10 @@
 """Machine-liveness rollup for the autonomous loops (`algua ops status`).
 
-The fleet rollup (``execution/fleet_health.py``) answers "is this STRATEGY being ticked". Nothing
-answered "is the MACHINE still running" — and on 2026-08-15 that gap cost five days: the hourly
-``algua-research`` loop had been exiting non-zero on a Codex usage limit since 2026-08-14 and the
-monitor was green throughout, because a dead research loop produces no strategy rows to be unhealthy
-ABOUT. The top of the funnel can stop entirely without a single strategy looking wrong.
-
-Pure reads of artifacts the loops ALREADY write — no systemd, no journalctl, no subprocess. Coupling
-the monitor to the host's init system was considered and rejected: it would tie a read-only domain
-view to a specific service manager, and the durable digests are both richer (they see INSIDE a run)
-and portable.
-
-Cadence is measured per loop against how that loop is actually scheduled — WALL-CLOCK for the
-research and merge-back loops (plain systemd timers, hourly / half-hourly, market-independent) and
-COMPLETED MARKET SESSIONS for the paper operator (session-gated, so a weekend gap is not a fault).
-Using one clock for all three would either false-alarm every weekend or hide a day-long research
-outage.
-
-Fail-closed throughout: a missing, unparseable, or wrong-shaped artifact is never ``ok``. ``ok``
-requires positive, fresh, parseable evidence — the same rule ``strategy_health`` applies to ticks.
+A dead research loop produces no strategy rows, so fleet health alone cannot see it.
+Read existing durable digests/markers, never systemd, journalctl or subprocesses. Research and
+merge-back use wall-clock cadence; paper uses completed market sessions to avoid weekend alarms.
+The stricter public aggregate in ``machine_health`` additionally validates marker shapes and
+requires positive evidence for idle loops. Neither read path delivers alerts or writes state.
 """
 
 from __future__ import annotations
@@ -52,6 +38,16 @@ LOOPS = ("research", "paper", "mergeback")
 # Worst-first, mirroring fleet_health's severity convention (LOWER int = WORSE).
 _SEVERITY = {"failing": 0, "rate_limited": 1, "stale": 2, "unknown": 3, "idle": 4, "ok": 5}
 _ALERTING = frozenset({"failing", "rate_limited", "stale", "unknown"})
+_ARTIFACT_MAX_BYTES = 1024 * 1024
+_QUEUE_TERMINAL = ("promoted_allocated", "promoted_queued", "already_done", "terminal_failed")
+
+
+def _read_text(path: Path, *, bounded: bool) -> str:
+    with path.open("rb") as stream:
+        raw = stream.read(_ARTIFACT_MAX_BYTES + 1) if bounded else stream.read()
+    if bounded and len(raw) > _ARTIFACT_MAX_BYTES:
+        raise OSError("artifact exceeds read bound")
+    return raw.decode("utf-8")
 
 
 def _parse_utc(value: Any) -> datetime | None:
@@ -69,33 +65,33 @@ def _parse_utc(value: Any) -> datetime | None:
     return parsed.astimezone(UTC) if parsed.tzinfo is not None else None
 
 
-def _read_json(path: Path) -> tuple[Any, str | None]:
-    """``(payload, None)`` or ``(None, reason)`` — a read/parse fault is data, never an exception.
-
-    One corrupt artifact must degrade its own loop to ``unknown`` and leave the other two
-    readable, exactly as ``_safe_latest_tick`` protects the fleet view from one bad row.
-    """
+def _read_json(path: Path, *, bounded: bool = False) -> tuple[Any, str | None]:
+    """Return payload/error; a corrupt artifact only degrades its own loop."""
     try:
-        return json.loads(path.read_text(encoding="utf-8")), None
+        return json.loads(_read_text(path, bounded=bounded)), None
     except FileNotFoundError:
         return None, "missing"
     except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
         return None, f"{type(exc).__name__}: {exc}"
 
 
-def _read_digest_tail(path: Path, limit: int) -> tuple[list[dict], str | None]:
+def _read_digest_tail(
+    path: Path, limit: int, *, strict: bool = False,
+) -> tuple[list[dict], str | None]:
     """The newest ``limit`` parseable records of the JSONL run digest, oldest-first.
 
     Unparseable lines are SKIPPED rather than fatal: the digest is appended by a shell driver, so a
     torn final line (killed mid-append) must not blind the whole rollup.
     """
     try:
-        raw = path.read_text(encoding="utf-8").splitlines()
+        raw = _read_text(path, bounded=strict).splitlines()
     except FileNotFoundError:
         return [], "missing"
     except (OSError, UnicodeDecodeError) as exc:
         return [], f"{type(exc).__name__}: {exc}"
     records: list[dict] = []
+    if strict and len(raw) > limit:
+        return [], "record bound exceeded"
     for line in reversed(raw):
         if len(records) >= limit:
             break
@@ -105,9 +101,13 @@ def _read_digest_tail(path: Path, limit: int) -> tuple[list[dict], str | None]:
         try:
             record = json.loads(line)
         except json.JSONDecodeError:
+            if strict:
+                return [], "malformed digest"
             continue
         if isinstance(record, dict):
             records.append(record)
+        elif strict:
+            return [], "malformed digest"
     records.reverse()
     return records, None
 
@@ -125,14 +125,10 @@ def _run_failed(record: dict) -> bool:
 
 
 def _digest_stamp(record: dict) -> datetime | None:
-    """The run's instant. Prefers an explicit ISO field, falling back to the ``YYYYmmdd-HHMMSS``
-    ``stamp`` the driver names each run branch with (its only guaranteed time carrier).
+    """Prefer aware ISO time; fall back to the driver's LOCAL ``YYYYmmdd-HHMMSS`` stamp.
 
-    The stamp is LOCAL time — ``run-research-loop.sh`` builds it with a bare ``date
-    +%Y%m%d-%H%M%S``, no ``-u``. Reading it as UTC shifts every run by the host's offset and, east
-    of Greenwich, lands the newest run in the FUTURE (which would then read as perfectly fresh
-    forever). ``astimezone()`` on a naive datetime interprets it in local time, which is exactly
-    the driver's convention.
+    Bare ``date`` has no ``-u``; reading it as UTC would shift freshness into the future east of
+    Greenwich. ``astimezone()`` on a naive datetime honors the driver's local-time convention.
     """
     for key in ("finished_at", "started_at", "recorded_at"):
         parsed = _parse_utc(record.get(key))
@@ -147,14 +143,12 @@ def _digest_stamp(record: dict) -> datetime | None:
     return None
 
 
-def _research_health(data_dir: Path, now: datetime, digest_limit: int) -> dict[str, Any]:
-    """The Codex-driven research loop, from its durable per-run digest.
-
-    ``rate_limited`` is reported as its OWN health rather than collapsed into ``failing``: an
-    exhausted account quota is not a broken loop, it is a loop that cannot run until the quota
-    resets, and the two want completely different operator responses (wait/buy credits vs. debug).
-    """
-    records, error = _read_digest_tail(data_dir / "research-runs.jsonl", digest_limit)
+def _research_health(
+    data_dir: Path, now: datetime, digest_limit: int, *, strict: bool = False,
+) -> dict[str, Any]:
+    """Read the durable digest; quota exhaustion stays distinct from a broken worker."""
+    records, error = _read_digest_tail(
+        data_dir / "research-runs.jsonl", digest_limit, strict=strict)
     if not records:
         return {
             "health": "unknown",
@@ -207,13 +201,15 @@ def _research_health(data_dir: Path, now: datetime, digest_limit: int) -> dict[s
     }
 
 
-def _paper_health(data_dir: Path, now: datetime, calendar: SessionSpanCalendar) -> dict[str, Any]:
+def _paper_health(
+    data_dir: Path, now: datetime, calendar: SessionSpanCalendar, *, strict: bool = False,
+) -> dict[str, Any]:
     """The session-gated paper operator, from the session marker it writes after each cycle.
 
     Staleness is COMPLETED SESSIONS, not wall-clock: the loop is supposed to be silent on a
     weekend or holiday, and a wall-clock bound would page every Saturday.
     """
-    payload, error = _read_json(data_dir / "operator_sessions.json")
+    payload, error = _read_json(data_dir / "operator_sessions.json", bounded=strict)
     entry = payload.get("paper") if isinstance(payload, dict) else None
     if not isinstance(entry, dict):
         return {
@@ -252,13 +248,9 @@ def _paper_health(data_dir: Path, now: datetime, calendar: SessionSpanCalendar) 
     }
 
 
-def _mergeback_health(data_dir: Path, now: datetime) -> dict[str, Any]:
-    """The merge-back queue: depth, age of the oldest item, and repeated-attempt wedging.
-
-    A queue that is merely deep is fine — the drainer is half-hourly. A queue whose OLDEST item has
-    outlived several drain cycles is wedged, which is the failure this exists to surface.
-    """
-    payload, error = _read_json(data_dir / "mergeback-queue.json")
+def _mergeback_health(data_dir: Path, now: datetime, *, strict: bool = False) -> dict[str, Any]:
+    """Queue depth/age; the public view excludes terminal rows retained for audit."""
+    payload, error = _read_json(data_dir / "mergeback-queue.json", bounded=strict)
     if payload is None:
         # A queue file is only created once something is enqueued: absent == nothing queued.
         if error == "missing":
@@ -272,6 +264,8 @@ def _mergeback_health(data_dir: Path, now: datetime) -> dict[str, Any]:
         return {"health": "unknown", "detail": "queue file has no items mapping",
                 "queue_depth": None, "max_attempts": None, "oldest_enqueued_at": None}
     rows = [row for row in items.values() if isinstance(row, dict)]
+    if strict:
+        rows = [row for row in rows if row.get("status") not in _QUEUE_TERMINAL]
     if not rows:
         return {"health": "idle", "detail": "queue empty", "queue_depth": 0,
                 "max_attempts": 0, "oldest_enqueued_at": None}
@@ -296,7 +290,8 @@ def _mergeback_health(data_dir: Path, now: datetime) -> dict[str, Any]:
 
 
 def loop_status(
-    data_dir: Path, calendar: SessionSpanCalendar, *, now: datetime, digest_limit: int = 50
+    data_dir: Path, calendar: SessionSpanCalendar, *, now: datetime, digest_limit: int = 50,
+    strict: bool = False,
 ) -> dict[str, Any]:
     """Every autonomous loop's liveness, worst-first, with an overall ``ok`` verdict.
 
@@ -305,9 +300,9 @@ def loop_status(
     quiet system, not a broken one.
     """
     loops = {
-        "research": _research_health(data_dir, now, digest_limit),
-        "paper": _paper_health(data_dir, now, calendar),
-        "mergeback": _mergeback_health(data_dir, now),
+        "research": _research_health(data_dir, now, digest_limit, strict=strict),
+        "paper": _paper_health(data_dir, now, calendar, strict=strict),
+        "mergeback": _mergeback_health(data_dir, now, strict=strict),
     }
     alerting = sorted(
         (name for name, row in loops.items() if row["health"] in _ALERTING),
