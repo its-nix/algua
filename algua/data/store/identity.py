@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 
@@ -14,6 +11,7 @@ from algua.data.manifest import SnapshotManifest
 from algua.data.models import Dataset, Kind, SnapshotMetadata, SnapshotRecord
 from algua.data.provenance_binding import refuse_reserved_key
 from algua.primitives.atomic_io import write_bytes_durable
+from algua.provenance.snapshot import compute_snapshot_id as compute_snapshot_id
 
 
 class SnapshotNotFound(LookupError):
@@ -131,26 +129,6 @@ def validate_datetime(name: str, value: str) -> None:
         datetime.fromisoformat(value)
     except ValueError as exc:
         raise ValueError(f"{name} must be an ISO datetime") from exc
-
-
-def compute_snapshot_id(metadata: SnapshotMetadata, content_hash: str) -> str:
-    payload: dict[str, Any] = {
-        "dataset": metadata.dataset,
-        "provider": metadata.provider,
-        "symbols": list(metadata.symbols),
-        "start": metadata.start,
-        "end": metadata.end,
-        "as_of": metadata.as_of,
-        "source": metadata.source,
-        "kind": metadata.kind,
-        "timeframe": metadata.timeframe,
-        "adjustment": metadata.adjustment,
-        "universe": metadata.universe,
-        "source_metadata": metadata.source_metadata or {},
-        "content_hash": content_hash,
-    }
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    return hashlib.sha256(encoded).hexdigest()[:16]
 
 
 def path_part(value: str) -> str:

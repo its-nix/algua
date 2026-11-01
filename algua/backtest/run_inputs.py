@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import pickle
 from collections.abc import Collection
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ import pandas as pd
 from algua.backtest.errors import BacktestError
 from algua.contracts.strategy_interface import uses_context_interface
 from algua.contracts.types import DataProvider, FundamentalsProvider, NewsProvider
+from algua.provenance.snapshot_evidence import project_snapshot_record
 
 if TYPE_CHECKING:
     from algua.strategies.base import LoadedStrategy
@@ -78,6 +80,9 @@ class RunInputBundle:
     bars_snapshot_id: str | None
     fundamentals_snapshot_id: str | None
     news_snapshot_id: str | None
+    bars_provenance_payload: bytes | None
+    execution_fees: float
+    execution_slippage: float
 
     def bars(self) -> pd.DataFrame:
         return _thaw_frame(self.bars_payload, "bars")
@@ -97,6 +102,20 @@ class RunInputBundle:
             "data_source": self.data_source,
             "seed": self.provider_seed if self.provider_seed is not None else seed,
             "snapshot_id": self.bars_snapshot_id,
+            "bars_provenance": (
+                json.loads(self.bars_provenance_payload)
+                if self.bars_provenance_payload is not None else None
+            ),
+            "execution_costs": self.execution_costs(),
+        }
+
+    def execution_costs(self) -> dict[str, Any]:
+        return {
+            "schema_version": "execution-costs/v1", "model": "vectorbt.from_orders",
+            "fees": self.execution_fees,
+            "fees_unit": "fraction_of_trade_notional_per_side",
+            "slippage": self.execution_slippage,
+            "slippage_unit": "adverse_fill_price_fraction_per_side",
         }
 
 
@@ -125,7 +144,25 @@ def capture_run_inputs(
         )
 
     requested = list(symbols)
-    bars_pin = _snapshot_id(provider, "bars", required=True) if context else None
+    execution = strategy.execution
+    bars_pin = (
+        _snapshot_id(provider, "bars", required=context) if context or include_provenance else None
+    )
+    bars_metadata = getattr(provider, "bars_provenance", None) if include_provenance else None
+    if bars_metadata is not None and (
+        not isinstance(bars_metadata, dict) or bars_metadata.get("snapshot_id") != bars_pin
+    ):
+        raise BacktestError("bars provenance snapshot binding mismatch")
+    bars_provenance_payload = (
+        json.dumps(bars_metadata, sort_keys=True, allow_nan=False).encode()
+        if bars_metadata is not None else None
+    )
+    if bars_provenance_payload is not None:
+        if bars_pin is None:
+            raise BacktestError("bars provenance requires a pinned snapshot_id")
+        evidence = project_snapshot_record(bars_pin, json.loads(bars_provenance_payload))
+        if evidence["status"] != "VALID":
+            raise BacktestError(f"invalid bars provenance: {evidence['reason']}")
     try:
         bars = provider.get_bars(requested, start, end, "1d")
     except Exception as exc:
@@ -197,4 +234,7 @@ def capture_run_inputs(
         bars_snapshot_id=bars_snapshot,
         fundamentals_snapshot_id=fundamentals_snapshot,
         news_snapshot_id=news_snapshot,
+        bars_provenance_payload=bars_provenance_payload,
+        execution_fees=execution.fees,
+        execution_slippage=execution.slippage,
     )

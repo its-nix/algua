@@ -221,8 +221,8 @@ def simulate(
         cash_sharing=True,
         group_by=True,
         freq="1D",
-        fees=strategy.execution.fees,
-        slippage=strategy.execution.slippage,
+        fees=run_inputs.execution_fees,
+        slippage=run_inputs.execution_slippage,
         **extra,
     )
 
@@ -284,7 +284,7 @@ def run(
     )
     metrics = portfolio_metrics(
         pf, weights_eff,
-        fees=strategy.execution.fees, slippage=strategy.execution.slippage,
+        fees=run_inputs.execution_fees, slippage=run_inputs.execution_slippage,
     )
     stamps = runtime_stamps()
     prov = run_inputs.provenance(seed)

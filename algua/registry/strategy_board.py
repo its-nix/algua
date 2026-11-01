@@ -1,14 +1,5 @@
-"""The research strategy board projection (`algua runs board`).
-
-Exactly one row per REGISTERED strategy identity, each joined to that identity's latest gate run.
-A pure read: no writes, no locks, no subprocess — it takes the ``SqliteStrategyRepository`` alone
-and reaches sqlite through ``repo.connection``, like ``run_views``.
-
-Display surface only. Nothing here may feed a promotion decision, family classification or any
-other selection path (the caveat in the run-tracking design, §5): the board orders by lifecycle
-and never ranks, scores or recommends.
-
-Contract: ``docs/development/specs/spec-strategy-board/strategy-board-contract.md``.
+"""One row per registered identity, joined to its latest gate; read-only display, lifecycle order.
+Never feeds promotion or selection. Contract: docs/development/specs/spec-strategy-board/.
 """
 from __future__ import annotations
 
@@ -19,6 +10,7 @@ from datetime import date, datetime
 from typing import Any
 
 from algua.contracts.lifecycle import Stage
+from algua.registry.run_provenance import recorded_run_evidence
 from algua.registry.store import SqliteStrategyRepository
 
 __all__ = [
@@ -60,7 +52,9 @@ _EVIDENCE_BOARD_SQL = f"""
 SELECT s.id AS strategy_id, s.name, s.family, s.stage,
        r.id AS run_id, r.created_at, r.passed, {", ".join(f"r.{m}" for m in BOARD_METRICS)},
        r.metric_schema_version, r.timeframe, r.period_start, r.period_end, r.snapshot_id,
-       r.series_holdout_id,
+       r.series_holdout_id, r.derived_from, r.data_source, r.seed, r.universe_name,
+       r.fundamentals_snapshot, r.news_snapshot, r.delisting_snapshot,
+       r.config_hash, r.dependency_hash,
        h.id AS holdout_id, h.strategy_id AS holdout_strategy_id,
        h.holdout_start, h.holdout_end, h.n_bars AS holdout_n_bars,
        he.id AS evaluation_id, he.strategy_id AS evaluation_strategy_id,
@@ -239,12 +233,12 @@ def _oos_interval(row: sqlite3.Row) -> dict[str, Any]:
         "holdout_start": interval[0], "holdout_end": interval[1], "n_bars": holdout_count})
 
 
-def _evidence(row: sqlite3.Row, resolve_snapshot: SnapshotEvidenceResolver) -> dict[str, Any]:
+def _evidence(row: sqlite3.Row, recorded: tuple[dict[str, Any], dict[str, Any]]) -> dict[str, Any]:
     snapshot_id = row["snapshot_id"]
     snapshot = (
         _wrapper("UNAVAILABLE", "no_snapshot_pointer", None)
         if snapshot_id is None
-        else resolve_snapshot(snapshot_id)
+        else recorded[1]
     )
     return {
         "run_id": row["run_id"],
@@ -287,7 +281,12 @@ def strategy_board_payload(
             "latest_gate": gate,
         }
         if snapshot_evidence is not None:
-            entry["evidence"] = None if gate is None else _evidence(row, snapshot_evidence)
+            if gate is None:
+                entry["evidence"] = entry["recorded_provenance"] = None
+            else:
+                recorded = recorded_run_evidence(repo, row)
+                entry["recorded_provenance"] = recorded[0]
+                entry["evidence"] = _evidence(row, recorded)
         board.append(entry)
     payload: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,

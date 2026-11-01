@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 import pandas as pd
 
+from algua.data.board_provenance import SnapshotProvenanceReader
 from algua.data.store import DataStore
 from algua.data.timeframes import validate_timeframe
 
@@ -58,6 +60,11 @@ class StoreBackedProvider:
     def __init__(self, store: DataStore, snapshot_id: str) -> None:
         self.store = store
         self.snapshot_id = snapshot_id
+
+    @property
+    def bars_provenance(self) -> dict[str, Any] | None:
+        """Optional run disclosure, separate from the frozen get_bars protocol."""
+        return SnapshotProvenanceReader(self.store.manifest).capture(self.snapshot_id)
 
     def get_bars(
         self, symbols: list[str], start: datetime, end: datetime, timeframe: str

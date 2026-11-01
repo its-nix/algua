@@ -14,6 +14,7 @@ import pyarrow.dataset as pads
 import pyarrow.parquet as pq
 
 from algua.data.schema import BARS_FILE_HASH_COLUMNS
+from algua.provenance.snapshot import BARS_STREAMED_HASH_ALGO as BARS_STREAMED_HASH_ALGO
 
 
 def sha256_file(path: Path) -> str:
@@ -176,7 +177,6 @@ def _ts_scalar(value: object) -> pa.Scalar:
     return pa.scalar(ts.value, type=pa.timestamp("ns", tz="UTC"))
 
 
-BARS_STREAMED_HASH_ALGO = "bars-symbol-merkle-v1"
 
 
 def compose_bars_symbol_hash(leaves: list[tuple[str, int, str]]) -> str:

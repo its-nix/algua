@@ -204,6 +204,8 @@ class SweepResult:
     universe_snapshots: list[dict[str, str]] | None = None
     fundamentals_snapshot: str | None = None
     news_snapshot: str | None = None
+    bars_provenance: dict[str, Any] | None = None
+    execution_costs: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -262,6 +264,8 @@ def _evaluate_combo(
             "universe_snapshots": wf.universe_snapshots,
             "fundamentals_snapshot": wf.fundamentals_snapshot,
             "news_snapshot": wf.news_snapshot,
+            "bars_provenance": wf.bars_provenance,
+            "execution_costs": wf.execution_costs,
         },
     }
 
@@ -415,6 +419,8 @@ def sweep(
             "n_windows": res["n_windows"],
             "stability": res["stability"],
             "score": res["score"],
+            "bars_provenance": res["meta"].get("bars_provenance"),
+            "execution_costs": res["meta"].get("execution_costs"),
         }
         for combo, res in zip(combos, results, strict=True)
     ]
@@ -450,4 +456,6 @@ def sweep(
         universe_snapshots=meta["universe_snapshots"],
         fundamentals_snapshot=meta["fundamentals_snapshot"],
         news_snapshot=meta["news_snapshot"],
+        bars_provenance=meta.get("bars_provenance"),
+        execution_costs=meta.get("execution_costs"),
     )

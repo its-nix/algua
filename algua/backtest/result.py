@@ -74,6 +74,9 @@ class BacktestResult:
     forced_exits: list[dict] = field(default_factory=list)
     # Daily return series from the backtest portfolio; None if non-finite returns detected.
     returns: pd.Series | None = None
+    # Bars-only immutable snapshot record; sidecar/model identities above remain independent.
+    bars_provenance: dict[str, Any] | None = None
+    execution_costs: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {

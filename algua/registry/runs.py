@@ -121,11 +121,19 @@ def record_backtest_run(
     return repo.record_run(
         "backtest", name,
         provenance=provenance_of(result),
-        config=dict(params or {}),
+        config={"params": dict(params or {})} | run_provenance_config(result),
         metrics=backtest_metrics(result),
         components=list(_components_of(result)),
         series_backtest_id=series_backtest_id,
     )
+
+
+def run_provenance_config(result: Any) -> dict[str, Any]:
+    """Additive disclosure in existing run JSON; no new columns or authority."""
+    return {"run_provenance": {
+        "bars": getattr(result, "bars_provenance", None),
+        "execution_costs": getattr(result, "execution_costs", None),
+    }}
 
 
 def record_walk_forward_run(
@@ -150,6 +158,7 @@ def record_walk_forward_run(
         strategy_id=strategy_id,
         provenance=provenance_of(result),
         metrics=walk_forward_metrics(result),
+        config=run_provenance_config(result),
         components=list(_components_of(result)),
     )
 
@@ -187,13 +196,17 @@ def record_sweep_run(
         "sweep", name,
         provenance=provenance_of(result),
         config={"grid": result.grid, "rank_by": result.rank_by,
-                "windows": result.windows, "holdout_frac": result.holdout_frac},
+                "windows": result.windows, "holdout_frac": result.holdout_frac}
+                | run_provenance_config(result),
         extra_metrics=extra_metrics,
         trials_truncated_at=trials_truncated_at,
     )
     trials = [
         {
-            "config": record["params"],
+            "config": {"params": record["params"], "run_provenance": {
+                "bars": record.get("bars_provenance"),
+                "execution_costs": record.get("execution_costs"),
+            }},
             "config_hash": record.get("config_hash"),
             "metrics": {
                 "mean_window_sharpe": record["stability"].get("mean_sharpe"),
