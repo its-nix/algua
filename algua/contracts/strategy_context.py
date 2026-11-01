@@ -1,13 +1,14 @@
-"""Pure research contracts for point-in-time multimodal scoring.
+"""Pure contracts for point-in-time multimodal scoring.
 
-This is a research-only compatibility seam.  It deliberately does not change the frozen
-``DataProvider`` or legacy strategy configuration contracts.  Frames and model metadata are
-copied on ingress and again on read so a scoring function cannot mutate authoritative inputs.
+The seam is used by research composition and the canonical research backtest. It deliberately
+does not change the frozen ``DataProvider`` or legacy strategy configuration contracts. Frames
+and model metadata are copied on ingress and again on read so scoring cannot mutate inputs.
 """
 
 from __future__ import annotations
 
 import hashlib
+import math
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
@@ -16,6 +17,7 @@ from types import MappingProxyType
 from typing import Protocol
 
 import pandas as pd
+from pandas.api.types import is_bool_dtype, is_complex_dtype, is_numeric_dtype
 
 from algua.contracts.model_types import (
     ModelHandle,
@@ -197,8 +199,38 @@ class AsOfContext:
         return MappingProxyType({k: _copy_model(v) for k, v in self._models.items()})
 
 
+def validate_score_output(scores: object, universe: tuple[str, ...]) -> pd.Series:
+    """Canonical validation for authored ``score(context)`` output.
+
+    Kept in the pure contract layer so research composition and the real backtest consume the
+    exact same finite, duplicate-free, in-universe score rule without either importing the other.
+    """
+    if not isinstance(scores, pd.Series):
+        raise ValueError("score(context) must return a pandas Series")
+    if not scores.index.is_unique:
+        raise ValueError("score output must not contain duplicate symbols")
+    if not all(isinstance(symbol, str) for symbol in scores.index):
+        raise ValueError("score output index must contain symbol strings")
+    outside = set(scores.index) - set(universe)
+    if outside:
+        raise ValueError(f"score output contains symbols outside the as-of universe: {outside}")
+    if (
+        not is_numeric_dtype(scores.dtype)
+        or is_bool_dtype(scores.dtype)
+        or is_complex_dtype(scores.dtype)
+    ):
+        raise ValueError("score output values must have a real numeric dtype")
+    try:
+        values = scores.to_numpy(dtype="float64")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("score output values must be numeric") from exc
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("score output values must all be finite")
+    return pd.Series(values, index=scores.index.copy(), name=scores.name, dtype="float64")
+
+
 class ResearchStrategy(Protocol):
-    """Temporary research scoring interface; not a paper/live strategy contract."""
+    """Multimodal scoring interface; not a paper/live strategy contract."""
 
     @property
     def required_features(self) -> frozenset[str]: ...

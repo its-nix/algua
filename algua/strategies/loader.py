@@ -6,6 +6,7 @@ from pathlib import Path
 from types import ModuleType
 
 import algua.strategies as _strategies_pkg
+from algua.contracts import strategy_interface as strategy_interfaces
 from algua.contracts.model_types import ModelHandle
 from algua.portfolio.construction import (
     ConstructionError,
@@ -18,11 +19,10 @@ from algua.primitives.module_refresh import (
     refresh_package_closure,
     serialized_import,
 )
-from algua.strategies.base import (
-    LoadedStrategy,
-    StrategyConfig,
-)
+from algua.strategies.base import LoadedStrategy, StrategyConfig
+from algua.strategies.context_loader import bind_context_strategy
 from algua.strategies.tradable import (
+    assert_tradable_legacy_interface,
     assert_tradable_without_fundamentals,
     assert_tradable_without_model,
     assert_tradable_without_news,
@@ -82,9 +82,12 @@ def _reload_strategy_closure(dotted: str) -> ModuleType:
 
 
 def load_strategy(name: str, *, reload: bool = False) -> LoadedStrategy:
-    """Load a bundled strategy by bare name; it must expose CONFIG + signal, and CONFIG must name a
-    known construction policy with valid params. Optional `signal_panel` is the vectorized twin.
-    Resolves the name via the filesystem family index, then imports EXACTLY ONE module.
+    """Load a bundled strategy by bare name; it must expose CONFIG plus the entry point selected by
+    module interface (legacy ``signal`` or Task 2 ``STRATEGY_INTERFACE='context_v1'`` plus
+    ``score(context)``), and CONFIG must
+    name a known construction policy with valid params. Optional legacy `signal_panel` is the
+    vectorized twin. Resolves the name via the filesystem family index, then imports EXACTLY ONE
+    module.
 
     ``reload=True`` force-reloads the strategy AND its author-written first-party helper modules
     before extracting CONFIG/signal. A cold ``uv run algua`` process imports each strategy module
@@ -104,8 +107,8 @@ def load_strategy(name: str, *, reload: bool = False) -> LoadedStrategy:
         module = _reload_strategy_closure(dotted)
     else:
         module = serialized_import(dotted)
-    if not hasattr(module, "CONFIG") or not hasattr(module, "signal"):
-        raise StrategyNotFound(f"{name} is missing CONFIG or signal")
+    if not hasattr(module, "CONFIG"):
+        raise StrategyNotFound(f"{name} is missing CONFIG")
 
     config = module.CONFIG
     # One name per strategy, enforced at the single load chokepoint: a hand-edited
@@ -116,6 +119,17 @@ def load_strategy(name: str, *, reload: bool = False) -> LoadedStrategy:
             f"{name}: CONFIG.name is {config.name!r} but the module was loaded as {name!r}; "
             f"they must match"
         )
+    strategy_interface = getattr(
+        module, "STRATEGY_INTERFACE", strategy_interfaces.LEGACY_INTERFACE
+    )
+    if not strategy_interfaces.is_supported_strategy_interface(strategy_interface):
+        raise StrategyNotFound(
+            f"{name}: unsupported STRATEGY_INTERFACE {strategy_interface!r}"
+        )
+    context_interface = strategy_interfaces.uses_context_interface(strategy_interface)
+    entrypoint = "score" if context_interface else "signal"
+    if not hasattr(module, entrypoint):
+        raise StrategyNotFound(f"{name} is missing CONFIG or {entrypoint}")
     try:
         construct_fn = get_construction_policy(config.construction)
         validate_construction_params(config.construction, config.construction_params)
@@ -132,6 +146,15 @@ def load_strategy(name: str, *, reload: bool = False) -> LoadedStrategy:
     needs_fundamentals = bool(getattr(config, "needs_fundamentals", False))
     needs_news = bool(getattr(config, "needs_news", False))
     needs_model = bool(getattr(config, "needs_model", False))
+    if context_interface:
+        resolver = (lambda: _resolve_model_handle(name, config)) if needs_model else None
+        try:
+            return bind_context_strategy(
+                module, config, construct_fn, overlay_fns, resolver
+            )
+        except ValueError as exc:
+            raise StrategyNotFound(f"{name}: {exc}") from exc
+
     n_params = len(inspect.signature(module.signal).parameters)
 
     if needs_model:
@@ -251,6 +274,7 @@ def load_tradable_strategy(name: str) -> LoadedStrategy:
     beside ``load_strategy`` because the tradability assertions are a strategies-layer concern.
     """
     strategy = load_strategy(name)
+    assert_tradable_legacy_interface(strategy)
     assert_tradable_without_fundamentals(strategy)
     assert_tradable_without_news(strategy)
     assert_tradable_without_model(strategy)

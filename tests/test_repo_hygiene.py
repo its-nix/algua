@@ -59,7 +59,9 @@ JUNK_PATTERNS = [
 
 STRAT_PREFIX = "algua/strategies/"
 # Modules allowed directly at the strategies top level: infrastructure, not strategies.
-INFRA_TOP_LEVEL = frozenset({"__init__.py", "base.py", "loader.py", "tradable.py"})
+INFRA_TOP_LEVEL = frozenset(
+    {"__init__.py", "base.py", "context_loader.py", "loader.py", "tradable.py"}
+)
 
 
 def _tracked_files() -> list[str]:
@@ -181,6 +183,12 @@ def test_top_level_underscore_module_is_not_exempt_from_placement() -> None:
     assert not _strategy_top_level_offender("__init__.py")
 
 
+def test_context_loader_is_declared_top_level_infrastructure_before_tracking() -> None:
+    """The focused assertion cannot be bypassed while a new infrastructure file is untracked."""
+    assert "context_loader.py" in INFRA_TOP_LEVEL
+    assert not _strategy_top_level_offender("context_loader.py")
+
+
 def test_strategies_placement_and_provenance() -> None:
     """Fail-closed: strategy modules must be PLACED in a family subdir and carry GENERATED_BY.
 
@@ -237,7 +245,11 @@ def test_strategies_placement_and_provenance() -> None:
 INTEGRITY_CRITICAL_MODULES = frozenset(
     {
         "algua/contracts/lifecycle.py",
+        "algua/contracts/strategy_context.py",
         "algua/backtest/engine.py",
+        "algua/backtest/context.py",
+        "algua/backtest/run_inputs.py",
+        "algua/backtest/benchmark.py",
         "algua/backtest/pit_view.py",
         "algua/backtest/decision_path.py",
         "algua/backtest/grid.py",
@@ -253,6 +265,12 @@ INTEGRITY_CRITICAL_MODULES = frozenset(
         "algua/registry/transitions.py",
         "algua/registry/approvals.py",
         "algua/strategies/base.py",
+        "algua/strategies/context_loader.py",
+        "algua/contracts/strategy_identity.py",
+        "algua/contracts/strategy_interface.py",
+        "algua/contracts/strategy_scoring.py",
+        "algua/strategies/loader.py",
+        "algua/strategies/tradable.py",
         "algua/provenance/lockfile.py",
         "algua/registry/promotion.py",
         "algua/registry/family_assignment.py",

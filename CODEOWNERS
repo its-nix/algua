@@ -17,6 +17,10 @@
 /algua/registry/db/           @Lior-Nis   # schema + migrate(): single-use gate-token DDL, #524 append-only triggers, AGENT_NOVEL_MINT_CAP, SCHEMA_VERSION
 /algua/contracts/lifecycle.py   @Lior-Nis   # lifecycle stages + allowed transitions
 /algua/backtest/engine.py       @Lior-Nis   # anti-look-ahead t->t+1 enforcement
+/algua/backtest/context.py      @Lior-Nis   # Task 2 pinned context inputs + canonical dispatch
+/algua/backtest/run_inputs.py   @Lior-Nis   # Task 2 fetched-once immutable run-input authority
+/algua/backtest/benchmark.py    @Lior-Nis   # extracted PIT benchmark projection; no lost guard
+/algua/contracts/strategy_context.py @Lior-Nis   # Task 2 immutable context + score validation
 /algua/research/gates.py        @Lior-Nis   # promotion-gate criteria
 /algua/research/gate_serialization.py @Lior-Nis   # GateDecision.to_dict(): what reaches the persisted decision_json (stage 7 task 4)
 /algua/research/clustering.py   @Lior-Nis   # clustering thresholds + family similarity (#222)
@@ -25,6 +29,12 @@
 /algua/registry/transitions.py  @Lior-Nis   # live-gate enforcement
 /algua/registry/approvals.py    @Lior-Nis   # computes the artifact identity the live gate verifies (1/3: code_hash)
 /algua/strategies/base.py       @Lior-Nis   # computes the artifact identity the live gate verifies (2/3: config_hash)
+/algua/contracts/strategy_interface.py @Lior-Nis   # Task 2 closed decision-interface vocabulary
+/algua/contracts/strategy_identity.py @Lior-Nis   # Task 2 interface-aware config identity
+/algua/contracts/strategy_scoring.py @Lior-Nis   # Task 2 context scoring and model-pin checks
+/algua/strategies/context_loader.py @Lior-Nis   # Task 2 authored context binding
+/algua/strategies/loader.py     @Lior-Nis   # Task 2 interface selection and model resolution
+/algua/strategies/tradable.py   @Lior-Nis   # Task 2 paper/live/frozen context refusal
 /algua/provenance/lockfile.py   @Lior-Nis   # computes the artifact identity the live gate verifies (3/3: dependency_hash)
 /.python-version                @Lior-Nis   # pins CPython for ast.unparse stability, which is code_hash stability
 /algua/registry/promotion.py    @Lior-Nis   # promotion policy (breadth/PIT/floor + shortlist gate)

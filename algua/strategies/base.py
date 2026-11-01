@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass, replace
+from dataclasses import dataclass, replace
 from typing import Any
 
 import pandas as pd
 from pydantic import BaseModel, field_validator
 
+from algua.contracts import strategy_identity
+from algua.contracts import strategy_interface as strategy_interfaces
 from algua.contracts.model_types import ModelHandle, ModelRef, compute_provenance_digest
+from algua.contracts.strategy_scoring import ContextStrategyMixin, ScoreFn
 from algua.contracts.types import ExecutionContract
 from algua.portfolio.construction import (
     ConstructFn,
@@ -41,7 +43,6 @@ NewsSignalFn = Callable[[pd.DataFrame, dict[str, Any], pd.DataFrame], pd.Series]
 # model 3-arg form never silently overloads the fundamentals/news 3-arg forms. Unlike those lanes,
 # the model is FIXED for the whole run (bound once at load), so no per-bar sidecar is injected.
 ModelSignalFn = Callable[[pd.DataFrame, dict[str, Any], ModelHandle], pd.Series]
-
 
 class StrategyConfig(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
@@ -104,12 +105,12 @@ class StrategyConfig(BaseModel):
 
 
 @dataclass
-class LoadedStrategy:
-    """Binds a StrategyConfig + the authored signal fn(s) + the RESOLVED construction policy into an
-    object satisfying the Strategy protocol. Exactly one of (`signal_fn`, `fundamentals_signal_fn`,
-    `news_signal_fn`) is active, selected by the `needs_fundamentals`/`needs_news` flags (mutually
-    exclusive). The adapter is the ONLY place the protocol-level `target_weights` exists; it
-    composes construct(signal(view), view).
+class LoadedStrategy(ContextStrategyMixin):
+    """Bind config, authored decisions, and the resolved construction policy.
+
+    The legacy interface activates exactly one mutually exclusive signal lane. ``context_v1``
+    activates ``score_fn`` and may consume simultaneous modalities. The adapter is the only place
+    the protocol-level target weights are produced.
 
     `construct_fn` is the RAW policy callable (never a params-bound partial): `construct` reads
     `config.construction_params` at call time, so a sweep that rebuilds the config takes effect and
@@ -118,11 +119,15 @@ class LoadedStrategy:
 
     config: StrategyConfig
     construct_fn: ConstructFn
+    # Module-level interface declaration bound by the loader. It deliberately does not extend the
+    # strict frozen StrategyConfig schema. config_hash(LoadedStrategy) folds it in conditionally.
+    strategy_interface: strategy_interfaces.StrategyInterface = strategy_interfaces.LEGACY_INTERFACE
     signal_fn: SignalFn | None = None
     signal_panel_fn: SignalPanelFn | None = None
     fundamentals_signal_fn: FundamentalsSignalFn | None = None
     news_signal_fn: NewsSignalFn | None = None
     model_signal_fn: ModelSignalFn | None = None
+    score_fn: ScoreFn | None = None
     # The model artifact bound at load time for a needs_model strategy (issue #376) — fixed for the
     # whole run (PIT-safe), injected as the 3rd arg to `model_signal_fn`.
     model_handle: ModelHandle | None = None
@@ -143,8 +148,11 @@ class LoadedStrategy:
                     f"overlay_fns[{i}] is not the registered policy for {spec.policy!r} — "
                     f"identity would describe a chain that did not run"
                 )
-        # Three-way (fundamentals / news / model) exclusivity — a strategy uses exactly one PIT
-        # sidecar lane, or none.
+        if self.strategy_interface not in strategy_interfaces.SUPPORTED_STRATEGY_INTERFACES:
+            raise ValueError(f"unsupported strategy_interface {self.strategy_interface!r}")
+        context_interface = strategy_interfaces.uses_context_interface(self.strategy_interface)
+        # Legacy signals keep their three-way sidecar exclusivity. Context scorers are the reviewed
+        # integration seam that may declare simultaneous modalities.
         exclusive = [
             n for n, on in (
                 ("needs_fundamentals", cfg.needs_fundamentals),
@@ -152,11 +160,13 @@ class LoadedStrategy:
                 ("needs_model", cfg.needs_model),
             ) if on
         ]
-        if len(exclusive) > 1:
+        if not context_interface and len(exclusive) > 1:
             raise ValueError(
                 f"at most one of needs_fundamentals/needs_news/needs_model may be True; "
                 f"got {exclusive} (a strategy combining lanes is not supported yet)"
             )
+        if context_interface and self.signal_panel_fn is not None:
+            raise ValueError("signal_panel is not supported with context_v1")
         if cfg.needs_model and cfg.model_ref is None:
             raise ValueError("needs_model=True requires model_ref to be set")
         if not cfg.needs_model and cfg.model_ref is not None:
@@ -213,10 +223,12 @@ class LoadedStrategy:
             "fundamentals_signal_fn": self.fundamentals_signal_fn,
             "news_signal_fn": self.news_signal_fn,
             "model_signal_fn": self.model_signal_fn,
+            "score_fn": self.score_fn,
         }
         active = [k for k, v in decision_fns.items() if v is not None]
         expected = (
-            "fundamentals_signal_fn" if cfg.needs_fundamentals
+            "score_fn" if context_interface
+            else "fundamentals_signal_fn" if cfg.needs_fundamentals
             else "news_signal_fn" if cfg.needs_news
             else "model_signal_fn" if cfg.needs_model
             else "signal_fn"
@@ -245,10 +257,15 @@ class LoadedStrategy:
         return self.config.params
 
     @property
-    def authored_signal(self) -> SignalFn | FundamentalsSignalFn | NewsSignalFn | ModelSignalFn:
+    def authored_signal(
+        self,
+    ) -> SignalFn | FundamentalsSignalFn | NewsSignalFn | ModelSignalFn | ScoreFn:
         """The active authored signal fn — used wherever code needs the strategy's source module
         (e.g. code_hash), since signal_fn is None for a needs_fundamentals/needs_news/needs_model
         strategy."""
+        if strategy_interfaces.uses_context_interface(self.strategy_interface):
+            assert self.score_fn is not None
+            return self.score_fn
         if self.config.needs_fundamentals:
             assert self.fundamentals_signal_fn is not None
             return self.fundamentals_signal_fn
@@ -267,6 +284,10 @@ class LoadedStrategy:
         fundamentals: pd.DataFrame | None = None,
         news: pd.DataFrame | None = None,
     ) -> pd.Series:
+        if strategy_interfaces.uses_context_interface(self.strategy_interface):
+            raise ValueError(
+                f"strategy {self.name!r} uses score(context); the legacy signal seam is invalid"
+            )
         if self.config.needs_fundamentals:
             if fundamentals is None:
                 raise ValueError(
@@ -363,32 +384,9 @@ def config_hash(strategy: LoadedStrategy) -> str:
     digest is a 128-bit sha256 prefix (#341): collision-resistant for identity/gate use, not a
     collision-proof guarantee — two differing configs are astronomically unlikely, not provably
     unable, to collide."""
-    return strategy_config_hash(strategy.config)
+    return strategy_identity.loaded_config_hash(strategy)
 
 
 def strategy_config_hash(config: StrategyConfig) -> str:
     """:func:`config_hash` from the config alone (Story 1.3c: a frozen tenant loads no module)."""
-    identity: dict[str, Any] = {
-        "name": config.name,
-        "universe": config.universe,
-        "params": config.params,
-        "execution": asdict(config.execution),
-        "construction": config.construction,
-        "construction_params": config.construction_params,
-        "needs_fundamentals": config.needs_fundamentals,
-        "needs_news": config.needs_news,
-        # #345: sizes the walk-forward embargo and lives outside params/execution, so it is folded
-        # in explicitly — two runs with different declared lookbacks must never collide.
-        "feature_lookback": config.feature_lookback,
-    }
-    # Model identity (#376) folds in ONLY when needs_model is True (non-model hashes unchanged);
-    # the pinned model_ref's provenance_digest commits to the full training provenance.
-    if config.needs_model:
-        assert config.model_ref is not None
-        identity["needs_model"] = True
-        identity["model_ref"] = config.model_ref.as_dict()
-    # Overlays fold in ONLY when declared; policy ids, params AND order are identity.
-    if config.overlays:
-        identity["overlays"] = [spec.model_dump() for spec in config.overlays]
-    payload = json.dumps(identity, sort_keys=True, allow_nan=False)
-    return hashlib.sha256(payload.encode()).hexdigest()[:32]
+    return strategy_identity.strategy_config_hash(config)

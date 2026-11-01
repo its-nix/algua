@@ -1,4 +1,4 @@
-"""Read-only real-bars exercise for the research-only multimodal context seam.
+"""Read-only real-bars exercise for the multimodal research and canonical-backtest seams.
 
 News and model inputs are deliberately synthetic contract fixtures.  The emitted evidence is a
 mechanical interface check, never an alpha, qualification, PIT-universe, or forward-test claim.
@@ -17,33 +17,52 @@ from typing import Any
 
 import pandas as pd
 
-from algua.contracts.model_types import ModelRef
+from algua.backtest.engine import simulate
+from algua.contracts.model_types import ModelHandle, ModelRef
 from algua.contracts.strategy_context import AsOfContext
+from algua.contracts.types import ExecutionContract
 from algua.data.files import logical_bars_hash
 from algua.data.research_provenance import DataTier, decode_research_provenance
 from algua.data.serve import StoreBackedProvider
 from algua.data.store import DataStore
 from algua.models import register
+from algua.portfolio.construction import get_construction_policy
 from algua.research.multimodal_context import build_as_of_context, score_context
+from algua.strategies.base import LoadedStrategy, StrategyConfig, config_hash
 
 
 class _ExerciseStrategy:
     required_features = frozenset({"bars", "news"})
 
     def __init__(self, ref: ModelRef) -> None:
-        self.required_models: Mapping[str, ModelRef] = {"fixture_model": ref}
+        self.model_key = ref.name
+        self.required_models: Mapping[str, ModelRef] = {self.model_key: ref}
+        self.visible_article_ids: set[str] = set()
+        self.decision_count = 0
 
     def score(self, context: AsOfContext) -> pd.Series:
         bars = context.features["bars"].frame
         news = context.features["news"].frame
-        model = json.loads(context.models["fixture_model"].artifact_bytes)
+        model = json.loads(context.models[self.model_key].artifact_bytes)
         close = bars.pivot_table(index=bars.index, columns="symbol", values="adj_close")
-        momentum = close.iloc[-1].div(close.iloc[0]).sub(1.0)
-        visible_mentions = news.groupby("symbol").size().reindex(momentum.index, fill_value=0)
+        baseline = close.iloc[-1].rank(method="average", pct=True)
+        self.decision_count += 1
+        self.visible_article_ids.update(news["article_id"].astype(str))
+        visible_mentions = news.groupby("symbol").size().reindex(baseline.index, fill_value=0)
         fixture_bias = pd.Series(model["bias"], dtype="float64").reindex(
-            momentum.index, fill_value=0.0
+            baseline.index, fill_value=0.0
         )
-        return momentum + visible_mentions.astype("float64") * 0.001 + fixture_bias
+        return baseline + visible_mentions.astype("float64") * 0.001 + fixture_bias
+
+
+class _FixtureNewsProvider:
+    snapshot_id = "synthetic-news-fixture"
+
+    def __init__(self, frame: pd.DataFrame) -> None:
+        self.frame = frame
+
+    def get_news(self, symbols: list[str], end: datetime) -> pd.DataFrame:  # noqa: ARG002
+        return self.frame[self.frame["symbol"].isin(symbols)].copy()
 
 
 def _campaign_component(payload: dict[str, Any]) -> dict[str, Any]:
@@ -119,9 +138,12 @@ def run_exercise(manifest_path: Path, output_path: Path) -> dict[str, Any]:
         prefix="task2-model-fixture-", dir=output_path.parent
     ) as model_tmp:
         model_root = Path(model_tmp)
+        model_artifact = json.dumps(
+            {"bias": {symbol: 0.0 for symbol in symbols}}, sort_keys=True
+        ).encode()
         version = register(
             "exercise-fixture-model",
-            json.dumps({"bias": {symbol: 0.0 for symbol in symbols}}, sort_keys=True).encode(),
+            model_artifact,
             training_snapshot_id="synthetic-training-fixture",
             training_as_of=(first_decision - timedelta(days=1)).isoformat(),
             code_hash="synthetic-fixture-code",
@@ -146,9 +168,38 @@ def run_exercise(manifest_path: Path, output_path: Path) -> dict[str, Any]:
         scores = score_context(strategy, context)
         visible_news = context.features["news"].frame
 
+        engine_logic = _ExerciseStrategy(version.as_ref())
+        engine_config = StrategyConfig(
+            name="task2-engine-exercise",
+            universe=list(symbols),
+            execution=ExecutionContract(rebalance_frequency="1d", decision_lag_bars=1),
+            construction="equal_weight_positive",
+            needs_news=True,
+            needs_model=True,
+            model_ref=version.as_ref(),
+            feature_lookback=0,
+        )
+        loaded = LoadedStrategy(
+            config=engine_config,
+            strategy_interface="context_v1",
+            score_fn=engine_logic.score,
+            model_handle=ModelHandle(version=version, artifact_bytes=model_artifact),
+            construct_fn=get_construction_policy(engine_config.construction),
+        )
+        _, executed, _ = simulate(
+            loaded,
+            StoreBackedProvider(store, snapshot_id),
+            start,
+            end,
+            news_provider=_FixtureNewsProvider(news),
+        )
+        nonzero = executed.abs().sum(axis=1) > 0.0
+        first_execution = executed.index[nonzero][0]
+        sessions = executed.index
+
     evidence: dict[str, Any] = {
         "status": "pass",
-        "exercise": "research_only_multimodal_context",
+        "exercise": "canonical_backtest_multimodal_context",
         "claims": {
             "alpha": False,
             "qualification": False,
@@ -190,6 +241,17 @@ def run_exercise(manifest_path: Path, output_path: Path) -> dict[str, Any]:
             "count": len(scores),
             "finite": bool(pd.notna(scores).all()),
             "symbols": list(scores.index),
+        },
+        "backtest": {
+            "canonical_engine": True,
+            "config_hash": config_hash(loaded),
+            "decision_count": engine_logic.decision_count,
+            "executed_rows": int(nonzero.sum()),
+            "first_execution_session": pd.Timestamp(first_execution).isoformat(),
+            "future_known_excluded": "future" not in engine_logic.visible_article_ids,
+            "t_plus_1_preserved": bool(
+                (executed.iloc[0] == 0.0).all() and first_execution == sessions[1]
+            ),
         },
     }
     output_path.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n")
