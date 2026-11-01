@@ -265,7 +265,7 @@ it('opts into and renders metadata-bound evaluation, OOS, snapshot coverage, and
   const measuredRow = (await screen.findAllByTestId('board-row'))[1]
   const measured = within(measuredRow)
   expect(fetchMock).toHaveBeenCalledWith(
-    '/api/strategy-board?include_evidence=true',
+    '/api/strategy-board?include_evidence=true&research=true',
     { headers: { accept: 'application/json' } },
   )
   expect(measured.getByText(/metadata-bound only.*not payload or PIT proof/i)).toBeTruthy()

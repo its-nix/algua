@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from algua.registry.board_comparison import METRICS
 from algua.registry.db import MAX_PERSISTED_TRIALS
+from algua.registry.research_record import bind_research_record
 
 if TYPE_CHECKING:
     from algua.backtest.result import BacktestResult
@@ -139,7 +140,7 @@ def run_provenance_config(result: Any) -> dict[str, Any]:
 
 def record_walk_forward_run(
     repo: SqliteStrategyRepository | RunLedger, name: str, result: WalkForwardResult,
-    *, strategy_id: int | None = None,
+    *, strategy_id: int | None = None, research_inputs: dict[str, Any] | None = None,
 ) -> int:
     """Record one `walk_forward` run.
 
@@ -154,22 +155,27 @@ def record_walk_forward_run(
     resolved `StrategyRecord` — passes its own id, so a `walk_forward` run has ONE shape
     regardless of which command produced it.
     """
+    config = run_provenance_config(result) | {"comparison_context": {
+        "schema_version": "research-comparison/v1",
+        "protocol": "continuous_portfolio_tail_holdout", "metrics": METRICS,
+        "timeframe": result.timeframe, "period_start": result.period["start"],
+        "period_end": result.period["end"], "holdout_frac": result.holdout_frac,
+        "embargo": result.embargo,
+        "windows": [{k: w.get(k) for k in ("start", "end", "n_bars")}
+                    for w in result.window_metrics],
+        "oos": {k: result.holdout_metrics.get(k) for k in ("start", "end", "n_bars")},
+        "execution": getattr(result, "execution_semantics", None),
+    }}
+    metrics = walk_forward_metrics(result)
+    config["research_inputs"] = research_inputs
+    config["research_record"] = bind_research_record(
+        strategy_id, provenance_of(result), metrics, config)
     return repo.record_run(
         "walk_forward", name,
         strategy_id=strategy_id,
         provenance=provenance_of(result),
-        metrics=walk_forward_metrics(result),
-        config=run_provenance_config(result) | {"comparison_context": {
-            "schema_version": "research-comparison/v1",
-            "protocol": "continuous_portfolio_tail_holdout", "metrics": METRICS,
-            "timeframe": result.timeframe, "period_start": result.period["start"],
-            "period_end": result.period["end"], "holdout_frac": result.holdout_frac,
-            "embargo": result.embargo,
-            "windows": [{k: w.get(k) for k in ("start", "end", "n_bars")}
-                        for w in result.window_metrics],
-            "oos": {k: result.holdout_metrics.get(k) for k in ("start", "end", "n_bars")},
-            "execution": getattr(result, "execution_semantics", None),
-        }},
+        metrics=metrics,
+        config=config,
         components=list(_components_of(result)),
     )
 

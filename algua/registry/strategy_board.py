@@ -11,6 +11,7 @@ from typing import Any
 
 from algua.contracts.lifecycle import Stage
 from algua.registry.board_comparison import comparison_evidence
+from algua.registry.research_runs import RESEARCH_SCHEMA_VERSION, research_run_payload
 from algua.registry.run_provenance import recorded_run_evidence
 from algua.registry.store import SqliteStrategyRepository
 
@@ -253,6 +254,7 @@ def strategy_board_payload(
     repo: SqliteStrategyRepository,
     *,
     snapshot_evidence: SnapshotEvidenceResolver | None = None,
+    research: bool = False,
 ) -> dict[str, Any]:
     """`runs board` — every registered strategy once, in lifecycle order, with its latest gate run
     (or ``None``). An empty registry is a successful empty payload."""
@@ -273,7 +275,9 @@ def strategy_board_payload(
             "stage": row["stage"],
             "latest_gate": gate,
         }
-        if snapshot_evidence is not None:
+        if research:
+            entry.update(research_run_payload(repo, row["strategy_id"]))
+        elif snapshot_evidence is not None:
             if gate is None:
                 entry["evidence"] = entry["recorded_provenance"] = None
             else:
@@ -288,6 +292,8 @@ def strategy_board_payload(
         "count": len(board),
         "rows": board,
     }
-    if snapshot_evidence is not None:
+    if research:
+        payload["evidence_schema_version"] = RESEARCH_SCHEMA_VERSION
+    elif snapshot_evidence is not None:
         payload["evidence_schema_version"] = EVIDENCE_SCHEMA_VERSION
     return payload

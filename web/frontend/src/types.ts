@@ -528,6 +528,8 @@ export interface StrategyBoardRow {
   family: string | null
   stage: string
   latest_gate: StrategyBoardGate | null
+  latest_research?: (Omit<StrategyBoardGate, 'passed'> & { kind: 'walk_forward' }) | null
+  recorded_provenance?: unknown
   /** Absent on the legacy response; null when the selected identity has no usable gate. */
   evidence?: StrategyBoardEvidence | null
 }
@@ -538,7 +540,7 @@ export interface StrategyBoardRow {
 export interface StrategyBoardPayload {
   schema_version: 'strategy-board/v1'
   /** Present only for the explicit `include_evidence=true` extension. */
-  evidence_schema_version?: 'strategy-board-evidence/v2'
+  evidence_schema_version?: 'strategy-board-evidence/v2' | 'strategy-board-research/v1'
   count: number
   rows: StrategyBoardRow[]
 }

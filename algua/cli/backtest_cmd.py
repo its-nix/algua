@@ -18,7 +18,7 @@ from algua.evaluation.inputs import (
 from algua.evaluation.sweep_run import sweep_task
 from algua.registry.db import registry_conn
 from algua.registry.runs import record_walk_forward_run
-from algua.registry.store import SqliteStrategyRepository
+from algua.registry.store import SqliteStrategyRepository, StrategyNotFound
 from algua.tracking.factory import get_tracker
 from algua.tracking.record import record_tracking
 
@@ -31,7 +31,7 @@ app.add_typer(backtest_app, name="backtest")
 # but the per-combo `ranked` list and the `grid` (the headline combo is `best`).
 _WF_SUMMARY_KEYS = (
     "strategy", "data_source", "snapshot_id", "timeframe", "seed", "period", "windows",
-    "holdout_frac", "stability", "code_hash", "dependency_hash", "config_hash",
+    "holdout_frac", "stability", "code_hash", "dependency_hash", "config_hash", "recorded_run",
     "universe_name", "universe_snapshots", "fundamentals_snapshot", "news_snapshot",
     "bars_provenance", "execution_costs",
     "mlflow_run_id", "mlflow_tracking_error", "mlflow_tracking_skipped",
@@ -147,6 +147,11 @@ def walk_forward_cmd(
         else None
     )
     delisting_records, _delisting_prov = resolve_delisting_inputs(delistings, end_dt)
+    with registry_conn() as conn:
+        try:
+            strategy_id = SqliteStrategyRepository(conn).get(name).id
+        except StrategyNotFound:
+            strategy_id = None
     result = walk_forward(strategy, provider, start_dt, end_dt,
                           windows=windows, holdout_frac=holdout_frac, embargo=embargo,
                           universe_by_date=universe_by_date,
@@ -156,8 +161,12 @@ def walk_forward_cmd(
                           delisting_records=delisting_records,
                           assume_terminal_last_close=assume_terminal_last_close)
     with registry_conn() as conn:
-        record_walk_forward_run(SqliteStrategyRepository(conn), name, result)
+        run_id = record_walk_forward_run(
+            SqliteStrategyRepository(conn), name, result, strategy_id=strategy_id,
+            research_inputs={"delisting_snapshot": _delisting_prov,
+                             "assume_terminal_last_close": assume_terminal_last_close})
     payload = result.to_dict()
+    payload["recorded_run"] = {"run_id": run_id, "strategy_id": strategy_id, "kind": "walk_forward"}
     payload.pop("holdout_metrics")  # withhold the holdout (reserved for `research promote`)
     if track:
         record_tracking(payload, lambda: get_tracker().log_walk_forward(

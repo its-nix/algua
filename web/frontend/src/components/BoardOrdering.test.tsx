@@ -191,6 +191,9 @@ it('puts the short cohort identity first in the native option label', () => {
 
 it('directs compact-board comparison to the leaderboard without promising a hidden selector', () => {
   mount([row(1, -2), row(2, 0)], false, null, true)
+  expect(screen.getAllByRole('img', {
+    name: 'latest gate: worst walk-forward, mean walk-forward, OOS Sharpe',
+  })).toHaveLength(2)
   expect(screen.getByText(/Comparison is available on the leaderboard/i)).toBeTruthy()
   expect(screen.queryByText(/Select a matching cohort/i)).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: /board controls/i }))
@@ -198,4 +201,52 @@ it('directs compact-board comparison to the leaderboard without promising a hidd
   for (const name of ['oos sharpe', 'oos return', 'oos drawdown']) {
     expect(screen.getByRole('button', { name }).hasAttribute('disabled')).toBe(true)
   }
+})
+
+it('sorts ordinary WF research without a gate and preserves the exact run pointer', () => {
+  const rows = [row(1, -2), row(2, -1)].map(r => {
+    const { passed: _passed, ...metrics } = r.latest_gate
+    return { ...r, latest_gate: null, latest_research: { kind: 'walk_forward', ...metrics } }
+  })
+  const data = { schema_version: 'strategy-board/v1', evidence_schema_version: 'strategy-board-research/v1',
+    count: rows.length, rows } as unknown as StrategyBoardPayload
+  render(<MemoryRouter><StrategyBoardView query={{ data: { ok: true, fetched_at: '2026-01-01T00:00:00Z',
+    stale: false, data }, error: null, loading: false, refetch: () => {} }} /></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button', { name: /board controls/i }))
+  fireEvent.change(screen.getByRole('combobox', { name: 'comparison cohort' }),
+    { target: { value: 'a'.repeat(64) } })
+  const sort = screen.getByRole('button', { name: 'oos sharpe' })
+  expect(sort.hasAttribute('disabled')).toBe(false)
+  fireEvent.click(sort)
+  expect(names()).toEqual(['strategy_2', 'strategy_1'])
+  expect(screen.getAllByTestId('board-row')[0].getAttribute('href')).toBe('/strategy/2?research_run=102')
+  expect(screen.getAllByText(/WF research/).length).toBeGreaterThan(0)
+  expect(screen.queryByText('FAIL')).toBeNull()
+})
+
+it('labels ordinary recorded WF tails separately from gate lineage', () => {
+  const r = row(1, -2)
+  const { passed: _passed, ...metrics } = r.latest_gate
+  const data = { schema_version: 'strategy-board/v1', evidence_schema_version: 'strategy-board-research/v1',
+    count: 1, rows: [{ ...r, latest_gate: null, latest_research: { kind: 'walk_forward', ...metrics } }] } as unknown as StrategyBoardPayload
+  render(<MemoryRouter><StrategyBoardView query={{ data: { ok: true, fetched_at: '2026-01-01T00:00:00Z',
+    stale: false, data }, error: null, loading: false, refetch: () => {} }} /></MemoryRouter>)
+  expect(screen.getByText(/latest WF research run each/)).toBeTruthy()
+  expect(screen.getByText('recorded WF tail OOS')).toBeTruthy()
+  expect(screen.queryByText('lineage-valid OOS')).toBeNull()
+})
+
+it('names compact ordinary WF sparklines as research without claiming gate evidence', () => {
+  const rows = [row(1, -2), row(2, -1)].map(r => {
+    const { passed: _passed, ...metrics } = r.latest_gate
+    return { ...r, latest_gate: null, latest_research: { kind: 'walk_forward', ...metrics } }
+  })
+  const data = { schema_version: 'strategy-board/v1', evidence_schema_version: 'strategy-board-research/v1',
+    count: rows.length, rows } as unknown as StrategyBoardPayload
+  render(<MemoryRouter><StrategyBoardView compact query={{ data: { ok: true, fetched_at: '2026-01-01T00:00:00Z',
+    stale: false, data }, error: null, loading: false, refetch: () => {} }} /></MemoryRouter>)
+  expect(screen.queryAllByRole('img', { name: /latest gate/i })).toHaveLength(0)
+  expect(screen.getAllByRole('img', {
+    name: 'latest WF research: worst walk-forward, mean walk-forward, OOS Sharpe',
+  })).toHaveLength(2)
 })

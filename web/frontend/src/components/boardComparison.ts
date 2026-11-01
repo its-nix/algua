@@ -21,7 +21,7 @@ const REASONS = new Set([
   'recorded_inputs_unavailable', 'lineage_or_source_unavailable', 'comparison_context_absent',
   'invalid_recorded_context', 'unsupported_data_tier', 'invalid_source_metadata',
   'unsupported_modal_inputs', 'missing_artifact_identity', 'unsupported_metric_schema',
-  'invalid_canonical_lineage', 'metric_binding_mismatch', 'execution_context_absent',
+  'invalid_canonical_lineage', 'metric_binding_mismatch', 'execution_context_absent', 'research_record_absent',
 ])
 
 const SIMULATION_SETTINGS = {
@@ -117,10 +117,14 @@ export function contextKey(value: unknown): string {
   return JSON.stringify(value)
 }
 
+export function selectedMetrics(row: StrategyBoardRow) {
+  return Object.hasOwn(row, 'latest_research') ? row.latest_research ?? null : row.latest_gate
+}
+
 export type ObservedMetric = 'sharpe_oos' | 'total_return_oos' | 'max_drawdown_oos'
 export function observedOrder(rows: StrategyBoardRow[], metric: ObservedMetric): StrategyBoardRow[] {
   return [...rows].sort((a, b) => {
-    const x = a.latest_gate?.[metric], y = b.latest_gate?.[metric]
+    const x = selectedMetrics(a)?.[metric], y = selectedMetrics(b)?.[metric]
     if (x == null && y == null) return a.strategy_id - b.strategy_id
     if (x == null) return 1
     if (y == null) return -1
