@@ -117,6 +117,11 @@ def test_a_torn_final_line_does_not_blind_the_rollup(tmp_path) -> None:
     assert _status(tmp_path)["loops"]["research"]["health"] == "ok"
 
 
+def test_private_status_keeps_reading_tail_of_large_append_only_digest(tmp_path) -> None:
+    _digest(tmp_path, [_run(finished_at=NOW.isoformat(), report="x" * 4096)] * 300)
+    assert _status(tmp_path)["loops"]["research"]["health"] == "ok"
+
+
 # --- paper loop (session-gated) ---
 
 
