@@ -313,7 +313,7 @@ def test_board_include_evidence_composes_exact_manifest_read(tmp_path, monkeypat
     monkeypatch.setattr("algua.cli.runs_cmd.SnapshotProvenanceReader.resolve", no_current_manifest)
     payload = _json(runner.invoke(app, ["runs", "board", "--include-evidence"]))
 
-    assert payload["evidence_schema_version"] == "strategy-board-evidence/v1"
+    assert payload["evidence_schema_version"] == "strategy-board-evidence/v2"
     row, = payload["rows"]
     assert row["evidence"]["snapshot_provenance"] == {
         "status": "VALID", "reason": None,
@@ -358,7 +358,7 @@ def test_board_include_evidence_legacy_context_is_unknown(tmp_path, linked_legac
 
     payload = _json(runner.invoke(app, ["runs", "board", "--include-evidence"]))
 
-    assert payload["evidence_schema_version"] == "strategy-board-evidence/v1"
+    assert payload["evidence_schema_version"] == "strategy-board-evidence/v2"
     row, = payload["rows"]
     assert row["evidence"]["snapshot_provenance"] == {
         "status": "UNAVAILABLE", "reason": "provenance_absent", "value": None,

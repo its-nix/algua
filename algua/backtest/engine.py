@@ -12,6 +12,7 @@ from algua.backtest.context import ContextInputs
 from algua.backtest.decision_path import _decision_weights_fast_or_loop
 from algua.backtest.delisting import DelistingExitError, DelistingRecord, apply_delisting_exits
 from algua.backtest.errors import BacktestError
+from algua.backtest.execution_evidence import from_orders_recorded
 from algua.backtest.grid import adj_grid
 from algua.backtest.metrics import portfolio_metrics
 from algua.backtest.pit_view import (
@@ -214,7 +215,9 @@ def simulate(
         if isinstance(initial_cash, bool) or not isfinite(initial_cash) or initial_cash <= 0:
             raise BacktestError("initial_cash must be finite and positive")
         extra["init_cash"] = initial_cash
-    pf = vbt.Portfolio.from_orders(
+    pf = from_orders_recorded(
+        vbt.Portfolio.from_orders, decision_lag_bars=lag,
+        fill_basis="adjusted_close" if exec_grid is adj else "adjusted_open",
         close=adj_exec,
         size=weights_exec,
         size_type="targetpercent",
@@ -225,7 +228,6 @@ def simulate(
         slippage=run_inputs.execution_slippage,
         **extra,
     )
-
     if forced_exits:
         positions = pf.assets()
         for fe in forced_exits:
@@ -241,7 +243,6 @@ def simulate(
             raise BacktestError("non-finite returns after delisting exits")
 
     return pf, weights_exec, forced_exits
-
 
 # build_portfolio is the explicit public alias of the simulation step. walk_forward and
 # sweep import this (not a private helper).

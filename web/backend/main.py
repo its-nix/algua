@@ -25,6 +25,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
 from fastapi import FastAPI, Query, Request
+from fastapi import Path as ApiPath
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -295,12 +296,26 @@ def create_app() -> FastAPI:
         return await run_cli(*args, ttl_s=60.0)
 
     @app.get("/api/strategy-board")
-    async def strategy_board(include_evidence: bool = False) -> dict[str, Any]:
+    async def strategy_board(
+        include_evidence: bool = False, research: bool = False,
+    ) -> dict[str, Any]:
         # The typed boolean maps only to one fixed argv token; no query value reaches the CLI.
         args = ["runs", "board"]
         if include_evidence:
             args.append("--include-evidence")
+        if research:
+            args.append("--research")
         return await run_cli(*args, ttl_s=60.0)
+
+    @app.get("/api/strategy/{strategy_id}/research")
+    async def strategy_research(
+        strategy_id: Annotated[int, ApiPath(ge=1)],
+        run_id: Annotated[int | None, Query(ge=1)] = None,
+    ) -> dict[str, Any]:
+        args = ["runs", "research", str(strategy_id)]
+        if run_id is not None:
+            args.append(f"--run-id={run_id}")
+        return await run_cli(*args, ttl_s=30.0)
 
     @app.get("/api/runs/series")
     async def runs_series(ids: str) -> dict[str, Any]:

@@ -15,6 +15,31 @@ _CONTEXT = ("strategy_id", "snapshot_id", "data_source", "timeframe", "seed",
             "news_snapshot", "delisting_snapshot")
 
 
+def _unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _bad_constant(value: str) -> Any:
+    raise ValueError(f"nonfinite JSON constant: {value}")
+
+
+def _finite_float(raw: str) -> float:
+    value = float(raw)
+    if not math.isfinite(value):
+        raise ValueError("nonfinite JSON number")
+    return value
+
+
+def decode_json(raw: str) -> Any:
+    return json.loads(raw, object_pairs_hook=_unique, parse_constant=_bad_constant,
+                      parse_float=_finite_float)
+
+
 def _wrapper(status: str, reason: str | None, value: dict[str, Any] | None) -> dict[str, Any]:
     return {"status": status, "reason": reason, "value": value}
 
@@ -24,6 +49,13 @@ def _costs_valid(value: Any) -> bool:
         "schema_version", "model", "fees", "fees_unit", "slippage", "slippage_unit",
     }:
         return False
+    try:
+        return _valid_cost_values(value)
+    except OverflowError:
+        return False
+
+
+def _valid_cost_values(value: dict[str, Any]) -> bool:
     return (
         value["schema_version"] == "execution-costs/v1"
         and value["model"] == "vectorbt.from_orders"
@@ -42,7 +74,7 @@ def recorded_run_evidence(
     snapshot_absent = _wrapper("UNAVAILABLE", "provenance_absent", None)
     invalid = _wrapper("INVALID", "snapshot_binding_mismatch", None)
     try:
-        lineage = json.loads(gate["derived_from"])
+        lineage = decode_json(gate["derived_from"])
         if not isinstance(lineage, list) or not lineage:
             return absent, snapshot_absent
         if len(lineage) != 1 or type(lineage[0]) is not int:
@@ -63,7 +95,7 @@ def recorded_run_evidence(
         if any(not sibling[key] or not gate[key] for key in _CANONICAL_IDENTITIES):
             missing = _wrapper("UNAVAILABLE", "missing_fields", None)
             return missing, missing
-        config = json.loads(sibling["config_json"])
+        config = decode_json(sibling["config_json"])
         if not isinstance(config, dict):
             return invalid, invalid
         if "run_provenance" not in config:
@@ -82,5 +114,5 @@ def recorded_run_evidence(
                  "execution_costs": costs}
         return _wrapper("VALID" if costs is not None else "UNAVAILABLE",
                         None if costs is not None else "execution_costs_absent", value), snapshot
-    except (ValueError, TypeError, KeyError, RecursionError):
+    except (ValueError, TypeError, KeyError, OverflowError, RecursionError):
         return invalid, invalid

@@ -7,8 +7,8 @@ export default function Leaderboard() {
       <header className="leaderboard-intro">
         <h1>Strategy leaderboard</h1>
         <p>
-          Latest identity-bound out-of-sample evidence. Rows remain unranked because historical
-          cost and homogeneous comparison context are unavailable.
+          Latest identity-bound research evidence. Compare observed OOS metrics within a recorded cohort;
+          unknown and incompatible evidence stays unranked.
         </p>
       </header>
       <OperationalHealth updateHeader />

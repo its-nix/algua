@@ -12,6 +12,7 @@ import PassMark from '../components/PassMark'
 import ReturnOverlay from '../components/ReturnOverlay'
 import StageChip from '../components/StageChip'
 import TrialDistribution from '../components/TrialDistribution'
+import WalkForwardEvidence from '../components/WalkForwardEvidence'
 import { num, pct, utcDateTime } from '../format'
 import type {
   ApiEnvelope,
@@ -170,6 +171,8 @@ export default function StrategyDetail({
           </div>
         )}
       </section>
+
+      {expectedStrategyId !== undefined && <WalkForwardEvidence strategyId={expectedStrategyId} />}
 
       <div className="strategy-evidence-grid">
         <EvidenceDisclosure

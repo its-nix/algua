@@ -137,8 +137,8 @@ def test_board_reads_recorded_sibling_without_consulting_current_manifest(tmp_pa
     assert evidence["comparison"]["observed_metric_sort_enabled"] is False
     assert evidence["comparison"]["status"] == "UNKNOWN"
     assert evidence["comparison"]["reasons"] == [
-        "historical_cost_context_unavailable", "homogeneous_comparison_context_unavailable",
-    ]  # comparison-v1 stays conservative; row disclosure does not establish comparability
+        "lineage_or_source_unavailable",
+    ]  # recorded costs alone do not establish a comparable holdout
 
 
 @pytest.mark.parametrize("surface", ["backtest", "sweep"])

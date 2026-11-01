@@ -112,10 +112,11 @@ def test_walkforward_result_to_dict_has_expected_keys():
         "holdout_metrics", "stability", "code_hash", "dependency_hash",
         "universe_name", "universe_snapshots",
         "fundamentals_snapshot", "news_snapshot",
-        "bars_provenance", "execution_costs",
+        "bars_provenance", "execution_costs", "execution_semantics",
     }
     assert d["bars_provenance"] is None
     assert d["execution_costs"] is None
+    assert d["execution_semantics"] is None
 
 
 def test_sweep_result_to_dict_has_expected_keys():

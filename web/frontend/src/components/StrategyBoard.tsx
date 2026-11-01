@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, useFetch } from '../api'
 import type { UseFetchResult } from '../api'
@@ -12,25 +12,27 @@ import type {
   StrategyBoardOosEvidence,
   StrategyBoardSnapshotEvidence,
 } from '../types'
+import { contextKey, observedOrder, parseComparison, parseRecordedProvenance, selectedMetrics } from './boardComparison'
+import type { ObservedMetric, RecordedProvenance } from './boardComparison'
 import PassMark from './PassMark'
 import Sparkline from './Sparkline'
 import StaleNotice from './StaleNotice'
 import StageChip from './StageChip'
 
 const SCHEMA_VERSION = 'strategy-board/v1'
-const EVIDENCE_SCHEMA_VERSION = 'strategy-board-evidence/v1'
-export const STRATEGY_BOARD_EVIDENCE_URL = '/api/strategy-board?include_evidence=true'
+const EVIDENCE_SCHEMA_VERSION = 'strategy-board-evidence/v2'
+export const RESEARCH_SCHEMA_VERSION = 'strategy-board-research/v1'
+const supportedEvidence = (schema: unknown) => schema === EVIDENCE_SCHEMA_VERSION || schema === RESEARCH_SCHEMA_VERSION
+export const STRATEGY_BOARD_EVIDENCE_URL = '/api/strategy-board?include_evidence=true&research=true'
 
-type MetricKey = Exclude<keyof StrategyBoardGate, 'run_id' | 'created_at' | 'passed' | 'n_obs_oos'>
+type MetricKey = ObservedMetric
 
 interface SortOption {
   key: MetricKey
   label: string
 }
 
-/** Approved observed comparison axes. strategy-board/v1 lacks the period/tier metadata required
- * to compare them, so the controls remain visible but disabled until a reviewed contract carries
- * that metadata. No client-side ranking implementation exists in this slice. */
+/** Observed research metrics; enabled only after explicit same-cohort selection. */
 export const SORT_OPTIONS: SortOption[] = [
   { key: 'sharpe_oos', label: 'oos sharpe' },
   { key: 'total_return_oos', label: 'oos return' },
@@ -63,6 +65,21 @@ export function isBoardPayload(value: unknown): value is StrategyBoardPayload {
         (row.family !== null && typeof row.family !== 'string') || typeof row.stage !== 'string') {
       return false
     }
+    if (candidate.evidence_schema_version === RESEARCH_SCHEMA_VERSION) {
+      if (!Object.hasOwn(row, 'latest_research')) return false
+      const research = row.latest_research
+      if (research !== null) {
+        if (research === undefined || typeof research !== 'object' || Array.isArray(research)) return false
+        const r = research as Record<string, unknown>
+        if (!exactKeys(r, ['kind', 'run_id', 'created_at', 'sharpe_oos', 'total_return_oos',
+          'max_drawdown_oos', 'n_obs_oos', 'mean_window_sharpe', 'min_window_sharpe', 'pct_positive_windows']) ||
+          r.kind !== 'walk_forward' || !Number.isSafeInteger(r.run_id) || Number(r.run_id) < 1 ||
+          typeof r.created_at !== 'string' || !Number.isFinite(Date.parse(r.created_at)) ||
+          !['sharpe_oos', 'total_return_oos', 'max_drawdown_oos', 'mean_window_sharpe',
+            'min_window_sharpe', 'pct_positive_windows'].every(k => nullableFinite(r[k])) ||
+          !(r.n_obs_oos === null || (Number.isSafeInteger(r.n_obs_oos) && Number(r.n_obs_oos) >= 0))) return false
+      }
+    } else if (Object.hasOwn(row, 'latest_research')) return false
     if (row.latest_gate === null) return true
     if (typeof row.latest_gate !== 'object') return false
     const gate = row.latest_gate as Record<string, unknown>
@@ -116,6 +133,8 @@ export function StrategyBoardView({
   const [stage, setStage] = useState<string | null>(null)
   const [family, setFamily] = useState<string | null>(null)
   const [controlsOpen, setControlsOpen] = useState(false)
+  const [cohort, setCohort] = useState('')
+  const [order, setOrder] = useState<ObservedMetric | null>(null)
 
   const board = isBoardPayload(query.data?.data) ? query.data.data : undefined
 
@@ -143,7 +162,7 @@ export function StrategyBoardView({
   const evidenceSchema = (board as unknown as Record<string, unknown>).evidence_schema_version
 
   if (board.rows.length === 0 && evidenceSchema !== undefined &&
-      evidenceSchema !== EVIDENCE_SCHEMA_VERSION) {
+      !supportedEvidence(evidenceSchema)) {
     return (
       <>
         <StaleNotice env={query.data} />
@@ -183,6 +202,37 @@ export function StrategyBoardView({
     (activeStage === null || row.stage === activeStage) &&
     (activeFamily === null || (activeFamily === UNKNOWN_FAMILY ? row.family === null : row.family === activeFamily)),
   )
+  const parsedEvidence = new Map<number, ParsedEvidence | null>()
+  const comparisons = new Map<number, StrategyBoardComparisonEvidence>()
+  if (supportedEvidence(evidenceSchema)) for (const row of board.rows) {
+    const metrics = selectedMetrics(row)
+    const parsed = metrics === null ? null : parseEvidence(
+      row.evidence, metrics, (row as unknown as Record<string, unknown>).recorded_provenance,
+    )
+    parsedEvidence.set(row.strategy_id, parsed)
+    if (parsed?.comparison.status === 'COMPARABLE') comparisons.set(row.strategy_id, parsed.comparison)
+  }
+  const cohorts = new Map<string, { evidence: StrategyBoardComparisonEvidence; rows: StrategyBoardRow[]; conflict: boolean }>()
+  for (const row of board.rows) {
+    const comparison = comparisons.get(row.strategy_id)
+    if (!comparison?.cohort_id || !comparison.context) continue
+    const existing = cohorts.get(comparison.cohort_id)
+    if (existing) {
+      existing.rows.push(row)
+      existing.conflict ||= contextKey(existing.evidence.context) !== contextKey(comparison.context)
+    } else cohorts.set(comparison.cohort_id, { evidence: comparison, rows: [row], conflict: false })
+  }
+  const availableCohorts = [...cohorts.entries()].filter(([, c]) => !c.conflict && c.rows.length >= 2)
+  const activeCohort = !compact && !query.data?.stale && query.error === null
+    ? availableCohorts.find(([id]) => id === cohort)?.[1] : undefined
+  const candidates = activeCohort === undefined ? [] : visible.filter(row =>
+    comparisons.get(row.strategy_id)?.cohort_id === cohort)
+  const activeOrder = order !== null && candidates.filter(r => selectedMetrics(r)?.[order] != null).length >= 2
+    ? order : null
+  const ordered = activeOrder === null ? [] : observedOrder(candidates.filter(
+    r => selectedMetrics(r)?.[activeOrder] != null), activeOrder)
+  const orderedIds = new Set(ordered.map(r => r.strategy_id))
+  const remaining = visible.filter(r => !orderedIds.has(r.strategy_id))
   const familyLabel = activeFamily === UNKNOWN_FAMILY ? 'unknown family' : activeFamily ?? 'all families'
   return (
     <section aria-labelledby="strategy-board-heading">
@@ -193,20 +243,13 @@ export function StrategyBoardView({
       </h2>
       <div className="dim-note num">
         {activeStage === null && activeFamily === null ? board.count : `${visible.length} of ${board.count}`} strategies ·
-        latest gate run each
+        latest {evidenceSchema === RESEARCH_SCHEMA_VERSION ? 'WF research' : 'gate'} run each
       </div>
-      {compact ? (
-        <p className="board-disclosure">
-          Comparison UNKNOWN: historical cost and homogeneous context unavailable. Metric sorting
-          disabled; never promotion or expected profit.
-        </p>
-      ) : (
-        <p className="board-disclosure">
-          Exploratory evidence only — not a promotion signal or expected-profit claim. Historical
-          cost and homogeneous comparison context are unavailable, so metric sorting is disabled
-          and registry order is retained.
-        </p>
-      )}
+      <p className="board-disclosure">
+        {compact ? 'Comparison is available on the leaderboard with recorded context. ' :
+          'Exploratory research only. Select a matching cohort to order observed OOS metrics; other rows stay unranked. '}
+        Never promotion or expected profit. Paper/live results remain in their own detail sections.
+      </p>
 
       <button
         type="button"
@@ -276,41 +319,45 @@ export function StrategyBoardView({
             )}
           </div>
 
+          {!compact && <label className="board-cohort-control">
+            comparison cohort
+            <select aria-label="comparison cohort" value={cohort}
+              onChange={e => { setCohort(e.target.value); setOrder(null) }}>
+              <option value="">select cohort · lifecycle order</option>
+              {availableCohorts.map(([id, c]) => <option key={id} value={id}>
+                {id.slice(0, 8)} · {c.evidence.context?.timeframe} · {c.evidence.context?.oos.start}–{c.evidence.context?.oos.end}
+                {' · '}{c.rows.length} strategies
+              </option>)}
+            </select>
+          </label>}
+          {availableCohorts.length === 0 && <p className="dim-note">
+            No matching recorded cohort. Metric sorting disabled; missing context stays UNKNOWN.
+          </p>}
           <div className="chip-row" role="group" aria-label="comparison order">
-          <button
-            type="button"
-            className="filter-chip active"
-            aria-pressed="true"
-          >
-            lifecycle
-          </button>
-          {SORT_OPTIONS.map((opt) => (
-            <button
-              key={opt.key}
-              type="button"
-              className="filter-chip"
-              aria-pressed="false"
-              disabled
-              title="Unavailable: historical cost and homogeneous comparison context are absent"
-            >
-              {opt.label}
-            </button>
-          ))}
+            <button type="button" className={activeOrder === null ? 'filter-chip active' : 'filter-chip'}
+              aria-pressed={activeOrder === null} onClick={() => setOrder(null)}>lifecycle</button>
+            {SORT_OPTIONS.map(opt => <button key={opt.key} type="button"
+              className={activeOrder === opt.key ? 'filter-chip active' : 'filter-chip'}
+              aria-pressed={activeOrder === opt.key}
+              disabled={!activeCohort || candidates.filter(r => selectedMetrics(r)?.[opt.key] != null).length < 2}
+              title="Choose a cohort with at least two observed values; stale/error reads cannot be ordered"
+              onClick={() => setOrder(opt.key)}>{opt.label}</button>)}
           </div>
         </div>
       )}
 
+      {activeOrder !== null && <p className="board-disclosure">
+        Observed {SORT_OPTIONS.find(o => o.key === activeOrder)?.label} · descending
+        {' · '}NONPIT/current-survivor proxy · {ordered.length} strategies · historical research only
+      </p>}
       <div className="row-list">
-        {visible.length === 0 ? (
-          <div className="panel board-filter-empty">no strategies match this stage and family</div>
-        ) : visible.map((row) => (
-          <BoardRow
-            key={row.strategy_id}
-            row={row}
-            compact={compact}
-            evidenceSchema={evidenceSchema}
-          />
-        ))}
+        {visible.length === 0 ? <div className="panel board-filter-empty">no strategies match this stage and family</div>
+          : [...ordered, ...remaining].map((row, index) => <Fragment key={row.strategy_id}>
+            {activeOrder !== null && index === ordered.length &&
+              <h3 className="micro-label">Other cohorts and unranked</h3>}
+            <BoardRow row={row} compact={compact} evidenceSchema={evidenceSchema}
+              evidence={parsedEvidence.get(row.strategy_id) ?? null} />
+          </Fragment>)}
       </div>
     </section>
   )
@@ -328,16 +375,18 @@ function BoardRow({
   row,
   compact,
   evidenceSchema,
+  evidence,
 }: {
   row: StrategyBoardRow
   compact: boolean
   evidenceSchema: unknown
+  evidence: ParsedEvidence | null
 }) {
-  const gate = row.latest_gate
+  const gate = selectedMetrics(row)
   if (compact) {
     return (
       <Link
-        to={`/strategy/${row.strategy_id}`}
+        to={`/strategy/${row.strategy_id}${row.latest_research ? `?research_run=${row.latest_research.run_id}` : ''}`}
         aria-label={`View ${row.name} strategy details (ID ${row.strategy_id})`}
         className="board-row"
         data-testid="board-row"
@@ -348,24 +397,24 @@ function BoardRow({
           <span className="row-link board-name" data-testid="board-row-name">{row.name}</span>
           <StageChip stage={row.stage} />
         </div>
-        {gate === null ? <div className="dim-note">no usable gate evidence</div> : (
+        {gate === null ? <div className="dim-note">no usable {Object.hasOwn(row, 'latest_research') ? 'WF research' : 'gate'} evidence</div> : (
           <div className="board-rail">
             <BoardMetric label="oos" value={known(finite(gate.sharpe_oos), num)} />
             <BoardMetric label="wf" value={known(finite(gate.mean_window_sharpe), num)} />
             <Sparkline
               values={[finite(gate.min_window_sharpe), finite(gate.mean_window_sharpe), finite(gate.sharpe_oos)]}
-              label="latest gate: worst walk-forward, mean walk-forward, OOS Sharpe"
+              label={`latest ${'passed' in gate ? 'gate' : 'WF research'}: worst walk-forward, mean walk-forward, OOS Sharpe`}
             />
-            <PassMark passed={gate.passed} />
+            {'passed' in gate ? <PassMark passed={gate.passed} /> : <span className="stage-chip">WF research</span>}
           </div>
         )}
-        <BoardEvidence row={row} evidenceSchema={evidenceSchema} compact />
+        <BoardEvidence row={row} evidenceSchema={evidenceSchema} compact evidence={evidence} />
       </Link>
     )
   }
   return (
     <Link
-      to={`/strategy/${row.strategy_id}`}
+      to={`/strategy/${row.strategy_id}${row.latest_research ? `?research_run=${row.latest_research.run_id}` : ''}`}
       aria-label={`View ${row.name} strategy details (ID ${row.strategy_id})`}
       className="board-row"
       data-testid="board-row"
@@ -377,7 +426,7 @@ function BoardRow({
           <span className="row-link board-name" data-testid="board-row-name">{row.name}</span>
           <span className="board-identity num">ID {row.strategy_id} · {row.family ?? 'UNKNOWN family'}</span>
         </div>
-        <div className="board-tags"><StageChip stage={row.stage} />{gate !== null && <PassMark passed={gate.passed} />}</div>
+        <div className="board-tags"><StageChip stage={row.stage} />{gate !== null && ('passed' in gate ? <PassMark passed={gate.passed} /> : <span className="stage-chip">WF research</span>)}</div>
       </div>
       <div className="board-rail">
         <BoardMetric label="sharpe" value={known(finite(gate?.sharpe_oos), num)} />
@@ -389,8 +438,8 @@ function BoardRow({
         <span>observed {gate === null ? 'UNKNOWN' : utcDate(gate.created_at)}</span>
         <span>age UNKNOWN</span>
       </div>
-      {gate === null && <div className="dim-note">no usable gate evidence</div>}
-      <BoardEvidence row={row} evidenceSchema={evidenceSchema} compact={false} />
+      {gate === null && <div className="dim-note">no usable {Object.hasOwn(row, 'latest_research') ? 'WF research' : 'gate'} evidence</div>}
+      <BoardEvidence row={row} evidenceSchema={evidenceSchema} compact={false} evidence={evidence} />
     </Link>
   )
 }
@@ -533,20 +582,10 @@ function parseSnapshot(value: unknown): StrategyBoardSnapshotEvidence | null {
   return candidate as unknown as StrategyBoardSnapshotEvidence
 }
 
-function parseComparison(value: unknown): StrategyBoardComparisonEvidence | null {
-  const candidate = record(value)
-  const reasons = candidate?.reasons
-  return candidate !== null && exactKeys(
-    candidate, ['status', 'observed_metric_sort_enabled', 'reasons'],
-  ) && candidate.status === 'UNKNOWN' &&
-    candidate.observed_metric_sort_enabled === false && Array.isArray(reasons) &&
-    reasons.length === 2 && reasons[0] === 'historical_cost_context_unavailable' &&
-    reasons[1] === 'homogeneous_comparison_context_unavailable'
-    ? candidate as unknown as StrategyBoardComparisonEvidence
-    : null
-}
 
-function parseEvidence(value: unknown, gate: StrategyBoardGate): StrategyBoardEvidence | null {
+type ParsedEvidence = StrategyBoardEvidence & { recorded: RecordedProvenance | null }
+
+export function parseEvidence(value: unknown, gate: Pick<StrategyBoardGate, 'run_id' | 'n_obs_oos'>, recordedRaw: unknown): ParsedEvidence | null {
   const candidate = record(value)
   if (candidate === null || !exactKeys(candidate, [
     'run_id', 'evaluation', 'oos_interval', 'snapshot_provenance', 'comparison',
@@ -569,12 +608,26 @@ function parseEvidence(value: unknown, gate: StrategyBoardGate): StrategyBoardEv
   const snapshot = rawSnapshot?.status === 'VALID' && rawSnapshotValue?.data_tier === 'verified_pit'
     ? { status: 'INVALID' as const, reason: 'pit_verifier_unavailable', value: null }
     : parseAtomic(candidate.snapshot_provenance, parseSnapshot)
+  const recorded = parseRecordedProvenance(recordedRaw)
+  const c = comparison.context
+  if (comparison.status === 'COMPARABLE' && (c === null || evaluation.value === null ||
+      oos.value === null || snapshot.value === null || recorded === null ||
+      recorded.bars_snapshot_id !== c.snapshot_id || recorded.bars_content_hash !== c.content_hash ||
+      contextKey(recorded.execution_costs) !== contextKey(c.execution_costs) ||
+      evaluation.value.metric_schema_version !== 1 || c.period_start !== evaluation.value.period_start ||
+      c.period_end !== evaluation.value.period_end || c.timeframe !== evaluation.value.timeframe ||
+      c.oos.start !== oos.value.holdout_start || c.oos.end !== oos.value.holdout_end ||
+      c.oos.n_bars !== oos.value.n_bars || parseSnapshot(c.source) === null ||
+      contextKey(c.source) !== contextKey(snapshot.value) ||
+      c.windows[0].start < snapshot.value.coverage_start || c.oos.end > snapshot.value.coverage_end ||
+      snapshot.value.data_tier !== 'pilot_real_proxy')) return null
   return {
     run_id: gate.run_id,
     evaluation,
     oos_interval: oos,
     snapshot_provenance: snapshot,
     comparison,
+    recorded,
   }
 }
 
@@ -599,26 +652,28 @@ function AtomicUnavailable({
   )
 }
 
-function BoardEvidence({
+export function BoardEvidence({
   row,
   evidenceSchema,
   compact,
+  evidence,
 }: {
   row: StrategyBoardRow
   evidenceSchema: unknown
   compact: boolean
+  evidence: ParsedEvidence | null
 }) {
   // Research already has its own dense decision/evidence surfaces. Keep this secondary inventory
   // lean; the primary leaderboard renders the complete evidence ledger and every limitation.
   if (compact) return null
-  const gate = row.latest_gate
+  const gate = selectedMetrics(row)
   const hasEvidenceMember = Object.hasOwn(row, 'evidence')
   if (evidenceSchema === undefined) {
     return hasEvidenceMember
       ? <div className="board-evidence-summary">evidence INVALID · evidence schema missing</div>
       : <div className="board-evidence-summary">evidence extension unavailable · no inference</div>
   }
-  if (evidenceSchema !== EVIDENCE_SCHEMA_VERSION) {
+  if (!supportedEvidence(evidenceSchema)) {
     return <div className="board-evidence-summary">evidence INVALID · unsupported evidence schema</div>
   }
   if (!hasEvidenceMember) {
@@ -627,14 +682,14 @@ function BoardEvidence({
   const rawEvidence = (row as unknown as Record<string, unknown>).evidence
   if (gate === null) {
     return rawEvidence === null
-      ? <div className="board-evidence-summary">evidence unavailable · no identity-bound gate run</div>
-      : <div className="board-evidence-summary">evidence INVALID · evidence supplied without a latest gate</div>
+      ? <div className="board-evidence-summary">evidence unavailable · no identity-bound research run</div>
+      : <div className="board-evidence-summary">evidence INVALID · evidence supplied without {Object.hasOwn(row, 'latest_research') ? 'a selected WF run' : 'a latest gate'}</div>
   }
-  const evidence = parseEvidence(rawEvidence, gate)
   if (evidence === null) {
     return <div className="board-evidence-summary">evidence INVALID · run-bound response malformed</div>
   }
   const snapshot = evidence.snapshot_provenance
+  const costs = evidence.recorded?.execution_costs ?? null
   return (
     <div className="board-evidence" data-testid="board-evidence">
       <div className="board-evidence-trust">
@@ -654,10 +709,10 @@ function BoardEvidence({
           </div>
         )}
         {evidence.oos_interval.value === null ? (
-          <AtomicUnavailable label="lineage-valid OOS" evidence={evidence.oos_interval} />
+          <AtomicUnavailable label={row.latest_research ? 'recorded WF tail OOS' : 'lineage-valid OOS'} evidence={evidence.oos_interval} />
         ) : (
           <div className="board-evidence-field">
-            <span className="board-evidence-label">lineage-valid OOS</span>
+            <span className="board-evidence-label">{row.latest_research ? 'recorded WF tail OOS' : 'lineage-valid OOS'}</span>
             <span className="num">
               {evidence.oos_interval.value.holdout_start}–{evidence.oos_interval.value.holdout_end} ·{' '}
               {evidence.oos_interval.value.n_bars} bars
@@ -693,8 +748,28 @@ function BoardEvidence({
           </>
         )}
       </div>
+      {costs !== null && evidence.comparison.status === 'UNKNOWN' && <div className="board-evidence-comparison">
+        <div>Recorded fees {costs.fees} of trade notional/side</div>
+        <div>slippage {costs.slippage} adverse price fraction/side · {costs.model}</div>
+      </div>}
       <div className="board-evidence-comparison">
-        comparison UNKNOWN · {evidence.comparison.reasons.map(reasonLabel).join(' · ')}
+        {evidence.comparison.status === 'COMPARABLE' && evidence.comparison.context !== null ? <>
+          Research cohort {evidence.comparison.cohort_id?.slice(0, 8)} · NONPIT/current-survivor proxy
+          <div>Continuous portfolio tail holdout · {evidence.comparison.context.windows.length} windows
+            {' · '}embargo {evidence.comparison.context.embargo} bars
+            {' · '}holdout fraction {evidence.comparison.context.holdout_frac}</div>
+          <div>Net daily returns · Sharpe √252, rf 0, sample std · compounded return · drawdown ≤ 0</div>
+          <div>Fees {evidence.comparison.context.execution_costs.fees} of trade notional/side
+            {' · '}slippage {evidence.comparison.context.execution_costs.slippage} adverse price fraction/side
+            {' · '}vectorbt.from_orders</div>
+          <div>Lag {evidence.comparison.context.execution.decision_lag_bars} bars
+            {' · '}fill {evidence.comparison.context.execution.fill_basis.replaceAll('_', ' ')}
+            {' · '}valuation {evidence.comparison.context.execution.valuation_basis.replaceAll('_', ' ')}
+            {' · '}vendor-adjusted units · fractional target weights · cash shared
+            {' · '}initial simulated cash {evidence.comparison.context.execution.initial_cash}</div>
+          <div>Snapshot {evidence.comparison.context.snapshot_id}
+            {' · '}selected {row.latest_research ? 'WF research' : 'research gate'} run <span className="num">{gate.run_id}</span></div>
+        </> : <>comparison UNKNOWN · {evidence.comparison.reasons.map(reasonLabel).join(' · ')}</>}
       </div>
     </div>
   )

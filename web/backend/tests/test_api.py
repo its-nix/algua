@@ -661,7 +661,7 @@ async def test_strategy_board_include_evidence_forwards_only_the_fixed_flag(
     envelope = _env(
         {
             "schema_version": "strategy-board/v1",
-            "evidence_schema_version": "strategy-board-evidence/v1",
+            "evidence_schema_version": "strategy-board-evidence/v2",
             "count": 0,
             "rows": [],
         }
@@ -879,3 +879,25 @@ async def test_runs_series_cli_error_is_502(monkeypatch: pytest.MonkeyPatch) -> 
         resp = await client.get("/api/runs/series", params={"ids": "1"})
     assert resp.status_code == 502
     assert resp.json()["code"] == "cli_timeout"
+
+
+async def test_ordinary_research_board_and_exact_identity_detail(monkeypatch: pytest.MonkeyPatch):
+    envelope = _env({"strategy_id": 7, "latest_research": {"kind": "walk_forward", "run_id": 12}})
+    seen = _route_cli(monkeypatch, {
+        ("runs", "board", "--include-evidence", "--research"): envelope,
+        ("runs", "research", "7", "--run-id=12"): envelope,
+    })
+    async with _client() as client:
+        board = await client.get("/api/strategy-board?include_evidence=true&research=true")
+        detail = await client.get("/api/strategy/7/research?run_id=12")
+    assert board.status_code == detail.status_code == 200
+    assert detail.json() == board.json() == envelope
+    assert seen == [("runs", "board", "--include-evidence", "--research"),
+                    ("runs", "research", "7", "--run-id=12")]
+
+
+@pytest.mark.parametrize("url", ["/api/strategy/0/research", "/api/strategy/7/research?run_id=0",
+                                  "/api/strategy-board?research=maybe"])
+async def test_research_read_rejects_invalid_inputs(url):
+    async with _client() as client:
+        assert (await client.get(url)).status_code == 422
