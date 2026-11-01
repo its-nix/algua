@@ -1,0 +1,18 @@
+import OperationalHealth from '../components/OperationalHealth'
+import StrategyBoard from '../components/StrategyBoard'
+
+export default function Leaderboard() {
+  return (
+    <div className="leaderboard-page">
+      <header className="leaderboard-intro">
+        <h1>Strategy leaderboard</h1>
+        <p>
+          Latest identity-bound out-of-sample evidence. Rows remain unranked because historical
+          cost and homogeneous comparison context are unavailable.
+        </p>
+      </header>
+      <OperationalHealth updateHeader />
+      <StrategyBoard />
+    </div>
+  )
+}

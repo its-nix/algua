@@ -9,6 +9,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from algua.backtest.benchmark import (
+    market_return_series,
+    market_return_series_from_bars,
+)
 from algua.backtest.delisting import DelistingRecord
 from algua.backtest.engine import (
     adj_grid,
@@ -17,13 +21,16 @@ from algua.backtest.engine import (
 )
 from algua.backtest.errors import BacktestError
 from algua.backtest.metrics import metrics_from_returns
-from algua.backtest.pit_view import members_as_of
 from algua.backtest.result import config_hash, provenance
+from algua.backtest.run_inputs import RunInputBundle, capture_run_inputs
 from algua.backtest.stamps import runtime_stamps
 from algua.contracts.types import DataProvider, FundamentalsProvider, NewsProvider
 from algua.strategies.base import LoadedStrategy
 
 _MIN_WINDOW_BARS = 5
+
+# Historical direct-test/import seam. Production walk_forward uses the captured-bars function.
+_market_return_series = market_return_series
 
 
 def _segment_bounds(
@@ -159,50 +166,6 @@ class WalkForwardResult:
                 if f.name not in ("holdout_returns", "market_returns")}
 
 
-def _market_return_series(
-    strategy: LoadedStrategy,
-    provider: DataProvider,
-    start: datetime,
-    end: datetime,
-    universe_by_date: Mapping[date, Collection[str]] | None,
-) -> tuple[list[float], list[str]] | None:
-    """Equal-weighted cross-sectional daily return of the universe (PIT: same provider/snapshot as
-    the backtest). Returns (returns, ISO-dates) over the FULL period, or None on any failure.
-
-    Uses the SAME provider and universe_by_date the backtest used (PIT-identical — a second read
-    of the same immutable snapshot). The series spans the FULL period (not just the holdout) so a
-    later 21-bar trailing vol has lookback for every holdout date (#221 Slice 4).
-    """
-    try:
-        symbols = fetch_symbols(strategy, universe_by_date)
-        bars = provider.get_bars(symbols, start, end, "1d")
-        adj = adj_grid(bars)                          # (dates x symbols) adj_close panel
-        daily = adj.pct_change()
-        if universe_by_date is not None:
-            # PIT masking: apply the SAME as-of membership the engine uses in _decision_weights
-            # so the benchmark never includes symbols before their effective-date join.
-            # Non-members at date t are set to NaN so pandas .mean(axis=1) skips them,
-            # correctly averaging only the as-of members at each bar. Reuses members_as_of
-            # (the shared public as-of helper in `algua.backtest.pit_view`) — no reinvention
-            # of the masking logic.
-            masked = daily.copy()
-            for ts in daily.index:
-                members = members_as_of(universe_by_date, ts)
-                non_members = [c for c in daily.columns if c not in members]
-                if non_members:
-                    masked.loc[ts, non_members] = float("nan")
-            xs = masked.mean(axis=1).dropna()
-        else:
-            # Static universe: no masking needed — current behavior is correct.
-            xs = daily.mean(axis=1).dropna()
-        if xs.empty:
-            return None
-        return ([float(x) for x in xs.to_numpy()],
-                [str(idx.date()) for idx in xs.index])
-    except Exception:
-        return None
-
-
 def _segment_record(returns: pd.Series, start_i: int, end_i: int) -> dict[str, Any]:
     seg = returns.iloc[start_i:end_i]
     rec: dict[str, Any] = {
@@ -246,6 +209,7 @@ def walk_forward(
     news_provider: NewsProvider | None = None,
     delisting_records: Mapping[str, list[DelistingRecord]] | None = None,
     assume_terminal_last_close: bool = False,
+    _run_inputs: RunInputBundle | None = None,
 ) -> WalkForwardResult:
     """Run the strategy once, then segment its return series into K windows + a final holdout,
     separated by an ``embargo``-bar purge gap (issue #345).
@@ -278,6 +242,16 @@ def walk_forward(
     # consumes them); the `_reject_pit_sidecar` guard is removed here — unblocking needs_* in
     # walk-forward is the point of #132 slice 4 (the engine still fails closed if a needs_*
     # strategy is run without its provider).
+    run_inputs = _run_inputs or capture_run_inputs(
+        strategy,
+        provider,
+        fetch_symbols(strategy, universe_by_date),
+        start,
+        end,
+        fundamentals_provider=fundamentals_provider,
+        news_provider=news_provider,
+        include_provenance=True,
+    )
     pf, _weights, _forced = build_portfolio(
         strategy, provider, start, end,
         universe_by_date=universe_by_date,
@@ -285,10 +259,10 @@ def walk_forward(
         news_provider=news_provider,
         delisting_records=delisting_records,
         assume_terminal_last_close=assume_terminal_last_close,
+        _run_inputs=run_inputs,
     )
-    # Compute the full-period benchmark series immediately after build_portfolio (same provider +
-    # universe_by_date — PIT-identical, a second read of the same immutable snapshot). Never raises.
-    market_returns = _market_return_series(strategy, provider, start, end, universe_by_date)
+    # Benchmark is derived from a sibling materialization of the captured authority. Never refetch.
+    market_returns = market_return_series_from_bars(run_inputs.bars(), universe_by_date)
     returns = pf.returns()
     bounds, holdout = _segment_bounds(len(returns), windows, holdout_frac, embargo)
 
@@ -305,7 +279,15 @@ def walk_forward(
         "pct_positive_windows": float(positive / len(window_metrics)),
     }
     stamps = runtime_stamps()
-    prov = provenance(provider, seed)
+    # Keep the historical monkeypatch seam before the holdout burn, while supplying every mutable
+    # provider-derived field from the already captured authority.
+    prov = provenance(
+        provider,
+        seed,
+        data_source=run_inputs.data_source,
+        snapshot_id=run_inputs.bars_snapshot_id,
+        provider_seed=run_inputs.provider_seed,
+    )
     cfg_hash = config_hash(strategy)
 
     # Holdout STATISTIC + single-use burn: the holdout metric is evaluated on the NEXT line, so any
@@ -336,11 +318,10 @@ def walk_forward(
         universe_name=universe_name,
         universe_snapshots=universe_snapshots,
         fundamentals_snapshot=(
-            getattr(fundamentals_provider, "snapshot_id", None)
-            if strategy.config.needs_fundamentals else None),
-        news_snapshot=(
-            getattr(news_provider, "snapshot_id", None)
-            if strategy.config.needs_news else None),
+            run_inputs.fundamentals_snapshot_id
+            if strategy.config.needs_fundamentals else None
+        ),
+        news_snapshot=(run_inputs.news_snapshot_id if strategy.config.needs_news else None),
         holdout_returns=holdout_returns,
         market_returns=market_returns,
         **prov,

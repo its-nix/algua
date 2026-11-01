@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { ApiError, formatTimestamp, useFetch } from '../api'
 import { useSetFetchedAt } from '../App'
 import EquityChart, { drawableSeriesPointCount } from '../components/EquityChart'
@@ -24,14 +24,29 @@ import type {
 import { deriveStrategyDecision } from './strategyDecision'
 import type { SeriesEvidenceState } from './strategyDecision'
 
-export default function StrategyDetail() {
-  const { name = '' } = useParams()
+interface StrategyDetailProps {
+  strategyName?: string
+  expectedStrategyId?: number
+  onIdentityRetry?: () => void
+}
+
+export default function StrategyDetail({
+  strategyName,
+  expectedStrategyId,
+  onIdentityRetry,
+}: StrategyDetailProps) {
+  const { name: routeName = '' } = useParams()
+  const name = strategyName ?? routeName
   const enc = encodeURIComponent(name)
   const detail = useFetch<StrategyDetailResponse>(`/api/strategy/${enc}`)
-  const series = useFetch<ApiEnvelope<SeriesPayload>>(`/api/strategy/${enc}/series`)
+  const identityVerified = expectedStrategyId === undefined ||
+    detail.data?.registry?.id === expectedStrategyId
+  const series = useFetch<ApiEnvelope<SeriesPayload>>(
+    identityVerified ? `/api/strategy/${enc}/series` : null,
+  )
   const setFetchedAt = useSetFetchedAt()
 
-  const fetchedAt = detail.data?.fetched_at ?? null
+  const fetchedAt = identityVerified ? (detail.data?.fetched_at ?? null) : null
   useEffect(() => {
     setFetchedAt(fetchedAt)
     return () => setFetchedAt(null)
@@ -55,8 +70,29 @@ export default function StrategyDetail() {
     )
   }
 
+  const retryIdentity = () => {
+    onIdentityRetry?.()
+    detail.refetch()
+  }
   const d = detail.data
   const registry = d.registry
+  if (expectedStrategyId !== undefined && registry === null) {
+    return (
+      <IdentityError
+        message="strategy identity unverified"
+        onRetry={retryIdentity}
+      />
+    )
+  }
+  if (expectedStrategyId !== undefined && registry !== null &&
+      registry.id !== expectedStrategyId) {
+    return (
+      <IdentityError
+        message="strategy identity mismatch"
+        onRetry={retryIdentity}
+      />
+    )
+  }
   const paper = d.paper
   const gates = d.gates
   const partErrors = d.part_errors ?? {}
@@ -192,6 +228,17 @@ export default function StrategyDetail() {
         </EvidenceDisclosure>
       </div>
     </main>
+  )
+}
+
+function IdentityError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <section className="panel error-panel">
+      <span className="micro-label">strategy unavailable</span>
+      <div className="error-code">{message}</div>
+      <button type="button" className="retry-btn" onClick={onRetry}>retry</button>
+      <Link to="/" className="text-link">back to leaderboard</Link>
+    </section>
   )
 }
 

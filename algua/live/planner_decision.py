@@ -13,9 +13,13 @@ import pandas as pd
 
 from algua.contracts.planner import PLANNER_PROTOCOL_VERSION
 from algua.contracts.types import OrderIntent, Side
+from algua.portfolio.allocator import PortfolioConstraints, RiskEstimate, allocate_targets
 from algua.risk.limits import WEIGHT_TOL, check_finite_weights, validate_decision_weights
 
 if TYPE_CHECKING:
+    from collections.abc import Collection, Mapping, Sequence
+
+    from algua.contracts.types import ExecutionContract
     from algua.strategies.base import LoadedStrategy
 
 
@@ -119,3 +123,38 @@ def decide(
 ) -> tuple[pd.Series, list[OrderIntent]]:
     result = plan(strategy, PlannerInput(view, current_weights, decision_ts))
     return result.weights, result.intents
+
+
+def plan_portfolio(
+    strategies: Mapping[str, pd.Series],
+    budgets: Mapping[str, float],
+    constraints: PortfolioConstraints,
+    inputs: PlannerInput,
+    *,
+    execution: ExecutionContract,
+    allowed_symbols: Collection[str],
+    risk_estimates: Mapping[str, Sequence[RiskEstimate]] | None = None,
+) -> PlannerResult:
+    """Pure PLAN for explicit qualified sleeve targets, with no broker or registry authority.
+
+    Callers first produce sleeve targets through their existing as-of strategy planners. This
+    function does not evaluate signals, qualify candidates, or schedule/order a runtime tick.
+    """
+    if (
+        type(inputs.protocol_version) is not int
+        or inputs.protocol_version != PLANNER_PROTOCOL_VERSION
+    ):
+        raise ValueError(f"unsupported planner protocol: {inputs.protocol_version!r}")
+    if execution.capacity is not None:
+        raise ValueError("portfolio PLAN does not support account capacity contracts")
+    weights = allocate_targets(
+        strategies, budgets, constraints,
+        current_weights=(pd.Series(inputs.current_weights) if inputs.current_weights
+                         else pd.Series(dtype="float64")),
+        as_of=inputs.decision_ts, risk_estimates=risk_estimates,
+    )
+    weights = canonical_weights(weights, "portfolio")
+    validate_decision_weights(weights, execution, "portfolio", allowed_symbols=allowed_symbols)
+    return PlannerResult(
+        weights, build_intents(weights, inputs.current_weights, inputs.decision_ts)
+    )

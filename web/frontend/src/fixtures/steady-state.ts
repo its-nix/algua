@@ -421,32 +421,71 @@ const BOARD_STAGE_ORDER = [
  * identity (`strategy_id`). The three research-stage seeds have no gate run — `latest_gate: null`
  * is the explicit "no evidence" the board must render, not a missing row. */
 export const BOARD: ApiEnvelope<StrategyBoardPayload> = (() => {
+  // DEMO/TEST VALUES ONLY. They exercise finite, zero and missing UI states and are never
+  // inferred from yfinance or presented as production evidence. The evidence extension labels
+  // them `synthetic_fixture` and repeats every limitation in the rendered UI.
+  const demoReturns = [0.08, 0, -0.03, 0.14, null]
+  const demoDrawdowns = [-0.06, -0.11, 0, -0.18, null]
   const rows = SEEDS.map((s, i): StrategyBoardRow => {
     const run = runs
       .filter((r) => r.kind === 'gate' && r.strategy_id === s.id)
       .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id)[0]
     const oos = run?.sharpe_oos ?? null
+    const nObs = i % 5 === 4 ? null : 126 + i
+    const latestGate = run === undefined
+      ? null
+      : {
+          run_id: run.id,
+          created_at: run.created_at,
+          passed: run.passed === null ? null : run.passed === true || run.passed === 1,
+          sharpe_oos: oos,
+          total_return_oos: oos === null ? null : demoReturns[i % demoReturns.length],
+          max_drawdown_oos: oos === null ? null : demoDrawdowns[i % demoDrawdowns.length],
+          // One run carries no holdout length: the nullable-metric path stays exercised.
+          n_obs_oos: nObs,
+          mean_window_sharpe: run.mean_window_sharpe,
+          min_window_sharpe: typeof run.min_window_sharpe === 'number' ? run.min_window_sharpe : null,
+          pct_positive_windows: 0.5 + (i % 4) * 0.125,
+        }
     return {
       strategy_id: s.id,
       name: s.name,
       family: s.family,
       stage: s.stage,
-      latest_gate:
-        run === undefined
-          ? null
+      latest_gate: latestGate,
+      evidence: latestGate === null ? null : {
+        run_id: latestGate.run_id,
+        evaluation: {
+          status: 'VALID', reason: null,
+          value: {
+            period_start: '2024-08-27', period_end: '2026-08-26', timeframe: '1d',
+            metric_schema_version: 1,
+          },
+        },
+        oos_interval: nObs === null
+          ? { status: 'UNAVAILABLE', reason: 'missing_run_oos_count', value: null }
           : {
-              run_id: run.id,
-              created_at: run.created_at,
-              passed: run.passed === null ? null : run.passed === true || run.passed === 1,
-              sharpe_oos: oos,
-              total_return_oos: oos === null ? null : Number((oos * 0.12).toFixed(4)),
-              max_drawdown_oos: oos === null ? null : Number((-0.04 - oos * 0.05).toFixed(4)),
-              // One run carries no holdout length: the nullable-metric path stays exercised.
-              n_obs_oos: i % 5 === 4 ? null : 126 + i,
-              mean_window_sharpe: run.mean_window_sharpe,
-              min_window_sharpe: typeof run.min_window_sharpe === 'number' ? run.min_window_sharpe : null,
-              pct_positive_windows: 0.5 + (i % 4) * 0.125,
+              status: 'VALID', reason: null,
+              value: { holdout_start: '2026-02-27', holdout_end: '2026-08-26', n_bars: nObs },
             },
+        snapshot_provenance: {
+          status: 'VALID', reason: null,
+          value: {
+            schema_version: 'pilot-provenance/v1', data_tier: 'synthetic_fixture',
+            universe_method: 'deterministic_demo_symbols',
+            limitations: ['synthetic_not_market_data'],
+            coverage_start: '2024-08-20', coverage_end: '2026-08-26',
+            provider: 'deterministic_fixture_generator',
+          },
+        },
+        comparison: {
+          status: 'UNKNOWN', observed_metric_sort_enabled: false,
+          reasons: [
+            'historical_cost_context_unavailable',
+            'homogeneous_comparison_context_unavailable',
+          ],
+        },
+      },
     }
   })
   rows.sort(
@@ -459,8 +498,23 @@ export const BOARD: ApiEnvelope<StrategyBoardPayload> = (() => {
       a.strategy_id - b.strategy_id
     },
   )
-  return envelope({ schema_version: 'strategy-board/v1' as const, count: rows.length, rows })
+  return envelope({
+    schema_version: 'strategy-board/v1' as const,
+    evidence_schema_version: 'strategy-board-evidence/v1' as const,
+    count: rows.length,
+    rows,
+  })
 })()
+
+/** Default endpoint fixture: the evidence extension remains strictly opt-in. */
+export const LEGACY_BOARD: ApiEnvelope<StrategyBoardPayload> = {
+  ...BOARD,
+  data: {
+    schema_version: 'strategy-board/v1',
+    count: BOARD.data.count,
+    rows: BOARD.data.rows.map(({ evidence: _evidence, ...row }) => row),
+  },
+}
 
 export const RUNS: ApiEnvelope<RunsListPayload> = envelope({
   count: runs.length,

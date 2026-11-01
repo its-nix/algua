@@ -15,16 +15,18 @@ import { readFileSync, existsSync } from 'node:fs'
 import { extname, join, normalize } from 'node:path'
 import { chromium } from 'playwright'
 
-const ROUTES = ['/', '/fleet', '/money', '/research', '/s/liquid10_adj_momentum']
+const ROUTES = ['/', '/now', '/fleet', '/money', '/research', '/strategy/1', '/s/liquid10_adj_momentum']
 
 // One string per route that only appears if the real fixture data rendered — picked from
 // src/fixtures/steady-state.ts (kept as literals here rather than imported: this script runs
 // as plain Node against the BUILT demo bundle, not through the TS/Vitest module graph).
 const ROUTE_CONTENT = {
-  '/': 'cross_horizon_low_vol', // TRIAGE.items[0].title after the worst-first sort (FIX 3/5)
+  '/': 'liquid10_adj_momentum', // BOARD.data.rows[0], proving the leaderboard rendered
+  '/now': 'cross_horizon_low_vol', // TRIAGE.items[0].title after the worst-first sort
   '/fleet': 'liquid10_adj_momentum', // a real "every strategy" row (FLEET.data.rows)
   '/money': 'liquid10_adj_momentum', // BOOK.data.slices[0].strategy
   '/research': 'liquid10_adj_momentum', // RUNS.data.runs[0].strategy_name
+  '/strategy/1': 'Cross-sectional momentum over the liquid10 universe', // ID resolver -> detail
   '/s/liquid10_adj_momentum': 'Cross-sectional momentum over the liquid10 universe', // registry.description
 }
 const DIR = 'dist-demo'
@@ -47,7 +49,13 @@ const browser = await chromium.launch({ channel: 'chrome' })
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
 const failures = []
 
-for (const route of ROUTES) {
+const cases = [
+  ...ROUTES.map((route) => ({ route, width: 390 })),
+  { route: '/', width: 860 },
+  { route: '/', width: 1440 },
+]
+for (const { route, width } of cases) {
+  await page.setViewportSize({ width, height: 900 })
   await page.goto(base + route, { waitUntil: 'networkidle' })
   await page.waitForTimeout(600)
 
@@ -83,7 +91,7 @@ for (const route of ROUTES) {
         offenders.push(`${el.tagName}.${String(el.className).slice(0, 40)} right=${Math.round(r.right)}`)
       }
     })
-    const shortTargets = [...document.querySelectorAll('.tab, .back-btn')]
+    const shortTargets = [...document.querySelectorAll('.secondary-link, .back-btn')]
       .map((el) => ({ name: el.className, height: el.getBoundingClientRect().height }))
       .filter(({ height }) => height < 44)
     const ideaDates = currentRoute === '/research'
@@ -93,12 +101,31 @@ for (const route of ROUTES) {
           height: el.getBoundingClientRect().height,
         }))
       : []
+    const evidence = currentRoute === '/'
+      ? [...document.querySelectorAll('.board-evidence')].map((block) => ({
+          trustVisible: [...block.querySelectorAll('.board-evidence-trust')].some((el) => {
+            const style = getComputedStyle(el)
+            return style.display !== 'none' && style.visibility !== 'hidden' &&
+              el.getBoundingClientRect().height > 0 && el.textContent.includes('not payload or PIT proof')
+          }),
+          limitations: [...block.querySelectorAll('.board-evidence-limitations li')].map((el) => {
+            const style = getComputedStyle(el)
+            return {
+              text: el.textContent.trim(),
+              visible: style.display !== 'none' && style.visibility !== 'hidden' &&
+                el.getBoundingClientRect().height > 0,
+              hiddenInTitle: el.hasAttribute('title'),
+            }
+          }),
+        }))
+      : []
     return {
       vw,
       scrollWidth: document.documentElement.scrollWidth,
       offenders: offenders.slice(0, 5),
       shortTargets,
       ideaDates,
+      evidence,
     }
   }, route)
   // scrollWidth is the authoritative signal for "did the PAGE overflow" (the actual /money
@@ -115,13 +142,51 @@ for (const route of ROUTES) {
   )) {
     failures.push(`${route}: idea created_at is not visibly reachable at 390px`)
   }
+  if (route === '/') {
+    const expectedLimitations = [
+      'synthetic_not_market_data',
+    ]
+    if (m.evidence.length === 0) {
+      failures.push(`${route} at ${width}px: no evidence ledger rendered`)
+    }
+    for (const [index, block] of m.evidence.entries()) {
+      if (!block.trustVisible) {
+        failures.push(`${route} at ${width}px: evidence ${index} lacks visible metadata-only warning`)
+      }
+      const visible = block.limitations.filter((item) => item.visible).map((item) => item.text)
+      if (JSON.stringify(visible) !== JSON.stringify(expectedLimitations)) {
+        failures.push(
+          `${route} at ${width}px: evidence ${index} limitations are missing/hidden/order-drifted: ` +
+            JSON.stringify(visible),
+        )
+      }
+      if (block.limitations.some((item) => item.hiddenInTitle)) {
+        failures.push(`${route} at ${width}px: evidence ${index} hides a limitation in title`)
+      }
+    }
+  }
+}
+
+// Native row links are the preserved keyboard seam: focus one, activate it with Enter, and
+// require the stable-ID resolver route rather than a name-derived path.
+await page.setViewportSize({ width: 390, height: 844 })
+await page.goto(base + '/', { waitUntil: 'networkidle' })
+const firstStrategyLink = page.locator('[data-testid="board-row"]').first()
+await firstStrategyLink.focus()
+const keyboardTarget = await page.evaluate(() => document.activeElement?.getAttribute('href'))
+if (!/^\/strategy\/\d+$/.test(keyboardTarget ?? '')) {
+  failures.push(`/: first strategy row did not receive stable-ID keyboard focus: ${keyboardTarget}`)
+} else {
+  await page.keyboard.press('Enter')
+  await page.waitForURL(new RegExp(`${keyboardTarget.replace('/', '\\/')}$`))
+  console.log(`ok   / keyboard Enter -> ${new URL(page.url()).pathname}`)
 }
 
 await browser.close()
 server.close()
 
 if (failures.length) {
-  console.error(`\nHorizontal overflow at 390px:\n  ${failures.join('\n  ')}`)
+  console.error(`\nHorizontal overflow:\n  ${failures.join('\n  ')}`)
   process.exit(1)
 }
-console.log(`\nok: ${ROUTES.length} routes, no horizontal overflow at 390px`)
+console.log(`\nok: ${cases.length} route/viewport cases, no horizontal overflow (390/860/1440px)`)

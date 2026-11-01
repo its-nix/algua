@@ -10,13 +10,15 @@ import './theme.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import App from './App'
 import Fleet from './screens/Fleet'
+import Leaderboard from './screens/Leaderboard'
 import Money from './screens/Money'
 import Now from './screens/Now'
 import Research from './screens/Research'
 import StrategyDetail from './screens/StrategyDetail'
+import StrategyIdResolver from './screens/StrategyIdResolver'
 
 // PROD only — a dev service worker would fight the Vite proxy. With registerType
 // 'autoUpdate' the virtual module owns activation AND the post-update reload; a second
@@ -30,10 +32,13 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <Routes>
         <Route element={<App />}>
-          <Route index element={<Now />} />
+          <Route index element={<Leaderboard />} />
+          <Route path="now" element={<Now />} />
           <Route path="fleet" element={<Fleet />} />
           <Route path="money" element={<Money />} />
           <Route path="research" element={<Research />} />
+          <Route path="funnel" element={<Navigate to="/research" replace />} />
+          <Route path="strategy/:id" element={<StrategyIdResolver />} />
           <Route path="s/:name" element={<StrategyDetail />} />
         </Route>
       </Routes>

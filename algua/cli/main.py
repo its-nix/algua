@@ -13,6 +13,7 @@ from typer.main import get_command
 from algua.cli import (  # noqa: F401 - imports register subcommands
     audit_cmd,
     backtest_cmd,
+    campaign_cmd,
     data_cmd,
     data_refresh_cmd,
     deployment_cmd,
@@ -43,6 +44,7 @@ from algua.cli.errors import error_envelope, is_retryable
 # reusable task bodies from backtest_cmd/research_cmd, so mounting at the composition root keeps
 # those listed command modules free of any sibling import.
 research_cmd.research_app.add_typer(idea_cmd.idea_app, name="idea")
+research_cmd.research_app.add_typer(campaign_cmd.campaign_app)
 # idea_ops_cmd carries the driver-facing claim/record-outcome/link/depth/refuted/import/
 # reclassify/scorecard commands (spec 2026-09-08 §7); merged flat (no `name=`) onto idea_app,
 # the same idiom data_refresh_cmd.refresh_app uses onto data_app below, so idea_cmd never

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping
 from datetime import date, datetime
+from math import isfinite
 
 import numpy as np
 import pandas as pd
 import vectorbt as vbt
 
+from algua.backtest.context import ContextInputs
 from algua.backtest.decision_path import _decision_weights_fast_or_loop
 from algua.backtest.delisting import DelistingExitError, DelistingRecord, apply_delisting_exits
 from algua.backtest.errors import BacktestError
@@ -17,9 +19,11 @@ from algua.backtest.pit_view import (
     _assert_news_shape,
     _static_operating_view,
 )
-from algua.backtest.result import BacktestResult, config_hash, provenance
+from algua.backtest.result import BacktestResult, config_hash
+from algua.backtest.run_inputs import RunInputBundle, capture_run_inputs
 from algua.backtest.stamps import runtime_stamps
 from algua.contracts.model_types import normalize_as_of
+from algua.contracts.strategy_interface import uses_context_interface
 from algua.contracts.types import (
     DataProvider,
     FundamentalsProvider,
@@ -94,20 +98,18 @@ def simulate(
     news_provider: NewsProvider | None = None,
     delisting_records: Mapping[str, list[DelistingRecord]] | None = None,
     assume_terminal_last_close: bool = False,
+    _run_inputs: RunInputBundle | None = None,
+    initial_cash: float | None = None,
 ) -> tuple[vbt.Portfolio, pd.DataFrame, list[dict]]:
-    """Fetch bars, compute pre-lag decision weights (per-bar loop, or the vectorized fast path when
-    the strategy exposes a parity-guarded `signal_panel_fn` — see `_decision_weights_fast_or_loop`),
-    enforcing the shared long-only + gross-exposure risk checks; then apply the t->t+1 shift, the
-    delisting-aware exit overlay, and simulate. Returns (portfolio, executed-weights, forced-exits).
+    """Fetch bars, compute pre-lag decision weights through the canonical loop or parity-guarded
+    fast path, enforce shared risk checks, then apply the t->t+1 shift and delisting-aware exit.
+    Returns (portfolio, executed-weights, forced-exits); initial_cash can pin replay capital.
     The shift lives ONLY here — the panel fn (like the loop) returns DECISION-time weights, never
     executable ones.
 
-    This is the public simulation step: bars -> (portfolio, executed weights, forced exits).
-    Metrics are computed separately (see algua.backtest.metrics). Shared by run()/walk_forward().
-
-    Delisting-aware exit (`delisting_records`): a position held past a symbol's last bar is realized
-    at the record's terminal price and removed (see `apply_delisting_exits`); a held-into-gap symbol
-    with no record fails closed unless `assume_terminal_last_close` (human-only).
+    This public simulation step is shared by run()/walk_forward(); metrics are computed separately.
+    A held-into-gap symbol is realized through `delisting_records`, or fails closed unless the
+    human-only `assume_terminal_last_close` relaxation is active.
 
     Point-in-time universe (`universe_by_date`): when provided, bars are fetched for the UNION of
     all ever-effective members and the per-bar decision is masked to as-of-t membership (see
@@ -118,18 +120,22 @@ def simulate(
             f"rebalance_frequency {strategy.execution.rebalance_frequency!r} not supported; "
             f"this slice rebalances daily only ({sorted(_SUPPORTED_CADENCES)})"
         )
-    try:
-        bars = provider.get_bars(fetch_symbols(strategy, universe_by_date), start, end, "1d")
-    except Exception as exc:
-        raise BacktestError(f"provider error: {exc}") from exc
+    run_inputs = _run_inputs or capture_run_inputs(
+        strategy,
+        provider,
+        fetch_symbols(strategy, universe_by_date),
+        start,
+        end,
+        fundamentals_provider=fundamentals_provider,
+        news_provider=news_provider,
+        include_provenance=False,
+    )
+    bars = run_inputs.bars()
     if bars.empty:
         raise BacktestError("provider returned no bars for the universe/period")
 
-    # Model lane PIT guard (#376): a fixed-per-run model is point-in-time safe ONLY if it predates
-    # the whole evaluated period. Enforced HERE — the mandatory simulate() boundary shared by run()
-    # and walk_forward() — so a direct programmatic call can never run a model that saw data after
-    # the first decision bar. training_as_of and the first bar are normalized to comparable UTC
-    # instants; an unparseable training_as_of fails closed.
+    # A fixed-per-run model is PIT-safe only if it predates the whole evaluated period. Enforce at
+    # the shared simulate boundary and normalize both timestamps to UTC (#376).
     if strategy.config.needs_model:
         assert strategy.config.model_ref is not None
         first_bar = pd.Timestamp(bars.index.min())
@@ -158,46 +164,37 @@ def simulate(
     adj = adj_grid(bars)
 
     if universe_by_date is None:
-        # Static mode: project the strategy-visible view + grid to the operating universe so an
-        # undeclared symbol a misbehaving provider returned cannot influence in-universe decisions
-        # (observation parity, #208). PIT keeps its per-bar as-of mask instead.
+        # Project static runs to the operating universe; PIT keeps its per-bar as-of mask (#208).
         bars, adj = _static_operating_view(strategy, bars, adj)
 
-    fundamentals: pd.DataFrame | None = None
-    if strategy.config.needs_fundamentals:
-        if fundamentals_provider is None:
-            raise BacktestError(
-                f"strategy {strategy.name!r} declares needs_fundamentals but no "
-                f"fundamentals_provider was supplied (fail closed)"
-            )
-        fundamentals = fundamentals_provider.get_fundamentals(
-            fetch_symbols(strategy, universe_by_date), end
-        )
+    fundamentals = run_inputs.fundamentals()
+    if fundamentals is not None:
         _assert_fundamentals_shape(fundamentals)
 
-    news: pd.DataFrame | None = None
-    if strategy.config.needs_news:
-        if news_provider is None:
-            raise BacktestError(
-                f"strategy {strategy.name!r} declares needs_news but no news_provider was "
-                f"supplied (fail closed)"
-            )
-        news = news_provider.get_news(fetch_symbols(strategy, universe_by_date), end)
+    news = run_inputs.news()
+    if news is not None:
         _assert_news_shape(news)
 
+    context_inputs = (
+        ContextInputs(
+            first_decision_ts=pd.Timestamp(adj.index[0]),
+            bars_snapshot_id=run_inputs.bars_snapshot_id,
+            fundamentals_snapshot_id=run_inputs.fundamentals_snapshot_id,
+            news_snapshot_id=run_inputs.news_snapshot_id,
+        )
+        if uses_context_interface(strategy.strategy_interface)
+        else None
+    )
     weights = _decision_weights_fast_or_loop(
         strategy, bars, adj,
         universe_by_date=universe_by_date, fundamentals=fundamentals, news=news,
+        context_inputs=context_inputs,
     )
 
     lag = strategy.execution.decision_lag_bars
     weights_eff = weights.shift(lag).fillna(0.0)
 
-    # Fill-price basis (issue #383): pick the intra-bar execution-price grid the contract pins, so
-    # the backtest fills on the SAME semantic reference the paper/live loop uses. Default "open"
-    # fills at the adjusted next-bar open (adj_open_grid); "close" is the legacy adj_close basis.
-    # `adj` (the adj_close grid) stays the sim DATE-INDEX / holdout identity source of truth — only
-    # the fill PRICE grid handed to from_orders changes.
+    # `adj` remains the date-index/holdout truth; only the contract-selected fill values change.
     exec_grid = adj_open_grid(bars) if strategy.execution.fill_price == "open" else adj
 
     try:
@@ -212,17 +209,11 @@ def simulate(
     except DelistingExitError as exc:
         raise BacktestError(str(exc)) from exc
 
-    # call_seq="auto" (sells before buys under cash_sharing) only when a forced exit needs the
-    # same-bar liquidation cash — keeps non-delisting backtests bit-identical to today.
-    extra = {"call_seq": "auto"} if forced_exits else {}
-    # Transaction costs (issue #325). Charged on `weights_exec` — the ALREADY t->t+1-shifted,
-    # delisting-adjusted execution weights — so cost is applied at execution time on the bar the
-    # trade fills, introducing NO look-ahead. vectorbt applies `fees` as a proportional charge on
-    # |trade notional| and `slippage` as an adverse per-side fill-price move (buys/covers fill
-    # higher, sells/shorts fill lower), so the model is symmetric across sides. The forced
-    # delisting liquidation is a real (modeled) trade and is charged the same conservative cost;
-    # over-charging a rare terminal exit only makes returns LOWER, never inflates edge — the safe
-    # direction for a gate that must not overstate edge. DEFAULT-ON via the ExecutionContract.
+    extra: dict[str, object] = {"call_seq": "auto"} if forced_exits else {}
+    if initial_cash is not None:
+        if isinstance(initial_cash, bool) or not isfinite(initial_cash) or initial_cash <= 0:
+            raise BacktestError("initial_cash must be finite and positive")
+        extra["init_cash"] = initial_cash
     pf = vbt.Portfolio.from_orders(
         close=adj_exec,
         size=weights_exec,
@@ -273,19 +264,30 @@ def run(
     delisting_snapshot: str | None = None,  # surfaced in BacktestResult provenance (#212)
     assume_terminal_last_close: bool = False,
 ) -> BacktestResult:
+    run_inputs = capture_run_inputs(
+        strategy,
+        provider,
+        fetch_symbols(strategy, universe_by_date),
+        start,
+        end,
+        fundamentals_provider=fundamentals_provider,
+        news_provider=news_provider,
+        include_provenance=True,
+    )
     pf, weights_eff, forced_exits = simulate(
         strategy, provider, start, end,
         universe_by_date=universe_by_date, fundamentals_provider=fundamentals_provider,
         news_provider=news_provider,
         delisting_records=delisting_records,
         assume_terminal_last_close=assume_terminal_last_close,
+        _run_inputs=run_inputs,
     )
     metrics = portfolio_metrics(
         pf, weights_eff,
         fees=strategy.execution.fees, slippage=strategy.execution.slippage,
     )
     stamps = runtime_stamps()
-    prov = provenance(provider, seed)
+    prov = run_inputs.provenance(seed)
     # Surface daily returns for downstream correlation analysis (#222 Task 7).
     returns = pf.returns()
     if not bool(np.isfinite(returns.fillna(0.0)).all()):
@@ -302,11 +304,8 @@ def run(
         dependency_hash=stamps["dependency_hash"],
         universe_name=universe_name,
         universe_snapshots=universe_snapshots,
-        fundamentals_snapshot=getattr(fundamentals_provider, "snapshot_id", None),
-        news_snapshot=(
-            getattr(news_provider, "snapshot_id", None)
-            if strategy.config.needs_news else None
-        ),
+        fundamentals_snapshot=run_inputs.fundamentals_snapshot_id,
+        news_snapshot=(run_inputs.news_snapshot_id if strategy.config.needs_news else None),
         # Model provenance (#376): the pinned model_ref (name/version/digest/training_as_of/
         # provenance_digest) is stamped HERE, at the same mandatory boundary as the run, so a
         # programmatic caller cannot get an unstamped result. None for non-model strategies.

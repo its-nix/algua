@@ -12,6 +12,7 @@ import pandas as pd
 from algua.data.files import frame_to_parquet_bytes, sha256_bytes
 from algua.data.manifest import SnapshotManifest
 from algua.data.models import Dataset, Kind, SnapshotMetadata, SnapshotRecord
+from algua.data.provenance_binding import refuse_reserved_key
 from algua.primitives.atomic_io import write_bytes_durable
 
 
@@ -41,6 +42,7 @@ class IdentityMixin:
         build ``metadata``/``frame`` and the on-disk ``filename``. The dataset path component is
         ``metadata.dataset`` (already a clean enum value for both parquet datasets).
         """
+        refuse_reserved_key(metadata.source_metadata)
         payload = frame_to_parquet_bytes(frame)
         content_hash = sha256_bytes(payload)
         snapshot_id = compute_snapshot_id(metadata, content_hash)
@@ -91,6 +93,7 @@ def build_metadata(
     universe: str | None = None,
     source_metadata: dict[str, str] | None = None,
 ) -> SnapshotMetadata:
+    refuse_reserved_key(source_metadata)
     validate_non_empty("provider", provider)
     validate_non_empty("source", source)
     validate_date_bounds(start, end)

@@ -7,14 +7,22 @@ from typing import Any
 
 import pandas as pd
 
-from algua.contracts.types import DataProvider
-
 # config_hash is canonical in strategies.base (shared by the backtest engine and the registry's
 # live-approval gate). Re-exported here because it is also part of backtest provenance (#38).
+from algua.contracts.types import DataProvider
 from algua.strategies.base import config_hash as config_hash
 
+_UNSET = object()
 
-def provenance(provider: DataProvider, seed: int | None) -> dict[str, Any]:
+
+def provenance(
+    provider: DataProvider,
+    seed: int | None,
+    *,
+    data_source: str | None = None,
+    snapshot_id: object = _UNSET,
+    provider_seed: object = _UNSET,
+) -> dict[str, Any]:
     """Provenance fields shared by every backtest-family result (#43).
 
     A provider that pins its own `seed`/`snapshot_id` wins (real snapshots and the
@@ -23,9 +31,17 @@ def provenance(provider: DataProvider, seed: int | None) -> dict[str, Any]:
     can never drift.
     """
     return {
-        "data_source": type(provider).__name__,
-        "seed": getattr(provider, "seed", seed),
-        "snapshot_id": getattr(provider, "snapshot_id", None),
+        "data_source": type(provider).__name__ if data_source is None else data_source,
+        "seed": (
+            getattr(provider, "seed", seed)
+            if provider_seed is _UNSET
+            else provider_seed if provider_seed is not None else seed
+        ),
+        "snapshot_id": (
+            getattr(provider, "snapshot_id", None)
+            if snapshot_id is _UNSET
+            else snapshot_id
+        ),
     }
 
 

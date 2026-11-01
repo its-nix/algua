@@ -17,7 +17,9 @@ from threadpoolctl import threadpool_limits
 
 from algua.backtest.core_budget import admit, close_lease_fd_in_worker, cpu_budget
 from algua.backtest.delisting import DelistingRecord
+from algua.backtest.engine import fetch_symbols
 from algua.backtest.errors import BacktestError
+from algua.backtest.run_inputs import RunInputBundle, capture_run_inputs
 from algua.backtest.walkforward import walk_forward
 from algua.contracts.types import DataProvider, FundamentalsProvider, NewsProvider
 from algua.portfolio.construction import ConstructionError, validate_construction_params
@@ -49,8 +51,9 @@ def _override(strategy: LoadedStrategy, combo: dict[str, Any]) -> LoadedStrategy
     A grid key prefixed `construction.` tunes `construction_params` (re-validated by the policy);
     `overlay.<i>.<key>` tunes `overlays[i].params` (re-validated by that policy, incl. the
     feature_lookback cover check); any other key tunes signal `params` and MUST already exist in the
-    base params (so a typo'd key is rejected, never a silent no-op). Preserves the resolved
-    construction policy, overlay fns and signal_panel. Does not mutate the base strategy/config.
+    base params (so a typo'd key is rejected, never a silent no-op). Context signal overrides
+    are unsupported: score(context) has no reviewed parameter-binding channel. Construction and
+    overlay grids remain supported. Preserves resolved policies and does not mutate the base.
     """
     cfg = strategy.config
     new_params = dict(cfg.params)
@@ -63,6 +66,11 @@ def _override(strategy: LoadedStrategy, combo: dict[str, Any]) -> LoadedStrategy
             idx, param = _overlay_key(key, len(cfg.overlays))
             new_oparams[idx][param] = value
         else:
+            if strategy.strategy_interface == "context_v1":
+                raise ValueError(
+                    f"context_v1 signal parameter overrides are unsupported (sweep key {key!r}); "
+                    "use construction.* or overlay.<i>.* grids only"
+                )
             if key not in cfg.params:
                 raise ValueError(
                     f"sweep key {key!r} is not a base signal param "
@@ -85,15 +93,7 @@ def _override(strategy: LoadedStrategy, combo: dict[str, Any]) -> LoadedStrategy
     new_config = cfg.model_copy(
         update={"params": new_params, "construction_params": new_cparams, "overlays": new_overlays}
     )
-    return LoadedStrategy(
-        config=new_config,
-        construct_fn=strategy.construct_fn,
-        signal_fn=strategy.signal_fn,
-        signal_panel_fn=strategy.signal_panel_fn,
-        fundamentals_signal_fn=strategy.fundamentals_signal_fn,
-        news_signal_fn=strategy.news_signal_fn,
-        overlay_fns=overlay_fns,
-    )
+    return dataclasses.replace(strategy, config=new_config, overlay_fns=overlay_fns)
 
 
 def _combos(grid: dict[str, list[Any]]) -> list[dict[str, Any]]:
@@ -225,6 +225,7 @@ def _evaluate_combo(
     assume_terminal_last_close: bool,
     fundamentals_provider: FundamentalsProvider | None = None,
     news_provider: NewsProvider | None = None,
+    _run_inputs: RunInputBundle | None = None,
 ) -> dict[str, Any]:
     """Evaluate one already-overridden combo via walk_forward; return its rankable record + the
     combo-independent meta. Module-level so it is picklable into a ProcessPoolExecutor worker.
@@ -242,6 +243,7 @@ def _evaluate_combo(
         news_provider=news_provider,
         delisting_records=delisting_records,
         assume_terminal_last_close=assume_terminal_last_close,
+        _run_inputs=_run_inputs,
     )
     return {
         "config_hash": wf.config_hash,
@@ -380,6 +382,16 @@ def sweep(
     # parent-side behavior the sequential loop had. Shared with external pre-checks via
     # ``validate_sweep_grid`` so the two can never drift.
     combos, overridden = validate_sweep_grid(strategy, grid)
+    run_inputs = capture_run_inputs(
+        strategy,
+        provider,
+        fetch_symbols(strategy, universe_by_date),
+        start,
+        end,
+        fundamentals_provider=fundamentals_provider,
+        news_provider=news_provider,
+        include_provenance=True,
+    )
 
     eval_kwargs: dict[str, Any] = dict(
         provider=provider, start=start, end=end,
@@ -390,6 +402,7 @@ def sweep(
         fundamentals_provider=fundamentals_provider, news_provider=news_provider,
         delisting_records=delisting_records,
         assume_terminal_last_close=assume_terminal_last_close,
+        _run_inputs=run_inputs,
     )
     results = _run_combos(overridden, eval_kwargs)
 

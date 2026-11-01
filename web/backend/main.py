@@ -295,9 +295,12 @@ def create_app() -> FastAPI:
         return await run_cli(*args, ttl_s=60.0)
 
     @app.get("/api/strategy-board")
-    async def strategy_board() -> dict[str, Any]:
-        # Read-only strategy board: takes no parameters, so nothing user-controlled reaches argv.
-        return await run_cli("runs", "board", ttl_s=60.0)
+    async def strategy_board(include_evidence: bool = False) -> dict[str, Any]:
+        # The typed boolean maps only to one fixed argv token; no query value reaches the CLI.
+        args = ["runs", "board"]
+        if include_evidence:
+            args.append("--include-evidence")
+        return await run_cli(*args, ttl_s=60.0)
 
     @app.get("/api/runs/series")
     async def runs_series(ids: str) -> dict[str, Any]:

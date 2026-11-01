@@ -8,9 +8,11 @@ import pytest
 from typer.testing import CliRunner
 
 from algua.cli.main import app
+from algua.data.store import DataStore
 from algua.registry.db import registry_conn
 from algua.registry.gate_history import GATE_DECISION_ALLOWLIST
 from algua.registry.store import SqliteStrategyRepository
+from tests.test_research_provenance import _ingest
 
 runner = CliRunner()
 
@@ -18,6 +20,7 @@ runner = CliRunner()
 @pytest.fixture(autouse=True)
 def _tmp_db(monkeypatch, tmp_path):
     monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "r.db"))
+    monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path / "data"))
 
 
 def _json(result):
@@ -273,3 +276,27 @@ def test_board_read_failure_is_a_json_error_not_an_empty_board(monkeypatch):
     out = json.loads(result.stdout)
     assert out["ok"] is False
     assert "error" in out
+
+
+def test_board_include_evidence_composes_exact_manifest_read(tmp_path):
+    snapshot = _ingest(DataStore(tmp_path / "data"))
+    with registry_conn() as conn:
+        repo = SqliteStrategyRepository(conn)
+        strategy = repo.add("alpha")
+        repo.record_run(
+            "gate",
+            "alpha",
+            strategy_id=strategy.id,
+            provenance={
+                "snapshot_id": snapshot.snapshot_id,
+                "timeframe": "1d",
+                "period_start": "2026-01-01",
+                "period_end": "2026-01-06",
+            },
+        )
+
+    payload = _json(runner.invoke(app, ["runs", "board", "--include-evidence"]))
+
+    assert payload["evidence_schema_version"] == "strategy-board-evidence/v1"
+    assert payload["rows"][0]["evidence"]["snapshot_provenance"]["status"] == "VALID"
+    assert snapshot.snapshot_id not in json.dumps(payload)

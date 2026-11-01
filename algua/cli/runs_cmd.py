@@ -13,6 +13,9 @@ import typer
 from algua.cli._common import ok
 from algua.cli.app import app, emit
 from algua.cli.errors import json_errors
+from algua.config.settings import get_settings
+from algua.data.board_provenance import SnapshotProvenanceReader
+from algua.data.manifest import SnapshotManifest
 from algua.registry.db import registry_conn
 from algua.registry.run_views import run_detail_payload, run_list_payload, run_series_payload
 from algua.registry.store import SqliteStrategyRepository
@@ -55,7 +58,13 @@ def runs_list(
 
 @runs_app.command("board")
 @json_errors
-def runs_board() -> None:
+def runs_board(
+    include_evidence: bool = typer.Option(
+        False,
+        "--include-evidence",
+        help="Include bounded exact-run evaluation, OOS interval, and snapshot provenance.",
+    ),
+) -> None:
     """The research strategy board: one row per registered strategy, joined to that identity's
     latest gate run (newest by `created_at`, then run id — never the best), or `null` when it has
     none.
@@ -63,9 +72,13 @@ def runs_board() -> None:
     Pure read, scalars only (no return series, gate decision or lineage). Lifecycle order is a
     display order, never a ranking: the board must not feed a promotion decision.
     """
+    snapshot_evidence = None
+    if include_evidence:
+        manifest = SnapshotManifest(get_settings().data_dir / "manifest.jsonl")
+        snapshot_evidence = SnapshotProvenanceReader(manifest).resolve
     with registry_conn() as conn:
         repo = SqliteStrategyRepository(conn)
-        payload = strategy_board_payload(repo)
+        payload = strategy_board_payload(repo, snapshot_evidence=snapshot_evidence)
     emit(ok(payload))
 
 

@@ -6,7 +6,11 @@ import EvidenceDisclosure from '../components/EvidenceDisclosure'
 import EvidenceStatus from '../components/EvidenceStatus'
 import { ScatterISOOSView } from '../components/ScatterISOOS'
 import StaleNotice from '../components/StaleNotice'
-import { isBoardPayload, StrategyBoardView } from '../components/StrategyBoard'
+import {
+  isBoardPayload,
+  STRATEGY_BOARD_EVIDENCE_URL,
+  StrategyBoardView,
+} from '../components/StrategyBoard'
 import { utcDate, utcDateTime } from '../format'
 import type {
   ApiEnvelope,
@@ -69,7 +73,7 @@ export default function Research() {
   const strategies = useFetch<ApiEnvelope<ListPayload<StrategyRecord>>>('/api/strategies')
   const ops = useFetch<ApiEnvelope<OpsPayload>>('/api/ops', { ttlMs: 30_000 })
   const ideas = useFetch<IdeasResponse>('/api/ideas')
-  const board = useFetch<ApiEnvelope<StrategyBoardPayload>>('/api/strategy-board')
+  const board = useFetch<ApiEnvelope<StrategyBoardPayload>>(STRATEGY_BOARD_EVIDENCE_URL)
   const gateRuns = useFetch<ApiEnvelope<RunsListPayload>>(runsUrl({ kind: 'gate' }))
   const setFetchedAt = useSetFetchedAt()
 
@@ -148,7 +152,7 @@ export default function Research() {
         <ScatterISOOSView query={gateRuns} />
       </div>
 
-      <StrategyBoardView query={board} />
+      <StrategyBoardView query={board} compact />
 
       <IdeaPool query={ideas} />
     </main>

@@ -89,7 +89,7 @@ describe('deriveStrategyDecision', () => {
   it('uses the newer forward failure on paper rather than hiding it behind a research pass', () => {
     const base = detail()
     const decision = deriveStrategyDecision(detail({
-      registry: { ...base.registry, stage: 'paper' },
+      registry: { ...base.registry!, stage: 'paper' },
       gates: {
         strategy: base.strategy,
         gate_evaluations: [gate({ id: 10, passed: true, createdAt: '2026-08-01T00:00:00Z' })],
@@ -109,7 +109,7 @@ describe('deriveStrategyDecision', () => {
   it.each(['forward_tested', 'live'])('%s requires forward evidence and never falls back to research', (stage) => {
     const base = detail()
     const decision = deriveStrategyDecision(detail({
-      registry: { ...base.registry, stage },
+      registry: { ...base.registry!, stage },
       gates: {
         strategy: base.strategy,
         gate_evaluations: [gate({ id: 10, passed: true, createdAt: '2026-08-01T00:00:00Z' })],
@@ -141,7 +141,7 @@ describe('deriveStrategyDecision', () => {
 
   it('treats a missing registry record as incomplete', () => {
     const decision = deriveStrategyDecision(detail({
-      registry: null as unknown as StrategyDetailResponse['registry'],
+      registry: null,
     }), 'current')
     expect(decision.state).toBe('unknown · partial')
     expect(decision.reason).toMatch(/registry record unavailable/i)
@@ -150,7 +150,7 @@ describe('deriveStrategyDecision', () => {
   it('leads with unhealthy paper operations while retaining advisory gate evidence', () => {
     const base = detail()
     const decision = deriveStrategyDecision(detail({
-      registry: { ...base.registry, stage: 'paper' },
+      registry: { ...base.registry!, stage: 'paper' },
       paper: {
         strategy: base.strategy,
         stage: 'paper',

@@ -6,6 +6,7 @@ import type {
   FleetHealth,
   ListPayload,
   StrategyRecord,
+  StrategyBoardPayload,
   TriagePayload,
 } from '../types'
 
@@ -23,6 +24,7 @@ const REAL_ENDPOINT_URLS = [
   '/api/activity?limit=25',
   '/api/runs',
   '/api/strategy-board',
+  '/api/strategy-board?include_evidence=true',
   '/api/runs?kind=gate&sort=sharpe_oos&limit=20',
   '/api/runs?kind=backtest&strategy=liquid10_adj_momentum&limit=1',
   '/api/runs?kind=sweep_trial&limit=200',
@@ -42,6 +44,29 @@ describe('resolveFixture', () => {
     for (const url of REAL_ENDPOINT_URLS) {
       expect(resolveFixture(url), url).toBeDefined()
     }
+  })
+
+  it('serves explicit synthetic evidence and limitations on the opt-in strategy board URL', () => {
+    const board = resolveFixture(
+      '/api/strategy-board?include_evidence=true',
+    ) as ApiEnvelope<StrategyBoardPayload>
+    expect(board.data.evidence_schema_version).toBe('strategy-board-evidence/v1')
+    const evidenced = board.data.rows.find((row) => row.evidence !== null)
+    expect(evidenced?.evidence?.snapshot_provenance.value).toEqual({
+      schema_version: 'pilot-provenance/v1',
+      data_tier: 'synthetic_fixture',
+      universe_method: 'deterministic_demo_symbols',
+      limitations: ['synthetic_not_market_data'],
+      coverage_start: '2024-08-20',
+      coverage_end: '2026-08-26',
+      provider: 'deterministic_fixture_generator',
+    })
+  })
+
+  it('keeps the legacy demo strategy-board response free of the opt-in evidence extension', () => {
+    const board = resolveFixture('/api/strategy-board') as ApiEnvelope<StrategyBoardPayload>
+    expect(board.data.evidence_schema_version).toBeUndefined()
+    expect(board.data.rows.every((row) => !Object.hasOwn(row, 'evidence'))).toBe(true)
   })
 
   it('carries the sentinel on a fixture-only endpoint no real screen ever fetches, so a '
