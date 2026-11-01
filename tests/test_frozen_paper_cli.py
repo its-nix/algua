@@ -453,7 +453,7 @@ def test_a_frozen_tick_makes_no_git_or_uv_call_and_needs_no_git_checkout(
         argv = ([os.fsdecode(args)] if isinstance(args, (str, bytes, os.PathLike))
                 else [os.fsdecode(arg) for arg in args])
         launched.append(argv)
-        if argv[0] != interpreter:
+        if argv[0] != "/usr/bin/bwrap" or argv[-7] != interpreter:
             raise FileNotFoundError(errno.ENOENT, "not installed", argv[0])
         return execute_child(self, args, executable, *rest)
 
@@ -480,7 +480,9 @@ def test_a_frozen_tick_makes_no_git_or_uv_call_and_needs_no_git_checkout(
     invocations = (world.data_dir / "frozen" / "invocations").resolve()
     assert len(launched) == 4  # Phase A and Phase B, in each command
     for argv in launched:
-        assert argv[:-1] == [interpreter, "-I", "-B", "-c", BOOTSTRAP, str(world.bundle_root)]
+        assert Path(argv[0]).name == "bwrap"
+        assert "--unshare-all" in argv
+        assert argv[-7:-1] == [interpreter, "-I", "-B", "-c", BOOTSTRAP, str(world.bundle_root)]
         assert Path(argv[-1]).parent.resolve() == invocations
 
 
