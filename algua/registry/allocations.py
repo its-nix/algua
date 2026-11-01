@@ -4,7 +4,16 @@ account equity so the book can never over-commit the shared account."""
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Mapping
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+import pandas as pd
+
+from algua.portfolio.allocator import RiskEstimate
+
+if TYPE_CHECKING:
+    from algua.registry.store import SqliteStrategyRepository
 
 
 class AllocationError(ValueError):
@@ -131,3 +140,45 @@ def deallocate(conn: sqlite3.Connection, strategy_id: int, actor: str, is_flat: 
         raise AllocationError("cannot deallocate a strategy that is not flat / has open orders")
     revoke_active_locked(conn, strategy_id)
     conn.commit()
+
+
+def portfolio_risk_estimates(
+    repo: SqliteStrategyRepository,
+    identities: Mapping[str, tuple[str, str]],
+    *,
+    as_of: datetime,
+) -> dict[str, tuple[RiskEstimate, ...]]:
+    """Read persisted OOS volatility for EXPLICIT (code_hash, config_hash) identities.
+
+    No selection/qualification, capital write or equity-curve fit. Both the sample end and the
+    row's creation time must be known at the cutoff. Require at least the existing 63-observation
+    holdout floor for a usable estimate; malformed/absent evidence leaves the allocator's
+    conservative fallback in force. Return the timeline, not the best Sharpe or newest future run.
+    """
+    cutoff = pd.Timestamp(as_of)
+    if pd.isna(cutoff) or cutoff.tzinfo is None:
+        raise AllocationError("risk as_of must be tz-aware")
+    estimates: dict[str, tuple[RiskEstimate, ...]] = {}
+    for name, (code, config) in sorted(identities.items()):
+        found: list[RiskEstimate] = []
+        if not code or not config:
+            raise AllocationError("risk estimates require code and config identities")
+        for row in repo.list_runs(kind="walk_forward", strategy_name=name, limit=-1):
+            if row["code_hash"] != code or row["config_hash"] != config:
+                continue
+            try:
+                created = pd.Timestamp(row["created_at"])
+                sample_end = pd.Timestamp(row["period_end"])
+                if pd.isna(created) or pd.isna(sample_end) or created.tzinfo is None:
+                    continue
+                if sample_end.tzinfo is None:
+                    sample_end = sample_end.tz_localize("UTC")
+                available = max(created, sample_end)
+                if available > cutoff or int(row["n_obs_oos"] or 0) < 63:
+                    continue
+                found.append(RiskEstimate(available.to_pydatetime(), float(row["ann_vol_oos"]),
+                                          f"run:{row['id']}"))
+            except (TypeError, ValueError, OverflowError):
+                continue  # unusable persisted risk is unknown, never zero-risk
+        estimates[name] = tuple(sorted(found, key=lambda r: (r.as_of, r.volatility, r.source)))
+    return estimates
