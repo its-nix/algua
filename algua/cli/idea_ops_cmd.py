@@ -105,6 +105,8 @@ def cycle_start(
     file_mb: int = typer.Option(512, "--file-mb"),
     max_cost: float | None = typer.Option(None, "--max-cost"),
     category: str | None = typer.Option(None, "--category"),
+    menu_only: bool = typer.Option(False, "--menu-only", help="Capture chooser context only"),
+    campaign: Path | None = typer.Option(None, "--campaign", help="Menu and explicit choices JSON"),
 ) -> None:
     """Start/recover one bounded driver cycle under the driver's existing flock."""
     s = get_settings()
@@ -112,9 +114,21 @@ def cycle_start(
                          memory_mb, file_mb, max_cost)
     with registry_conn() as conn:
         cycle = ResearchCycle(conn, s.data_dir / "research-cycles", run)
+        if menu_only:
+            if campaign is not None:
+                raise ValueError("--menu-only cannot accept --campaign")
+            emit(ok({"menu": cycle.campaign_menu(
+                limits=limits, context=_cycle_context(s.data_dir), category=category,
+                ttl_minutes=s.idea_claim_ttl_minutes,
+                preview_hold_hours=s.idea_preview_hold_hours)}))
+            return
+        adoption = {} if campaign is None else {"campaign": json.loads(campaign.read_text())}
+        if campaign is not None and not isinstance(adoption["campaign"], dict):
+            raise ValueError("--campaign requires a menu and selection JSON object")
         claimed, result = cycle.start(
             limits=limits, context=_cycle_context(s.data_dir), category=category,
-            ttl_minutes=s.idea_claim_ttl_minutes, preview_hold_hours=s.idea_preview_hold_hours)
+            ttl_minutes=s.idea_claim_ttl_minutes, preview_hold_hours=s.idea_preview_hold_hours,
+            **adoption)
         result["claimed"] = [idea_json(i, IdeaRepository(conn)) for i in claimed]
         emit(result)
     if not result["ok"]:

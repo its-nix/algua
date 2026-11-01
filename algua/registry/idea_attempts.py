@@ -16,6 +16,8 @@ from algua.contracts.idea import (
     Idea,
     IdeaStatus,
 )
+from algua.registry.campaign_selection import validate_campaign
+from algua.registry.idea_claim_selection import select_ideas
 from algua.registry.ideas import IdeaRepository
 
 # `IdeaAttemptsRepository.claim`'s return type says `list[Idea]`; nothing here shadows the
@@ -72,7 +74,8 @@ class IdeaAttemptsRepository:
     # -- claim ---------------------------------------------------------------------------
     def claim(self, *, run_stamp: str, limit: int, ttl_minutes: int,
               now: datetime | None = None, category: str | None = None,
-              preview_hold_hours: int = DEFAULT_PREVIEW_HOLD_HOURS) -> _list[Idea]:
+              preview_hold_hours: int = DEFAULT_PREVIEW_HOLD_HOURS,
+              campaign: dict | None = None) -> _list[Idea]:
         """Reap expired claims, then claim up to `limit` open ideas, in ONE BEGIN IMMEDIATE.
 
         Selection: round-robin over categories (fewest claims in the trailing 7 days first),
@@ -90,8 +93,15 @@ class IdeaAttemptsRepository:
         week = _iso(now - timedelta(days=7))
         self._conn.execute("BEGIN IMMEDIATE")
         try:
+            selected = (validate_campaign(
+                self._conn, campaign, run_stamp=run_stamp, category=category,
+                ttl_minutes=ttl_minutes, preview_hold_hours=preview_hold_hours)
+                if campaign is not None else None)
             self._reap(cutoff=cutoff, preview_cutoff=preview_cutoff, now=now)
-            picked = self._select(limit=limit, week_cutoff=week, category=category)
+            picked = (self._select(limit=limit, week_cutoff=week, category=category)
+                      if selected is None else selected)
+            if len(picked) > limit:
+                raise ValueError("campaign selection exceeds cycle budget")
             claimed: list[Idea] = []
             for idea_id in picked:
                 token = str(uuid.uuid4())
@@ -100,6 +110,8 @@ class IdeaAttemptsRepository:
                     " WHERE id=? AND claimed_by IS NULL AND status=?",
                     (run_stamp, token, _iso(now), _iso(now), idea_id, IdeaStatus.OPEN.value))
                 if cur.rowcount != 1:
+                    if selected is not None:
+                        raise ClaimTokenMismatch("selected campaign claim raced; all rolled back")
                     continue  # raced by another claimer inside the same instant; skip
                 self._conn.execute(
                     "INSERT INTO idea_attempts(idea_id, run_stamp, claim_token, claimed_at)"
@@ -162,38 +174,7 @@ class IdeaAttemptsRepository:
 
     def _select(self, *, limit: int, week_cutoff: str,
                 category: str | None = None) -> _list[int]:
-        sql = (
-            "SELECT i.id, i.category, i.created_at,"
-            " (SELECT MIN(CASE ins.obscurity WHEN 'rare' THEN 0 WHEN 'niche' THEN 1"
-            "   WHEN 'common' THEN 2 ELSE 3 END) FROM idea_inspirations ins"
-            "   WHERE ins.idea_id = i.id) AS obs_rank"
-            " FROM ideas i WHERE i.status=? AND i.claimed_by IS NULL"
-        )
-        params: list[object] = [IdeaStatus.OPEN.value]
-        if category is not None:
-            sql += " AND category = ?"
-            params.append(category)
-        rows = self._conn.execute(sql, params).fetchall()
-        recent = {r["category"]: r["n"] for r in self._conn.execute(
-            "SELECT i.category AS category, COUNT(*) AS n FROM idea_attempts a"
-            " JOIN ideas i ON i.id = a.idea_id WHERE a.claimed_at >= ? GROUP BY i.category",
-            (week_cutoff,))}
-        by_cat: dict[str | None, list] = {}
-        for r in rows:
-            by_cat.setdefault(r["category"], []).append(r)
-        for lst in by_cat.values():
-            lst.sort(key=lambda r: (r["obs_rank"] if r["obs_rank"] is not None else 3,
-                                    r["created_at"], r["id"]))
-        legacy = by_cat.pop(None, [])
-        order = sorted(by_cat, key=lambda c: (recent.get(c, 0), c))
-        picked: list[int] = []
-        while len(picked) < limit and any(by_cat.values()):
-            for cat in order:
-                if by_cat[cat] and len(picked) < limit:
-                    picked.append(by_cat[cat].pop(0)["id"])
-        while len(picked) < limit and legacy:
-            picked.append(legacy.pop(0)["id"])
-        return picked
+        return select_ideas(self._conn, limit=limit, week_cutoff=week_cutoff, category=category)
 
     # -- outcomes ------------------------------------------------------------------------
     def _check_token(self, idea_id: int, token: str) -> sqlite3.Row:
