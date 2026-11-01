@@ -278,25 +278,94 @@ def test_board_read_failure_is_a_json_error_not_an_empty_board(monkeypatch):
     assert "error" in out
 
 
-def test_board_include_evidence_composes_exact_manifest_read(tmp_path):
+def test_board_include_evidence_composes_exact_manifest_read(tmp_path, monkeypatch):
+    from algua.backtest.walkforward import walk_forward
+    from algua.data.serve import StoreBackedProvider
+    from algua.primitives.timeparse import utc
+    from algua.registry.runs import provenance_of, record_walk_forward_run
+    from algua.strategies.loader import load_strategy
+    from tests.test_run_provenance import COSTS, END, NAME, START, snapshot
+
+    # Synthetic engineering bars, trusted existing strategy, and a display-only gate row.
+    store, captured = snapshot(tmp_path, monkeypatch)
+    wf = walk_forward(load_strategy(NAME), StoreBackedProvider(store, captured.snapshot_id),
+                      utc(START), utc(END), windows=2)
+    assert wf.bars_provenance == captured.to_dict()
+    assert wf.execution_costs == COSTS
+    assert wf.config_hash and wf.dependency_hash
+    with registry_conn() as conn:
+        repo = SqliteStrategyRepository(conn)
+        strategy = repo.add(NAME)
+        sibling = record_walk_forward_run(repo, NAME, wf, strategy_id=strategy.id)
+        repo.record_run("gate", NAME, strategy_id=strategy.id,
+                        derived_from=[sibling], provenance=provenance_of(wf))
+
+    saved = _json(runner.invoke(app, ["runs", "show", str(sibling)]))
+    assert saved["config_json"]["run_provenance"] == {
+        "bars": captured.to_dict(), "execution_costs": COSTS,
+    }
+    assert saved["config_hash"] == wf.config_hash
+    assert saved["dependency_hash"] == wf.dependency_hash
+
+    def no_current_manifest(*_):
+        pytest.fail("board evidence must read the persisted capture, not the current manifest")
+
+    monkeypatch.setattr("algua.cli.runs_cmd.SnapshotProvenanceReader.resolve", no_current_manifest)
+    payload = _json(runner.invoke(app, ["runs", "board", "--include-evidence"]))
+
+    assert payload["evidence_schema_version"] == "strategy-board-evidence/v1"
+    row, = payload["rows"]
+    assert row["evidence"]["snapshot_provenance"] == {
+        "status": "VALID", "reason": None,
+        "value": json.loads(captured.metadata.source_metadata["research_provenance"]),
+    }
+    assert row["recorded_provenance"] == {
+        "status": "VALID", "reason": None,
+        "value": {"bars_snapshot_id": captured.snapshot_id,
+                  "bars_content_hash": captured.content_hash, "execution_costs": COSTS},
+    }
+    assert row["evidence"]["comparison"]["status"] == "UNKNOWN"
+    assert row["evidence"]["comparison"]["observed_metric_sort_enabled"] is False
+    assert captured.snapshot_id not in json.dumps(row["evidence"]["snapshot_provenance"])
+
+
+@pytest.mark.parametrize("linked_legacy_sibling", [False, True])
+def test_board_include_evidence_legacy_context_is_unknown(tmp_path, linked_legacy_sibling):
+    # A current declared manifest cannot fill a historical run's absent captured context.
     snapshot = _ingest(DataStore(tmp_path / "data"))
+    provenance = {
+        "snapshot_id": snapshot.snapshot_id,
+        "timeframe": "1d",
+        "period_start": "2026-01-01",
+        "period_end": "2026-01-06",
+        "config_hash": "legacy-canonical-config",
+        "dependency_hash": "legacy-canonical-dependencies",
+    }
     with registry_conn() as conn:
         repo = SqliteStrategyRepository(conn)
         strategy = repo.add("alpha")
+        lineage = []
+        if linked_legacy_sibling:
+            lineage = [repo.record_run("walk_forward", "alpha", strategy_id=strategy.id,
+                                       provenance=provenance)]
         repo.record_run(
             "gate",
             "alpha",
             strategy_id=strategy.id,
-            provenance={
-                "snapshot_id": snapshot.snapshot_id,
-                "timeframe": "1d",
-                "period_start": "2026-01-01",
-                "period_end": "2026-01-06",
-            },
+            derived_from=lineage,
+            provenance=provenance,
         )
 
     payload = _json(runner.invoke(app, ["runs", "board", "--include-evidence"]))
 
     assert payload["evidence_schema_version"] == "strategy-board-evidence/v1"
-    assert payload["rows"][0]["evidence"]["snapshot_provenance"]["status"] == "VALID"
+    row, = payload["rows"]
+    assert row["evidence"]["snapshot_provenance"] == {
+        "status": "UNAVAILABLE", "reason": "provenance_absent", "value": None,
+    }
+    assert row["recorded_provenance"] == {
+        "status": "UNAVAILABLE", "reason": "run_provenance_absent", "value": None,
+    }
+    assert row["evidence"]["comparison"]["status"] == "UNKNOWN"
+    assert row["evidence"]["comparison"]["observed_metric_sort_enabled"] is False
     assert snapshot.snapshot_id not in json.dumps(payload)

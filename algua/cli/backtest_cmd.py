@@ -33,6 +33,7 @@ _WF_SUMMARY_KEYS = (
     "strategy", "data_source", "snapshot_id", "timeframe", "seed", "period", "windows",
     "holdout_frac", "stability", "code_hash", "dependency_hash", "config_hash",
     "universe_name", "universe_snapshots", "fundamentals_snapshot", "news_snapshot",
+    "bars_provenance", "execution_costs",
     "mlflow_run_id", "mlflow_tracking_error", "mlflow_tracking_skipped",
 )
 _SWEEP_SUMMARY_KEYS = (
@@ -42,6 +43,7 @@ _SWEEP_SUMMARY_KEYS = (
     "snapshot_id", "timeframe", "seed", "period", "windows", "holdout_frac", "universe_name",
     "universe_snapshots", "fundamentals_snapshot", "news_snapshot", "mlflow_run_id",
     "mlflow_tracking_error", "mlflow_tracking_skipped",
+    "bars_provenance", "execution_costs",
 )
 
 

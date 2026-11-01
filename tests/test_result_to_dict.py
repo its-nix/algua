@@ -97,7 +97,11 @@ def test_backtest_result_to_dict_has_expected_keys():
         "period", "seed", "snapshot_id", "code_hash", "dependency_hash",
         "universe_name", "universe_snapshots", "fundamentals_snapshot", "news_snapshot",
         "model_ref", "delisting_snapshot", "forced_exits",
+        "bars_provenance", "execution_costs",
     }
+    # Legacy/default construction carries UNKNOWN inputs, never inferred metadata or zero costs.
+    assert d["bars_provenance"] is None
+    assert d["execution_costs"] is None
 
 
 def test_walkforward_result_to_dict_has_expected_keys():
@@ -108,7 +112,10 @@ def test_walkforward_result_to_dict_has_expected_keys():
         "holdout_metrics", "stability", "code_hash", "dependency_hash",
         "universe_name", "universe_snapshots",
         "fundamentals_snapshot", "news_snapshot",
+        "bars_provenance", "execution_costs",
     }
+    assert d["bars_provenance"] is None
+    assert d["execution_costs"] is None
 
 
 def test_sweep_result_to_dict_has_expected_keys():
@@ -120,4 +127,7 @@ def test_sweep_result_to_dict_has_expected_keys():
         "universe_name", "universe_snapshots",
         "fundamentals_snapshot", "news_snapshot",
         "trial_sharpe_count", "trial_sharpe_mean", "trial_sharpe_var_ann",
+        "bars_provenance", "execution_costs",
     }
+    assert d["bars_provenance"] is None
+    assert d["execution_costs"] is None

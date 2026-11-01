@@ -156,6 +156,8 @@ class WalkForwardResult:
     # market/benchmark series for vol-tertile regime labeling. NOT sensitive, but bulky → excluded
     # from to_dict (an internal gate input, like holdout_returns). None if the benchmark read fails.
     market_returns: tuple[list[float], list[str]] | None = None
+    bars_provenance: dict[str, Any] | None = None
+    execution_costs: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         # holdout_returns is SENSITIVE — never serialized (#221 Slice 1).
@@ -288,6 +290,7 @@ def walk_forward(
         snapshot_id=run_inputs.bars_snapshot_id,
         provider_seed=run_inputs.provider_seed,
     )
+    prov.update(run_inputs.provenance(seed))
     cfg_hash = config_hash(strategy)
 
     # Holdout STATISTIC + single-use burn: the holdout metric is evaluated on the NEXT line, so any

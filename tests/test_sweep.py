@@ -101,7 +101,10 @@ def test_evaluate_combo_returns_record_without_holdout():
         "data_source", "snapshot_id", "timeframe", "seed", "code_hash",
         "dependency_hash", "period", "universe_name", "universe_snapshots",
         "fundamentals_snapshot", "news_snapshot",
+        "bars_provenance", "execution_costs",
     }
+    assert rec["meta"]["bars_provenance"] is None  # unlabeled provider remains unknown
+    assert rec["meta"]["execution_costs"]["fees"] == ov.execution.fees
 
 
 def _run_kwargs():

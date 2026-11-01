@@ -136,7 +136,9 @@ def test_opt_in_projects_complete_valid_evidence_for_the_selected_run(
                 "n_bars": 63,
             },
         },
-        "snapshot_provenance": provenance,
+        "snapshot_provenance": {
+            "status": "UNAVAILABLE", "reason": "provenance_absent", "value": None,
+        },  # no captured run metadata; an exact current manifest is not historical evidence
         "comparison": {
             "status": "UNKNOWN",
             "observed_metric_sort_enabled": False,
@@ -294,7 +296,10 @@ def test_evidence_is_latest_not_best_and_uses_only_that_run_pointer(
         "reason": "missing_fields",
         "value": None,
     }
-    assert seen == ["newest-unlabeled"]
+    assert seen == []  # missing recorded metadata never queries a current manifest
+    assert row["evidence"]["snapshot_provenance"] == {
+        "status": "UNAVAILABLE", "reason": "provenance_absent", "value": None,
+    }
 
 
 @pytest.mark.parametrize(
