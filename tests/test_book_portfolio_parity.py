@@ -235,10 +235,10 @@ def test_reference_replay_refuses_unsupported_or_unpinned_inputs(mode):
     elif mode == "unbounded":
         from algua.calendar.market_calendar import MarketCalendar
 
-        days = MarketCalendar().sessions_in_range(start.date(), datetime(2024, 5, 1).date())
+        days = MarketCalendar().sessions_in_range(start.date(), datetime(2026, 2, 1).date())
         provider.frame = pd.concat([provider.frame.iloc[:2].set_axis(
             pd.DatetimeIndex([d, d], tz="UTC", name="timestamp")) for d in days])
-        end = pd.Timestamp("2024-05-02", tz="UTC")
+        end = pd.Timestamp("2026-02-02", tz="UTC")
     elif mode == "future":
         # A provider violating its half-open window cannot make a replay evaluate future signals.
         end = DATES[2]
