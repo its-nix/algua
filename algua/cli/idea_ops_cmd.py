@@ -3,6 +3,7 @@
 authority; the research/leap/forage drivers and the merge-back drainer do."""
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -14,6 +15,12 @@ from algua.cli.errors import json_errors
 from algua.cli.idea_json import idea_json
 from algua.config.settings import get_settings
 from algua.contracts.idea import AttemptOutcome
+from algua.operator.research_cycle import (
+    CycleLimits,
+    ResearchCycle,
+    duration_seconds,
+    file_hash,
+)
 from algua.registry.db import connect, migrate, registry_conn
 from algua.registry.idea_attempts import IdeaAttemptsRepository
 from algua.registry.idea_import import (
@@ -53,6 +60,101 @@ idea_ops_app = typer.Typer(
     help="Driver-facing idea-pool ops: claim / record-outcome / link / depth / refuted / import "
          "/ reclassify / scorecard. Agents never run these against authority.",
 )
+
+
+def _cycle_context(data_dir: Path, *, root: Path | None = None) -> dict:
+    root = root.resolve() if root is not None else Path(__file__).resolve().parents[2]
+    required = {
+        "dependency_hash": "uv.lock",
+        "project_sha256": "pyproject.toml",
+        "runtime_seam_sha256": ".opencode/scripts/run_agent.sh",
+        "runtime_config_sha256": ".opencode/opencode.json",
+        "controller_sha256": "algua/operator/research_cycle.py",
+        "supervisor_sha256": "algua/operator/research_cycle_worker.py",
+        "outcome_parser_sha256": "algua/operator/research_cycle_results.py",
+        "driver_sha256": ".opencode/scripts/run-research-loop.sh",
+    }
+    sources = {key: file_hash(root / path) for key, path in required.items()}
+    if any(value is None for value in sources.values()):
+        raise ValueError("missing required cycle source identity")
+    # Content identity covers the checkout's Python and runtime inputs, independently of Git
+    # refs or the caller's cwd. A fresh HEAD worktree must match the tree pinned before claim.
+    paths = sorted({*required.values(), *(
+        str(path.relative_to(root)) for directory in ("algua", ".opencode")
+        for path in (root / directory).rglob("*") if path.is_file()
+        and "__pycache__" not in path.parts
+        and path.suffix in {".py", ".sh", ".md", ".json", ".txt"})})
+    manifest = {path: file_hash(root / path) for path in paths}
+    if any(value is None for value in manifest.values()):
+        raise ValueError("missing cycle baseline source")
+    baseline = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
+    return {"data_dir": str(data_dir.resolve()),
+            "data_manifest_sha256": file_hash(data_dir / "manifest.jsonl"),
+            "source_baseline_sha256": baseline, **sources}
+
+
+@idea_ops_app.command("cycle-start")
+@json_errors
+def cycle_start(
+    run: str = typer.Option(..., "--run"),
+    limit: int = typer.Option(..., "--limit"),
+    timeout: str = typer.Option("45m", "--timeout"),
+    workers: int = typer.Option(1, "--workers"),
+    cpu_seconds: int = typer.Option(2700, "--cpu-seconds"),
+    memory_mb: int = typer.Option(16384, "--memory-mb"),
+    file_mb: int = typer.Option(512, "--file-mb"),
+    max_cost: float | None = typer.Option(None, "--max-cost"),
+    category: str | None = typer.Option(None, "--category"),
+) -> None:
+    """Start/recover one bounded driver cycle under the driver's existing flock."""
+    s = get_settings()
+    limits = CycleLimits(limit, duration_seconds(timeout), workers, cpu_seconds,
+                         memory_mb, file_mb, max_cost)
+    with registry_conn() as conn:
+        cycle = ResearchCycle(conn, s.data_dir / "research-cycles", run)
+        claimed, result = cycle.start(
+            limits=limits, context=_cycle_context(s.data_dir), category=category,
+            ttl_minutes=s.idea_claim_ttl_minutes, preview_hold_hours=s.idea_preview_hold_hours)
+        result["claimed"] = [idea_json(i, IdeaRepository(conn)) for i in claimed]
+        emit(result)
+    if not result["ok"]:
+        raise typer.Exit(1)
+
+
+@idea_ops_app.command("cycle-check")
+@json_errors
+def cycle_check(run: str = typer.Option(..., "--run"),
+                scratch_data: Path = typer.Option(..., "--scratch-data"),
+                worker_root: Path | None = typer.Option(None, "--worker-root")) -> None:
+    """Verify the copied manifest and pinned source context before launching the worker."""
+    s = get_settings()
+    if worker_root is None:
+        raise ValueError("actual worker checkout --worker-root is required")
+    with registry_conn() as conn:
+        cycle = ResearchCycle(conn, s.data_dir / "research-cycles", run)
+        cycle.verify_context(context=_cycle_context(s.data_dir), scratch_data=scratch_data)
+        cycle.verify_context(context=_cycle_context(s.data_dir, root=worker_root),
+                             scratch_data=scratch_data)
+    emit(ok({"research_cycle_id": run, "context_verified": True}))
+
+
+@idea_ops_app.command("cycle-finish")
+@json_errors
+def cycle_finish(
+    run: str = typer.Option(..., "--run"),
+    phase: str = typer.Option(..., "--phase"),
+    worker_exit: int = typer.Option(..., "--worker-exit"),
+    report: Path | None = typer.Option(None, "--report"),
+    evidence_ref: str | None = typer.Option(None, "--evidence-ref"),
+) -> None:
+    """Reconcile every claim once; any error/unfinished attempt fails the command."""
+    s = get_settings()
+    with registry_conn() as conn:
+        result = ResearchCycle(conn, s.data_dir / "research-cycles", run).finish(
+            phase=phase, worker_exit=worker_exit, report=report, evidence_ref=evidence_ref)
+        emit(result)
+    if not result["ok"]:
+        raise typer.Exit(1)
 
 
 @idea_ops_app.command("claim")

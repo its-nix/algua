@@ -167,6 +167,23 @@ def test_parses_verdict_and_validated_merge_back(tmp_path):
     assert "merge-back queue:" in proc.stdout
 
 
+def test_cycle_identity_uses_explicit_utc_timestamp_and_cost_stays_unknown(tmp_path):
+    from datetime import UTC, datetime
+
+    from algua.operator.loop_health import _digest_stamp
+
+    cycle_id = "20261101-120000-unique123"
+    proc, digest, _ = _run_append_digest(
+        tmp_path, trailer={"hypotheses": [], "preview_gate": None}, stamp=cycle_id)
+    assert proc.returncode == 0, proc.stderr
+    row = _last_digest_row(digest)
+    assert row["research_cycle_id"] == cycle_id
+    assert row["monetary_cost"] is None and row["cost_status"] == "unknown"
+    assert row["cost_gate_passed"] is False
+    instant = _digest_stamp(row)
+    assert instant is not None and 0 <= (datetime.now(UTC) - instant).total_seconds() < 10
+
+
 # --- (b) strategy cross-check: reject an unrelated strategy name --------------------------------
 
 
@@ -955,6 +972,7 @@ def test_merge_back_idea_id_this_run_never_claimed_drops_the_binding_not_the_can
     mb = {"idea_id": 999, "strategy": "strat_a", "universe": "sp500", "start": "2024-01-01",
           "end": "2024-06-01", "eval_context": _ec()}
     trailer = {"hypotheses": [{"idea_id": 7, "title": "Passer", "outcome": "candidate_preview_pass",
+                               "reason": "preview passed",
                                "verdict": "candidate-preview-pass", "merge_back": mb}],
                "preview_gate": None}
     proc, _digest_path, queue_path = _run_append_digest(
@@ -1138,8 +1156,8 @@ def test_record_outcomes_is_a_no_op_without_claims(tmp_path):
     assert calls == []
 
 
-def test_record_outcomes_survives_a_failing_record_outcome_call(tmp_path):
-    # Best-effort by contract: a rejected write warns loudly and the loop keeps going.
+def test_record_outcomes_fails_after_a_failing_record_outcome_call(tmp_path):
+    # Continue recording siblings, but a rejected write must fail the firing.
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     fake = bin_dir / "uv"
@@ -1152,7 +1170,7 @@ def test_record_outcomes_survives_a_failing_record_outcome_call(tmp_path):
         input=_RECORD_OUTCOMES_SRC, capture_output=True, text=True, timeout=30,
         env={**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"},
     )
-    assert proc.returncode == 0, proc.stderr
+    assert proc.returncode == 1, proc.stderr
     assert "WARNING: record-outcome failed for idea 7" in proc.stdout
     assert "recorded 0/1 claimed idea outcome(s)" in proc.stdout
 
@@ -1160,7 +1178,7 @@ def test_record_outcomes_survives_a_failing_record_outcome_call(tmp_path):
 def test_record_outcomes_skips_a_claim_with_no_token(tmp_path):
     proc, calls = _run_record_outcomes(
         tmp_path, claimed=[{"id": 7, "claim_token": None}], report_path="")
-    assert proc.returncode == 0, proc.stderr
+    assert proc.returncode == 1, proc.stderr
     assert calls == []
     assert "carries no claim token" in proc.stdout
 
@@ -1238,16 +1256,14 @@ def test_scratch_seed_survives_a_cold_start_with_no_ideas_table(tmp_path):
     assert proc.returncode == 0, proc.stderr
 
 
-def test_setup_failure_trap_is_armed_immediately_after_the_claim():
-    # Anything between the claim and the codex run (anti-dup read, lock, worktree, scratch seed,
-    # uv sync) can fail. Before this, such a failure exited with the claims still HELD — the ideas
-    # left the pool until the 180-minute TTL reap.
-    claim_echo = LAUNCHER_SRC.index('echo "claimed ${N_CLAIMED} idea(s) from ${AUTH_DB}')
+def test_setup_failure_trap_and_lock_precede_the_claim():
+    claim = LAUNCHER_SRC.index('CLAIM_ARGS=(research idea cycle-start')
     arm = LAUNCHER_SRC.index("trap cleanup_setup EXIT")
     lock = LAUNCHER_SRC.index('LOCK="${REPO_ROOT}/data/research-loop.lock"')
     worktree = LAUNCHER_SRC.index('git -C "${REPO_ROOT}" worktree add -b "${BRANCH}"')
     definition = LAUNCHER_SRC.index("cleanup_setup() {")
-    assert definition < claim_echo < arm < lock < worktree
-    # Still cleared once setup succeeds, before codex runs.
-    clear = LAUNCHER_SRC.index("trap - EXIT\n\necho \"Running research loop")
-    assert worktree < clear
+    assert definition < lock < arm < claim < worktree
+    # Finalization stays armed through the worker and is cleared after outcome reconciliation.
+    finish = LAUNCHER_SRC.index('record_outcomes "${DIGEST_REPORT_PATH}" completed')
+    clear = LAUNCHER_SRC.index("trap - EXIT\nappend_digest completed")
+    assert worktree < finish < clear
