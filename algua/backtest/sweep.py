@@ -51,8 +51,9 @@ def _override(strategy: LoadedStrategy, combo: dict[str, Any]) -> LoadedStrategy
     A grid key prefixed `construction.` tunes `construction_params` (re-validated by the policy);
     `overlay.<i>.<key>` tunes `overlays[i].params` (re-validated by that policy, incl. the
     feature_lookback cover check); any other key tunes signal `params` and MUST already exist in the
-    base params (so a typo'd key is rejected, never a silent no-op). Preserves the resolved
-    construction policy, overlay fns and signal_panel. Does not mutate the base strategy/config.
+    base params (so a typo'd key is rejected, never a silent no-op). Context signal overrides
+    are unsupported: score(context) has no reviewed parameter-binding channel. Construction and
+    overlay grids remain supported. Preserves resolved policies and does not mutate the base.
     """
     cfg = strategy.config
     new_params = dict(cfg.params)
@@ -65,6 +66,11 @@ def _override(strategy: LoadedStrategy, combo: dict[str, Any]) -> LoadedStrategy
             idx, param = _overlay_key(key, len(cfg.overlays))
             new_oparams[idx][param] = value
         else:
+            if strategy.strategy_interface == "context_v1":
+                raise ValueError(
+                    f"context_v1 signal parameter overrides are unsupported (sweep key {key!r}); "
+                    "use construction.* or overlay.<i>.* grids only"
+                )
             if key not in cfg.params:
                 raise ValueError(
                     f"sweep key {key!r} is not a base signal param "

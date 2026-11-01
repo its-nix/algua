@@ -190,6 +190,34 @@ focused compatibility tests, but production `walk_forward` calls only
 No paper/live/frozen lane can load a context strategy, and model-backed sweep/walk-forward remains
 refused. No fixture result is alpha or qualification evidence.
 
+## Context signal-grid limitation (PR726 review correction)
+
+`context_v1` signal-parameter overrides are **unsupported until a parameter-binding contract is
+explicitly reviewed**: `score(context)` has no parameter channel, so copying `config.params` can
+change the recorded identity without changing authored scoring. `_override` now refuses every
+unprefixed context grid key with `ValueError`, including unchanged values and unknown keys. The
+shared `validate_sweep_grid` therefore refuses before captured provider fetches, worker dispatch,
+trials/holdout or evidence recording; CLI callers retain the JSON error envelope. No injection,
+closure rebinding, score/context/identity API change or paper/live eligibility is introduced.
+
+Construction (`construction.*`) and overlay (`overlay.<i>.*`) grids remain supported: their existing
+explicit parameter channels are exercised by behavioral weight tests, alongside a parameter-sensitive
+legacy signal control. Existing sequential/parallel captured-input controls now use construction
+grids rather than accepting ineffective signal overrides. The imported original reproducer accepted
+`pick=BBB`, changed the config hash, but still produced AAA weights from module CONFIG.
+
+Override inventory: `_override` is the only existing signal-config replacement implementation;
+`validate_sweep_grid`, engine sweep, CLI/shared `sweep_task`, research batch and merge-back intake
+share it. Merge-back's authoritative precheck consequently also refuses the unsupported grid. The
+other loaded-strategy replacements remove overlays or reconstruct planner identity, not signal
+parameter tuning; they are not changed. Direct manual config mutation/replacement is not a new
+supported binding API. Model-backed sweep/walk-forward remains separately refused.
+
+Protected human review and exact-head hosted CI remain required before any merge decision. This
+bounded correction does not supersede the full protected-diff review, mark the draft ready, or close
+Task2/the initiative. Full-gate results for the corrected frozen tree are recorded in the PR evidence;
+the known unchanged local IPv6-mapped-IPv4 baseline is not suppressed.
+
 ## Suggested Review Order
 
 **Identity and admission**

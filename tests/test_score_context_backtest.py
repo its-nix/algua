@@ -567,22 +567,112 @@ def test_context_run_stamps_verified_snapshot_without_reread_or_decisions() -> N
     assert provider.snapshot_reads == 2
 
 
-def test_sweep_override_preserves_bars_only_context_strategy_state() -> None:
-    config = _config(params={"bias": 1.0})
-    score_fn = lambda context: pd.Series({"AAA": 1.0})  # noqa: E731
+@pytest.mark.parametrize("surface", ["override", "validate", "sequential", "parallel", "cli"])
+@pytest.mark.parametrize("key", ["pick", "typo"])
+def test_context_signal_sweep_refused_before_effects(surface, key, monkeypatch) -> None:
+    import json
+
+    from typer.testing import CliRunner
+
+    from algua.backtest.sweep import validate_sweep_grid
+    from algua.cli.main import app
+    from algua.evaluation import sweep_run
+
+    sweep_module = importlib.import_module("algua.backtest.sweep")
+    config = _config(params={"pick": "AAA"})
+    calls = []
+
+    def score(context):
+        calls.append("score")
+        return pd.Series({config.params["pick"]: 1.0})
+
     strategy = LoadedStrategy(
-        config=config,
-        strategy_interface="context_v1",
-        score_fn=score_fn,
+        config=config, strategy_interface="context_v1", score_fn=score,
         construct_fn=get_construction_policy(config.construction),
     )
 
-    overridden = _override(strategy, {"bias": 2.0})
+    def forbidden(*args, **kwargs):
+        pytest.fail("unsupported grid reached provider/worker/trial/holdout/evidence")
 
-    assert overridden.config.params == {"bias": 2.0}
-    assert overridden.strategy_interface == "context_v1"
-    assert overridden.score_fn is score_fn
-    assert overridden.model_handle is strategy.model_handle
+    for target in ["capture_run_inputs", "_run_combos", "ProcessPoolExecutor", "walk_forward"]:
+        monkeypatch.setattr(sweep_module, target, forbidden)
+    for target in ["registry_conn", "record_search_breadth", "record_sweep_run", "record_tracking"]:
+        monkeypatch.setattr(sweep_run, target, forbidden)
+    monkeypatch.setenv("ALGUA_SWEEP_CPU_BUDGET", "2" if surface == "parallel" else "1")
+    start, end = datetime(2024, 1, 2, tzinfo=UTC), datetime(2024, 6, 28, tzinfo=UTC)
+    message = "context_v1.*signal parameter.*unsupported"
+    if surface == "cli":
+        monkeypatch.setattr(
+            sweep_run, "resolve_eval_inputs", lambda *a, **kw: (strategy, None, start, end)
+        )
+        result = CliRunner().invoke(
+            app, ["backtest", "sweep", "fixture", "--demo", "--param", f"{key}=AAA,BBB", "--track"]
+        )
+        assert result.exit_code == 1
+        payload = json.loads(result.stdout)
+        assert "context_v1" in str(payload) and "unsupported" in str(payload)
+    else:
+        with pytest.raises(ValueError, match=message):
+            if surface == "override":
+                _override(strategy, {key: "BBB"})
+            elif surface == "validate":
+                validate_sweep_grid(strategy, {key: ["AAA", "BBB"]})
+            else:
+                sweep(strategy, None, start, end, grid={key: ["AAA", "BBB"]})
+    assert calls == []
+    assert strategy.config.params == {"pick": "AAA"}
+
+
+def test_supported_sweep_overrides_change_actual_decisions() -> None:
+    from algua.backtest.sweep import validate_sweep_grid
+    from algua.contracts.strategy_context import AsOfContext, AsOfView
+    from algua.portfolio.overlays import OverlaySpec, resolve_overlays
+
+    ts = pd.date_range("2024-01-02", periods=2, tz="UTC", name="timestamp")
+    bars = pd.DataFrame(
+        {"symbol": ["AAA", "BBB", "AAA", "BBB"], "adj_close": [10., 20., 8., 20.]},
+        index=ts.repeat(2),
+    )
+    context = AsOfContext(
+        decision_ts=ts[-1].to_pydatetime(), first_decision_ts=ts[0].to_pydatetime(),
+        universe=("AAA", "BBB"),
+        features={"bars": AsOfView(
+            kind="bars", as_of=ts[-1].to_pydatetime(), snapshot_id="fixture", frame=bars
+        )}, models={},
+    )
+    config = _config(
+        params={"pick": "AAA"}, construction="top_k_equal_weight",
+        construction_params={"top_k": 1}, feature_lookback=2,
+        overlays=[OverlaySpec(
+            policy="trailing_stop", params={"lookback": 2, "stop_pct": 0.1, "cooldown_bars": 0}
+        )],
+    )
+    strategy = LoadedStrategy(
+        config=config, strategy_interface="context_v1",
+        score_fn=lambda context: pd.Series({"AAA": 2., "BBB": 1.}),
+        construct_fn=get_construction_policy(config.construction),
+        overlay_fns=resolve_overlays(config.overlays, feature_lookback=2),
+    )
+    _, trials = validate_sweep_grid(
+        strategy, {"construction.top_k": [1, 2], "overlay.0.stop_pct": [0.1, 0.3]}
+    )
+    weights = [trial.target_weights_context(context) for trial in trials]
+    assert weights[0]["AAA"] == 0.0
+    assert weights[1]["AAA"] == pytest.approx(0.95)
+    assert weights[2]["AAA"] == 0.0 and weights[2]["BBB"] == pytest.approx(0.5)
+    assert weights[3]["AAA"] == weights[3]["BBB"] == pytest.approx(0.475)
+    assert len({config_hash(trial) for trial in trials}) == 4
+    assert all(trial.score_fn is strategy.score_fn for trial in trials)
+    assert strategy.config.construction_params == {"top_k": 1}
+    legacy = LoadedStrategy(
+        config=_config(params={"pick": "AAA"}),
+        signal_fn=lambda view, params: pd.Series({params["pick"]: 1.}),
+        construct_fn=get_construction_policy("equal_weight_positive"),
+    )
+    _, legacy_trials = validate_sweep_grid(legacy, {"pick": ["AAA", "BBB"]})
+    assert list(legacy_trials[0].signal(bars).index) == ["AAA"]
+    assert list(legacy_trials[1].signal(bars).index) == ["BBB"]
+    assert config_hash(legacy_trials[0]) != config_hash(legacy_trials[1])
 
 
 def test_sweep_runs_bars_and_news_context_with_verified_snapshot_identity() -> None:
@@ -606,7 +696,10 @@ def test_sweep_runs_bars_and_news_context_with_verified_snapshot_identity() -> N
             )
         )
     )
-    config = _config(params={"bias": 1.0}, needs_news=True)
+    config = _config(
+        params={"bias": 1.0}, needs_news=True,
+        construction="top_k_equal_weight", construction_params={"top_k": 2},
+    )
     strategy = LoadedStrategy(
         config=config,
         strategy_interface="context_v1",
@@ -619,7 +712,7 @@ def test_sweep_runs_bars_and_news_context_with_verified_snapshot_identity() -> N
         provider,
         start,
         end,
-        grid={"bias": [2.0]},
+        grid={"construction.top_k": [1]},
         windows=2,
         news_provider=_NewsProvider(news),
     )
@@ -647,7 +740,7 @@ def test_sweep_retains_context_model_lane_refusal() -> None:
             _BarsProvider(seed=3),
             datetime(2024, 1, 2, tzinfo=UTC),
             datetime(2024, 6, 28, tzinfo=UTC),
-            grid={"bias": [2.0]},
+            grid={"construction.top_k": [1]},
         )
 
 
@@ -893,7 +986,10 @@ def test_sweep_captures_bars_and_sidecars_once_for_every_combo(monkeypatch) -> N
     )
     news_provider = _NewsProvider(news)
     provider = _DriftOnSecondBarsFetch(seed=12)
-    config = _config(params={"bias": 1.0}, needs_news=True)
+    config = _config(
+        params={"bias": 1.0}, needs_news=True,
+        construction="top_k_equal_weight", construction_params={"top_k": 2},
+    )
     strategy = LoadedStrategy(
         config=config,
         strategy_interface="context_v1",
@@ -906,7 +1002,7 @@ def test_sweep_captures_bars_and_sidecars_once_for_every_combo(monkeypatch) -> N
         provider,
         start,
         end,
-        grid={"bias": [1.0, 2.0]},
+        grid={"construction.top_k": [1, 2]},
         windows=2,
         news_provider=news_provider,
     )
