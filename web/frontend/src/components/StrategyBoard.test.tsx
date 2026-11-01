@@ -68,7 +68,7 @@ const metadataBound = {
   ...populated,
   data: {
     ...populated.data,
-    evidence_schema_version: 'strategy-board-evidence/v1',
+    evidence_schema_version: 'strategy-board-evidence/v2',
     rows: populated.data.rows.map((value, index) => index !== 1 ? { ...value, evidence: null } : {
       ...value,
       evidence: {
@@ -95,10 +95,7 @@ const metadataBound = {
         },
         comparison: {
           status: 'UNKNOWN', observed_metric_sort_enabled: false,
-          reasons: [
-            'historical_cost_context_unavailable',
-            'homogeneous_comparison_context_unavailable',
-          ],
+          reasons: ['recorded_inputs_unavailable'], cohort_id: null, context: null,
         },
       },
     }),
@@ -150,7 +147,7 @@ it('keeps stage and family filters behind one control and explains why metric so
   fireEvent.click(controls)
   expect(controls.getAttribute('aria-expanded')).toBe('true')
   expect(screen.getByRole('button', { name: 'oos sharpe' }).hasAttribute('disabled')).toBe(true)
-  expect(screen.getByText(/historical cost and homogeneous comparison context are unavailable/i)).toBeTruthy()
+  expect(screen.getByText(/Select a matching cohort/i)).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: /^live/ }))
   fireEvent.click(screen.getByRole('button', { name: /^momentum/ }))
   expect(screen.getByRole('button', { name: /board controls.*live.*momentum/i })).toBeTruthy()
@@ -258,7 +255,7 @@ it('shows the latest observed OOS scalars without inferring legacy comparison me
   expect(measured.getByText('age UNKNOWN')).toBeTruthy()
   expect(measured.getByText(/evidence extension unavailable.*no inference/i)).toBeTruthy()
   expect(measured.queryByText(/tier UNKNOWN|period UNKNOWN/)).toBeNull()
-  expect(screen.getByText(/exploratory evidence only.*not a promotion.*expected-profit/i)).toBeTruthy()
+  expect(screen.getByText(/Never promotion or expected profit/i)).toBeTruthy()
 })
 
 it('opts into and renders metadata-bound evaluation, OOS, snapshot coverage, and every limitation', async () => {
@@ -299,7 +296,7 @@ it('distinguishes an absent legacy extension from malformed extension claims', a
   clearFetchCache()
   mockBoard({
     ...metadataBound,
-    data: { ...metadataBound.data, evidence_schema_version: 'strategy-board-evidence/v2' },
+    data: { ...metadataBound.data, evidence_schema_version: 'strategy-board-evidence/v3' },
   })
   renderBoard()
   const unsupported = within((await screen.findAllByTestId('board-row'))[1])
@@ -338,7 +335,7 @@ it('invalidates evidence/schema/member incoherence while preserving a truly lega
   clearFetchCache()
   mockBoard(env({
     schema_version: 'strategy-board/v1',
-    evidence_schema_version: 'strategy-board-evidence/v2',
+    evidence_schema_version: 'strategy-board-evidence/v3',
     count: 0,
     rows: [],
   } as unknown as StrategyBoardPayload))
@@ -559,4 +556,17 @@ it('exposes no action that mutates state', async () => {
   expect(container.querySelector('form, input, select, textarea')).toBeNull()
   const labels = screen.getAllByRole('button').map((b) => b.textContent ?? '')
   expect(labels.join(' ')).not.toMatch(/promote|retire|allocate|trade|approve/i)
+})
+
+it('discloses recorded costs even when the execution context remains unranked', async () => {
+  const payload = structuredClone(metadataBound)
+  Object.assign(payload.data.rows[1], { recorded_provenance: { status: 'VALID', reason: null,
+    value: { bars_snapshot_id: 'recorded-snapshot', bars_content_hash: 'b'.repeat(64),
+      execution_costs: { schema_version: 'execution-costs/v1', model: 'vectorbt.from_orders',
+        fees: 0.0005, fees_unit: 'fraction_of_trade_notional_per_side', slippage: 0,
+        slippage_unit: 'adverse_fill_price_fraction_per_side' } } } })
+  mockBoard(payload)
+  renderBoard()
+  expect(await screen.findByText(/Recorded fees 0.0005 of trade notional\/side/)).toBeTruthy()
+  expect(screen.getByText(/slippage 0 adverse price fraction\/side/)).toBeTruthy()
 })

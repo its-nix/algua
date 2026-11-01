@@ -10,6 +10,7 @@ from datetime import date, datetime
 from typing import Any
 
 from algua.contracts.lifecycle import Stage
+from algua.registry.board_comparison import comparison_evidence
 from algua.registry.run_provenance import recorded_run_evidence
 from algua.registry.store import SqliteStrategyRepository
 
@@ -22,7 +23,7 @@ __all__ = [
 ]
 
 SCHEMA_VERSION = "strategy-board/v1"
-EVIDENCE_SCHEMA_VERSION = "strategy-board-evidence/v1"
+EVIDENCE_SCHEMA_VERSION = "strategy-board-evidence/v2"
 type SnapshotEvidenceResolver = Callable[[str], dict[str, Any]]
 
 #: The gate-run scalars the board exposes — a subset of the fixed run vocabulary, selected from
@@ -245,14 +246,6 @@ def _evidence(row: sqlite3.Row, recorded: tuple[dict[str, Any], dict[str, Any]])
         "evaluation": _evaluation(row),
         "oos_interval": _oos_interval(row),
         "snapshot_provenance": snapshot,
-        "comparison": {
-            "status": "UNKNOWN",
-            "observed_metric_sort_enabled": False,
-            "reasons": [
-                "historical_cost_context_unavailable",
-                "homogeneous_comparison_context_unavailable",
-            ],
-        },
     }
 
 
@@ -287,6 +280,8 @@ def strategy_board_payload(
                 recorded = recorded_run_evidence(repo, row)
                 entry["recorded_provenance"] = recorded[0]
                 entry["evidence"] = _evidence(row, recorded)
+                entry["evidence"]["comparison"] = comparison_evidence(
+                    repo, row, entry["evidence"], recorded[0])
         board.append(entry)
     payload: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,

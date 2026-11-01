@@ -50,7 +50,7 @@ describe('resolveFixture', () => {
     const board = resolveFixture(
       '/api/strategy-board?include_evidence=true',
     ) as ApiEnvelope<StrategyBoardPayload>
-    expect(board.data.evidence_schema_version).toBe('strategy-board-evidence/v1')
+    expect(board.data.evidence_schema_version).toBe('strategy-board-evidence/v2')
     const evidenced = board.data.rows.find((row) => row.evidence !== null)
     expect(evidenced?.evidence?.snapshot_provenance.value).toEqual({
       schema_version: 'pilot-provenance/v1',

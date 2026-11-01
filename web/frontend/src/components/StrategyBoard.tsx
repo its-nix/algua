@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, useFetch } from '../api'
 import type { UseFetchResult } from '../api'
@@ -12,25 +12,25 @@ import type {
   StrategyBoardOosEvidence,
   StrategyBoardSnapshotEvidence,
 } from '../types'
+import { contextKey, observedOrder, parseComparison, parseRecordedProvenance } from './boardComparison'
+import type { ObservedMetric, RecordedProvenance } from './boardComparison'
 import PassMark from './PassMark'
 import Sparkline from './Sparkline'
 import StaleNotice from './StaleNotice'
 import StageChip from './StageChip'
 
 const SCHEMA_VERSION = 'strategy-board/v1'
-const EVIDENCE_SCHEMA_VERSION = 'strategy-board-evidence/v1'
+const EVIDENCE_SCHEMA_VERSION = 'strategy-board-evidence/v2'
 export const STRATEGY_BOARD_EVIDENCE_URL = '/api/strategy-board?include_evidence=true'
 
-type MetricKey = Exclude<keyof StrategyBoardGate, 'run_id' | 'created_at' | 'passed' | 'n_obs_oos'>
+type MetricKey = ObservedMetric
 
 interface SortOption {
   key: MetricKey
   label: string
 }
 
-/** Approved observed comparison axes. strategy-board/v1 lacks the period/tier metadata required
- * to compare them, so the controls remain visible but disabled until a reviewed contract carries
- * that metadata. No client-side ranking implementation exists in this slice. */
+/** Observed research metrics; enabled only after explicit same-cohort selection. */
 export const SORT_OPTIONS: SortOption[] = [
   { key: 'sharpe_oos', label: 'oos sharpe' },
   { key: 'total_return_oos', label: 'oos return' },
@@ -116,6 +116,8 @@ export function StrategyBoardView({
   const [stage, setStage] = useState<string | null>(null)
   const [family, setFamily] = useState<string | null>(null)
   const [controlsOpen, setControlsOpen] = useState(false)
+  const [cohort, setCohort] = useState('')
+  const [order, setOrder] = useState<ObservedMetric | null>(null)
 
   const board = isBoardPayload(query.data?.data) ? query.data.data : undefined
 
@@ -183,6 +185,36 @@ export function StrategyBoardView({
     (activeStage === null || row.stage === activeStage) &&
     (activeFamily === null || (activeFamily === UNKNOWN_FAMILY ? row.family === null : row.family === activeFamily)),
   )
+  const parsedEvidence = new Map<number, ParsedEvidence | null>()
+  const comparisons = new Map<number, StrategyBoardComparisonEvidence>()
+  if (evidenceSchema === EVIDENCE_SCHEMA_VERSION) for (const row of board.rows) {
+    const parsed = row.latest_gate === null ? null : parseEvidence(
+      row.evidence, row.latest_gate, (row as unknown as Record<string, unknown>).recorded_provenance,
+    )
+    parsedEvidence.set(row.strategy_id, parsed)
+    if (parsed?.comparison.status === 'COMPARABLE') comparisons.set(row.strategy_id, parsed.comparison)
+  }
+  const cohorts = new Map<string, { evidence: StrategyBoardComparisonEvidence; rows: StrategyBoardRow[]; conflict: boolean }>()
+  for (const row of board.rows) {
+    const comparison = comparisons.get(row.strategy_id)
+    if (!comparison?.cohort_id || !comparison.context) continue
+    const existing = cohorts.get(comparison.cohort_id)
+    if (existing) {
+      existing.rows.push(row)
+      existing.conflict ||= contextKey(existing.evidence.context) !== contextKey(comparison.context)
+    } else cohorts.set(comparison.cohort_id, { evidence: comparison, rows: [row], conflict: false })
+  }
+  const availableCohorts = [...cohorts.entries()].filter(([, c]) => !c.conflict && c.rows.length >= 2)
+  const activeCohort = !compact && !query.data?.stale && query.error === null
+    ? availableCohorts.find(([id]) => id === cohort)?.[1] : undefined
+  const candidates = activeCohort === undefined ? [] : visible.filter(row =>
+    comparisons.get(row.strategy_id)?.cohort_id === cohort)
+  const activeOrder = order !== null && candidates.filter(r => r.latest_gate?.[order] != null).length >= 2
+    ? order : null
+  const ordered = activeOrder === null ? [] : observedOrder(candidates.filter(
+    r => r.latest_gate?.[activeOrder] != null), activeOrder)
+  const orderedIds = new Set(ordered.map(r => r.strategy_id))
+  const remaining = visible.filter(r => !orderedIds.has(r.strategy_id))
   const familyLabel = activeFamily === UNKNOWN_FAMILY ? 'unknown family' : activeFamily ?? 'all families'
   return (
     <section aria-labelledby="strategy-board-heading">
@@ -195,18 +227,11 @@ export function StrategyBoardView({
         {activeStage === null && activeFamily === null ? board.count : `${visible.length} of ${board.count}`} strategies ·
         latest gate run each
       </div>
-      {compact ? (
-        <p className="board-disclosure">
-          Comparison UNKNOWN: historical cost and homogeneous context unavailable. Metric sorting
-          disabled; never promotion or expected profit.
-        </p>
-      ) : (
-        <p className="board-disclosure">
-          Exploratory evidence only — not a promotion signal or expected-profit claim. Historical
-          cost and homogeneous comparison context are unavailable, so metric sorting is disabled
-          and registry order is retained.
-        </p>
-      )}
+      <p className="board-disclosure">
+        {compact ? 'Comparison is available on the leaderboard with recorded context. ' :
+          'Exploratory research only. Select a matching cohort to order observed OOS metrics; other rows stay unranked. '}
+        Never promotion or expected profit. Paper/live results remain in their own detail sections.
+      </p>
 
       <button
         type="button"
@@ -276,41 +301,45 @@ export function StrategyBoardView({
             )}
           </div>
 
+          {!compact && <label className="board-cohort-control">
+            comparison cohort
+            <select aria-label="comparison cohort" value={cohort}
+              onChange={e => { setCohort(e.target.value); setOrder(null) }}>
+              <option value="">select cohort · lifecycle order</option>
+              {availableCohorts.map(([id, c]) => <option key={id} value={id}>
+                {id.slice(0, 8)} · {c.evidence.context?.timeframe} · {c.evidence.context?.oos.start}–{c.evidence.context?.oos.end}
+                {' · '}{c.rows.length} strategies
+              </option>)}
+            </select>
+          </label>}
+          {availableCohorts.length === 0 && <p className="dim-note">
+            No matching recorded cohort. Metric sorting disabled; missing context stays UNKNOWN.
+          </p>}
           <div className="chip-row" role="group" aria-label="comparison order">
-          <button
-            type="button"
-            className="filter-chip active"
-            aria-pressed="true"
-          >
-            lifecycle
-          </button>
-          {SORT_OPTIONS.map((opt) => (
-            <button
-              key={opt.key}
-              type="button"
-              className="filter-chip"
-              aria-pressed="false"
-              disabled
-              title="Unavailable: historical cost and homogeneous comparison context are absent"
-            >
-              {opt.label}
-            </button>
-          ))}
+            <button type="button" className={activeOrder === null ? 'filter-chip active' : 'filter-chip'}
+              aria-pressed={activeOrder === null} onClick={() => setOrder(null)}>lifecycle</button>
+            {SORT_OPTIONS.map(opt => <button key={opt.key} type="button"
+              className={activeOrder === opt.key ? 'filter-chip active' : 'filter-chip'}
+              aria-pressed={activeOrder === opt.key}
+              disabled={!activeCohort || candidates.filter(r => r.latest_gate?.[opt.key] != null).length < 2}
+              title="Choose a cohort with at least two observed values; stale/error reads cannot be ordered"
+              onClick={() => setOrder(opt.key)}>{opt.label}</button>)}
           </div>
         </div>
       )}
 
+      {activeOrder !== null && <p className="board-disclosure">
+        Observed {SORT_OPTIONS.find(o => o.key === activeOrder)?.label} · descending
+        {' · '}NONPIT/current-survivor proxy · {ordered.length} strategies · historical research only
+      </p>}
       <div className="row-list">
-        {visible.length === 0 ? (
-          <div className="panel board-filter-empty">no strategies match this stage and family</div>
-        ) : visible.map((row) => (
-          <BoardRow
-            key={row.strategy_id}
-            row={row}
-            compact={compact}
-            evidenceSchema={evidenceSchema}
-          />
-        ))}
+        {visible.length === 0 ? <div className="panel board-filter-empty">no strategies match this stage and family</div>
+          : [...ordered, ...remaining].map((row, index) => <Fragment key={row.strategy_id}>
+            {activeOrder !== null && index === ordered.length &&
+              <h3 className="micro-label">Other cohorts and unranked</h3>}
+            <BoardRow row={row} compact={compact} evidenceSchema={evidenceSchema}
+              evidence={parsedEvidence.get(row.strategy_id) ?? null} />
+          </Fragment>)}
       </div>
     </section>
   )
@@ -328,10 +357,12 @@ function BoardRow({
   row,
   compact,
   evidenceSchema,
+  evidence,
 }: {
   row: StrategyBoardRow
   compact: boolean
   evidenceSchema: unknown
+  evidence: ParsedEvidence | null
 }) {
   const gate = row.latest_gate
   if (compact) {
@@ -359,7 +390,7 @@ function BoardRow({
             <PassMark passed={gate.passed} />
           </div>
         )}
-        <BoardEvidence row={row} evidenceSchema={evidenceSchema} compact />
+        <BoardEvidence row={row} evidenceSchema={evidenceSchema} compact evidence={evidence} />
       </Link>
     )
   }
@@ -390,7 +421,7 @@ function BoardRow({
         <span>age UNKNOWN</span>
       </div>
       {gate === null && <div className="dim-note">no usable gate evidence</div>}
-      <BoardEvidence row={row} evidenceSchema={evidenceSchema} compact={false} />
+      <BoardEvidence row={row} evidenceSchema={evidenceSchema} compact={false} evidence={evidence} />
     </Link>
   )
 }
@@ -533,20 +564,10 @@ function parseSnapshot(value: unknown): StrategyBoardSnapshotEvidence | null {
   return candidate as unknown as StrategyBoardSnapshotEvidence
 }
 
-function parseComparison(value: unknown): StrategyBoardComparisonEvidence | null {
-  const candidate = record(value)
-  const reasons = candidate?.reasons
-  return candidate !== null && exactKeys(
-    candidate, ['status', 'observed_metric_sort_enabled', 'reasons'],
-  ) && candidate.status === 'UNKNOWN' &&
-    candidate.observed_metric_sort_enabled === false && Array.isArray(reasons) &&
-    reasons.length === 2 && reasons[0] === 'historical_cost_context_unavailable' &&
-    reasons[1] === 'homogeneous_comparison_context_unavailable'
-    ? candidate as unknown as StrategyBoardComparisonEvidence
-    : null
-}
 
-function parseEvidence(value: unknown, gate: StrategyBoardGate): StrategyBoardEvidence | null {
+type ParsedEvidence = StrategyBoardEvidence & { recorded: RecordedProvenance | null }
+
+function parseEvidence(value: unknown, gate: StrategyBoardGate, recordedRaw: unknown): ParsedEvidence | null {
   const candidate = record(value)
   if (candidate === null || !exactKeys(candidate, [
     'run_id', 'evaluation', 'oos_interval', 'snapshot_provenance', 'comparison',
@@ -569,12 +590,26 @@ function parseEvidence(value: unknown, gate: StrategyBoardGate): StrategyBoardEv
   const snapshot = rawSnapshot?.status === 'VALID' && rawSnapshotValue?.data_tier === 'verified_pit'
     ? { status: 'INVALID' as const, reason: 'pit_verifier_unavailable', value: null }
     : parseAtomic(candidate.snapshot_provenance, parseSnapshot)
+  const recorded = parseRecordedProvenance(recordedRaw)
+  const c = comparison.context
+  if (comparison.status === 'COMPARABLE' && (c === null || evaluation.value === null ||
+      oos.value === null || snapshot.value === null || recorded === null ||
+      recorded.bars_snapshot_id !== c.snapshot_id || recorded.bars_content_hash !== c.content_hash ||
+      contextKey(recorded.execution_costs) !== contextKey(c.execution_costs) ||
+      evaluation.value.metric_schema_version !== 1 || c.period_start !== evaluation.value.period_start ||
+      c.period_end !== evaluation.value.period_end || c.timeframe !== evaluation.value.timeframe ||
+      c.oos.start !== oos.value.holdout_start || c.oos.end !== oos.value.holdout_end ||
+      c.oos.n_bars !== oos.value.n_bars || parseSnapshot(c.source) === null ||
+      contextKey(c.source) !== contextKey(snapshot.value) ||
+      c.windows[0].start < snapshot.value.coverage_start || c.oos.end > snapshot.value.coverage_end ||
+      snapshot.value.data_tier !== 'pilot_real_proxy')) return null
   return {
     run_id: gate.run_id,
     evaluation,
     oos_interval: oos,
     snapshot_provenance: snapshot,
     comparison,
+    recorded,
   }
 }
 
@@ -603,10 +638,12 @@ function BoardEvidence({
   row,
   evidenceSchema,
   compact,
+  evidence,
 }: {
   row: StrategyBoardRow
   evidenceSchema: unknown
   compact: boolean
+  evidence: ParsedEvidence | null
 }) {
   // Research already has its own dense decision/evidence surfaces. Keep this secondary inventory
   // lean; the primary leaderboard renders the complete evidence ledger and every limitation.
@@ -630,11 +667,11 @@ function BoardEvidence({
       ? <div className="board-evidence-summary">evidence unavailable · no identity-bound gate run</div>
       : <div className="board-evidence-summary">evidence INVALID · evidence supplied without a latest gate</div>
   }
-  const evidence = parseEvidence(rawEvidence, gate)
   if (evidence === null) {
     return <div className="board-evidence-summary">evidence INVALID · run-bound response malformed</div>
   }
   const snapshot = evidence.snapshot_provenance
+  const costs = evidence.recorded?.execution_costs ?? null
   return (
     <div className="board-evidence" data-testid="board-evidence">
       <div className="board-evidence-trust">
@@ -693,8 +730,28 @@ function BoardEvidence({
           </>
         )}
       </div>
+      {costs !== null && evidence.comparison.status === 'UNKNOWN' && <div className="board-evidence-comparison">
+        <div>Recorded fees {costs.fees} of trade notional/side</div>
+        <div>slippage {costs.slippage} adverse price fraction/side · {costs.model}</div>
+      </div>}
       <div className="board-evidence-comparison">
-        comparison UNKNOWN · {evidence.comparison.reasons.map(reasonLabel).join(' · ')}
+        {evidence.comparison.status === 'COMPARABLE' && evidence.comparison.context !== null ? <>
+          Research cohort {evidence.comparison.cohort_id?.slice(0, 8)} · NONPIT/current-survivor proxy
+          <div>Continuous portfolio tail holdout · {evidence.comparison.context.windows.length} windows
+            {' · '}embargo {evidence.comparison.context.embargo} bars
+            {' · '}holdout fraction {evidence.comparison.context.holdout_frac}</div>
+          <div>Net daily returns · Sharpe √252, rf 0, sample std · compounded return · drawdown ≤ 0</div>
+          <div>Fees {evidence.comparison.context.execution_costs.fees} of trade notional/side
+            {' · '}slippage {evidence.comparison.context.execution_costs.slippage} adverse price fraction/side
+            {' · '}vectorbt.from_orders</div>
+          <div>Lag {evidence.comparison.context.execution.decision_lag_bars} bars
+            {' · '}fill {evidence.comparison.context.execution.fill_basis.replaceAll('_', ' ')}
+            {' · '}valuation {evidence.comparison.context.execution.valuation_basis.replaceAll('_', ' ')}
+            {' · '}vendor-adjusted units · fractional target weights · cash shared
+            {' · '}initial simulated cash {evidence.comparison.context.execution.initial_cash}</div>
+          <div>Snapshot {evidence.comparison.context.snapshot_id}
+            {' · '}selected research gate run <span className="num">{gate.run_id}</span></div>
+        </> : <>comparison UNKNOWN · {evidence.comparison.reasons.map(reasonLabel).join(' · ')}</>}
       </div>
     </div>
   )

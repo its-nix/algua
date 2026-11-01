@@ -661,7 +661,7 @@ async def test_strategy_board_include_evidence_forwards_only_the_fixed_flag(
     envelope = _env(
         {
             "schema_version": "strategy-board/v1",
-            "evidence_schema_version": "strategy-board-evidence/v1",
+            "evidence_schema_version": "strategy-board-evidence/v2",
             "count": 0,
             "rows": [],
         }
