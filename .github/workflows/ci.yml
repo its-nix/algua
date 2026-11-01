@@ -13,10 +13,56 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+      - name: Install mandatory strategy isolator (ephemeral runner only)
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends bubblewrap
+      - name: Require unprivileged strategy isolation capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          uname -sr
+          dpkg-query --show bubblewrap
+          /usr/bin/bwrap --version
+          if [[ ! -x /usr/bin/bwrap || -u /usr/bin/bwrap || -g /usr/bin/bwrap ]]; then
+            echo '::error::A non-setuid, non-setgid /usr/bin/bwrap is required.'
+            exit 1
+          fi
+          # Match the runtime namespace flags; include libc and its dynamic loader.
+          mounts=()
+          for root in /usr /lib /lib64; do
+            if [[ -e "$root" ]]; then
+              mounts+=(--ro-bind "$root" "$root")
+            fi
+          done
+          if ! /usr/bin/bwrap --unshare-all --die-with-parent --new-session --cap-drop ALL \
+            --proc /proc --dev /dev --tmpfs /tmp "${mounts[@]}" \
+            --chdir / -- /usr/bin/true; then
+            echo '::error::Mandatory strategy isolation unavailable: runner must support unprivileged user, PID, mount and network namespaces. No fallback or security-policy changes are permitted.'
+            exit 1
+          fi
+          echo 'Mandatory Bubblewrap namespace/loader preflight passed (not full containment acceptance).'
       - name: Install dependencies
         run: uv sync --locked
       - name: Test
-        run: uv run pytest -q --durations=20
+        run: |
+          uv run pytest -q --durations=20 --junitxml="$RUNNER_TEMP/root-pytest.xml"
+          # Audit this same root run: do not repeat or silently skip hostile cases.
+          uv run python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          report = ET.parse(Path(os.environ["RUNNER_TEMP"]) / "root-pytest.xml")
+          cases = [case for case in report.iter("testcase")
+                   if case.get("classname") == "tests.test_untrusted_strategy_containment"]
+          if len(cases) != 16 or any(
+              case.find(tag) is not None
+              for case in cases for tag in ("skipped", "failure", "error")
+          ):
+              raise SystemExit("Mandatory hostile containment evidence requires 16 passed, zero skips/errors/failures")
+          print("Root-run hostile containment evidence: 16 passed, zero skips/errors/failures")
+          PY
       - name: Ruff
         run: uv run ruff check .
       - name: Mypy
