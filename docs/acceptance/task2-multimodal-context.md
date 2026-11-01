@@ -1,5 +1,9 @@
 # Task 2 acceptance — research-only multimodal context
 
+> Historical acceptance record for the first Task 2 slice. The protected canonical-backtest
+> integration is now tracked in `docs/acceptance/task2-score-backtest.md`; paper/live/frozen
+> execution remains unsupported.
+
 ## Delivered boundary
 
 This change adds a non-production compatibility vertical only:
@@ -38,7 +42,7 @@ is created under the caller's output directory. Evidence carries the canonical d
 universe method, coverage and complete limitation set, and explicitly denies alpha, qualification,
 historical PIT-universe and elapsed-forward claims. It performs no acquisition or data sharing.
 
-## Remaining protected integration
+## Remaining protected integration at delivery time
 
 Full Task 2 completion requires a separately owner-reviewed protected change:
 

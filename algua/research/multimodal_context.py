@@ -1,8 +1,8 @@
-"""Research-only composition and validation for multimodal ``score(context)`` experiments.
+"""Research composition and validation for multimodal ``score(context)`` experiments.
 
-The production backtest/paper/live decision paths are intentionally untouched.  News and
-fundamentals reuse the existing protected PIT masks, and models are accepted only after the
-filesystem registry has verified metadata and bytes together.
+The canonical backtest has its own small context assembler; paper/live remain unsupported. News
+and fundamentals reuse the protected PIT masks, and models are accepted only after the filesystem
+registry has verified metadata and bytes together.
 """
 
 from __future__ import annotations
@@ -12,9 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
-from pandas.api.types import is_bool_dtype, is_complex_dtype, is_numeric_dtype
 
 from algua.backtest.errors import BacktestError
 from algua.backtest.pit_view import (
@@ -24,7 +22,12 @@ from algua.backtest.pit_view import (
     _news_as_of,
 )
 from algua.contracts.model_types import ModelHandle, ModelRef, normalize_as_of
-from algua.contracts.strategy_context import AsOfContext, AsOfView, ResearchStrategy
+from algua.contracts.strategy_context import (
+    AsOfContext,
+    AsOfView,
+    ResearchStrategy,
+    validate_score_output,
+)
 from algua.data.schema import validate_bars
 from algua.models import ModelRegistryError, get_version_with_bytes
 from algua.strategies.base import LoadedStrategy
@@ -213,29 +216,10 @@ def score_context(strategy: ResearchStrategy, context: AsOfContext) -> pd.Series
     if mismatched:
         raise ContextError(f"context model references do not match strategy pins: {mismatched}")
 
-    scores = strategy.score(context)
-    if not isinstance(scores, pd.Series):
-        raise ContextError("score(context) must return a pandas Series")
-    if not scores.index.is_unique:
-        raise ContextError("score output must not contain duplicate symbols")
-    if not all(isinstance(symbol, str) for symbol in scores.index):
-        raise ContextError("score output index must contain symbol strings")
-    outside = set(scores.index) - set(context.universe)
-    if outside:
-        raise ContextError(f"score output contains symbols outside the as-of universe: {outside}")
-    if (
-        not is_numeric_dtype(scores.dtype)
-        or is_bool_dtype(scores.dtype)
-        or is_complex_dtype(scores.dtype)
-    ):
-        raise ContextError("score output values must have a real numeric dtype")
     try:
-        values = scores.to_numpy(dtype="float64")
+        return validate_score_output(strategy.score(context), context.universe)
     except (TypeError, ValueError) as exc:
-        raise ContextError("score output values must be numeric") from exc
-    if not np.isfinite(values).all():
-        raise ContextError("score output values must all be finite")
-    return pd.Series(values, index=scores.index.copy(), name=scores.name, dtype="float64")
+        raise ContextError(str(exc)) from exc
 
 
 @dataclass(frozen=True)

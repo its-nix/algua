@@ -4,8 +4,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from algua.contracts.strategy_interface import LEGACY_INTERFACE, uses_context_interface
+
 if TYPE_CHECKING:
     from algua.strategies.base import LoadedStrategy
+
+
+def assert_tradable_legacy_interface(strategy: LoadedStrategy) -> None:
+    """Task 2 context scoring is admitted only to the research backtest in this increment."""
+    if uses_context_interface(getattr(strategy, "strategy_interface", LEGACY_INTERFACE)):
+        raise ValueError(
+            f"strategy {strategy.name!r} uses context_v1, which is supported only by the "
+            f"research backtest; paper/live/frozen execution is unsupported (fail closed)"
+        )
 
 
 def assert_tradable_without_fundamentals(strategy: LoadedStrategy) -> None:

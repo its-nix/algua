@@ -22,14 +22,14 @@ from datetime import date, datetime
 import numpy as np
 import pandas as pd
 
+from algua.backtest.context import ContextInputs, target_weights
 from algua.backtest.errors import BacktestError
 from algua.backtest.grid import adj_grid
 from algua.backtest.pit_view import (
-    _fundamentals_as_of,
-    _news_as_of,
     _static_operating_view,
     members_as_of,
 )
+from algua.contracts.strategy_interface import uses_context_interface
 from algua.contracts.types import DataProvider
 from algua.risk.limits import WEIGHT_TOL, RiskBreach, validate_decision_weights
 from algua.strategies.base import LoadedStrategy
@@ -50,6 +50,7 @@ def _decision_weights(
     universe_by_date: Mapping[date, Collection[str]] | None = None,
     fundamentals: pd.DataFrame | None = None,
     news: pd.DataFrame | None = None,
+    context_inputs: ContextInputs | None = None,
 ) -> pd.DataFrame:
     """Run the per-bar decision loop and return raw target weights (pre-lag).
 
@@ -101,18 +102,11 @@ def _decision_weights(
             view = view[view["symbol"].isin(members)]
             if view.empty:
                 continue  # members exist but no bar data for any of them yet -> flat
-        if fundamentals is not None:
-            f_asof = _fundamentals_as_of(fundamentals, t)
-            allowed = members if universe_by_date is not None else set(columns)
-            f_asof = f_asof[f_asof["symbol"].isin(allowed)]
-            w = strategy.target_weights(view, fundamentals=f_asof)
-        elif news is not None:
-            n_asof = _news_as_of(news, t)
-            allowed = members if universe_by_date is not None else set(columns)
-            n_asof = n_asof[n_asof["symbol"].isin(allowed)]
-            w = strategy.target_weights(view, news=n_asof)
-        else:
-            w = strategy.target_weights(view)
+        allowed = members if universe_by_date is not None else static_universe
+        w = target_weights(
+            strategy, decision_ts=t, universe=allowed, bars=view,
+            fundamentals=fundamentals, news=news, inputs=context_inputs,
+        )
         if len(w) == 0:
             continue
         # The shared checks raise RiskBreach; re-raise as BacktestError for the backtest CLI/error
@@ -284,6 +278,7 @@ def _decision_weights_fast_or_loop(
     universe_by_date: Mapping[date, Collection[str]] | None = None,
     fundamentals: pd.DataFrame | None = None,
     news: pd.DataFrame | None = None,
+    context_inputs: ContextInputs | None = None,
 ) -> pd.DataFrame:
     """Selector for the decision step. Returns the same pre-lag weights matrix the loop returns.
 
@@ -299,6 +294,7 @@ def _decision_weights_fast_or_loop(
     """
     if (
         strategy.signal_panel_fn is None
+        or uses_context_interface(strategy.strategy_interface)
         or universe_by_date is not None
         or fundamentals is not None
         or news is not None
@@ -306,6 +302,7 @@ def _decision_weights_fast_or_loop(
         return _decision_weights(
             strategy, bars, adj,
             universe_by_date=universe_by_date, fundamentals=fundamentals, news=news,
+            context_inputs=context_inputs,
         )
     return _decision_weights_fast(strategy, bars, adj)
 
