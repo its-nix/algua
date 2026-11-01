@@ -220,6 +220,35 @@ def test_non_string_symbol_label_raises_non_finite_weight():
     assert "non-string symbol label" in ei_mixed.value.detail
 
 
+@pytest.mark.parametrize("index", [
+    pd.MultiIndex.from_tuples([("AAA", "venue")]),
+    pd.Index([("AAA", "venue")], tupleize_cols=False),
+])
+def test_tuple_symbol_labels_fail_at_shared_finite_rail(index):
+    from algua.contracts.types import ExecutionContract
+    from algua.risk.limits import validate_decision_weights
+
+    with pytest.raises(RiskBreach, match="non-string symbol label") as ei:
+        validate_decision_weights(pd.Series([0.0], index=index),
+                                  ExecutionContract(rebalance_frequency="1d"), "s", {"AAA"})
+    assert ei.value.kind == "non_finite_weight"
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_mixed_duplicate_label_errors_are_stable(reverse):
+    from algua.risk.limits import check_finite_weights
+
+    labels = [b"ZZ", 1, "AAA", b"ZZ", 1, "AAA"]
+    if reverse:
+        labels.reverse()
+    with pytest.raises(RiskBreach) as ei:
+        check_finite_weights(pd.Series([0.1] * len(labels), index=labels), "s")
+    assert ei.value.kind == "non_finite_weight"
+    assert ei.value.detail == (
+        "strategy 's' returned a non-string symbol label [1, 1, b'ZZ', b'ZZ']"
+    )
+
+
 @pytest.mark.parametrize(
     ("rail", "detail"),
     [

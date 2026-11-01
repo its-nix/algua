@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import grimp
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -155,6 +156,182 @@ def test_non_nfc_held_symbol_at_target_emits_no_intent():
 
     ts = datetime(2023, 1, 4, tzinfo=UTC)
     assert build_intents(pd.Series({"E\u0301": 0.5}), {"E\u0301": 0.5}, ts) == []
+
+
+@pytest.mark.parametrize("entry", ["build_intents", "plan"])
+@pytest.mark.parametrize("holding", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("target", [0.0, 0.5, None], ids=["exit", "hold", "dropped"])
+def test_invalid_holding_rejected_before_constructing_any_intent(
+    monkeypatch, entry, holding, target,
+):
+    from algua.live import planner_decision as decision
+
+    def forbidden_intent(*args, **kwargs):
+        pytest.fail("OrderIntent constructed before validating all holdings")
+
+    monkeypatch.setattr(decision, "OrderIntent", forbidden_intent)
+    # AAA needs an order and sorts before the bad holding. A per-symbol guard is too late.
+    weights = pd.Series({"AAA": 0.25, **({} if target is None else {"ZZZ": target})})
+    current = {"AAA": 0.0, "ZZZ": holding}
+    ts = datetime(2023, 1, 4, tzinfo=UTC)
+    with pytest.raises(ValueError, match=r"current_weights\['ZZZ'\] must be a finite number") as ei:
+        if entry == "build_intents":
+            decision.build_intents(weights, current, ts)
+        else:
+            strategy = SimpleNamespace(
+                name="test", universe=["AAA", "ZZZ"],
+                execution=ExecutionContract(rebalance_frequency="1d"),
+                target_weights=lambda view: weights,
+            )
+            decision.plan(strategy, decision.PlannerInput(pd.DataFrame(), current, ts))
+    assert type(ei.value) is ValueError  # N1 is a caller contract error, not a RiskBreach.
+
+
+@pytest.mark.parametrize("current,target", [(0.1, 0.5), (0.5, 0.1), (0.5, None)])
+def test_non_nfc_held_symbol_real_deltas_preserve_raw_identity(current, target):
+    from algua.live.planner import build_intents
+
+    raw = "E\u0301"
+    ts = datetime(2023, 1, 4, tzinfo=UTC)
+    weights = pd.Series({raw: target}) if target is not None else pd.Series(dtype="float64")
+    assert build_intents(weights, {raw: current}, ts) == [
+        OrderIntent(raw, Side.BUY if target == 0.5 else Side.SELL, target or 0.0, ts),
+    ]
+
+
+def test_raw_and_nfc_holdings_remain_distinct_in_build_intents():
+    from algua.live.planner import build_intents
+
+    ts = datetime(2023, 1, 4, tzinfo=UTC)
+    assert build_intents(pd.Series({"E\u0301": 0.5, "É": 0.25}),
+                         {"E\u0301": 0.5, "É": 0.25}, ts) == []
+
+
+def test_late_numeric_mapping_keeps_default_nfc_normalization():
+    from algua.live.planner_late import numeric_mapping
+
+    assert numeric_mapping({"E\u0301": 2.0}, "quantities") == {"É": 2.0}
+    with pytest.raises(ValueError, match="collide after Unicode normalization"):
+        numeric_mapping({"E\u0301": 2.0, "É": 3.0}, "quantities")
+
+
+def _scalar_planner_intents(entry, current, target):
+    from algua.live import planner_decision as decision
+    from algua.portfolio.allocator import PortfolioConstraints
+
+    ts = datetime(2023, 1, 4, tzinfo=UTC)
+    weights = (pd.Series({"AAA": target}) if target is not None
+               else pd.Series(dtype="float64"))
+    if entry == "build_intents":
+        return decision.build_intents(weights, {"AAA": current}, ts)
+    inputs = decision.PlannerInput(pd.DataFrame(), {"AAA": current}, ts)
+    execution = ExecutionContract(rebalance_frequency="1d")
+    if entry == "plan":
+        strategy = SimpleNamespace(
+            name="test", universe=["AAA"], execution=execution,
+            target_weights=lambda view: weights,
+        )
+        return decision.plan(strategy, inputs).intents
+    # Missing risk estimates halve the sleeve budget. Supply twice the desired target.
+    return decision.plan_portfolio(
+        {"test": weights * 2}, {"test": 1.0}, PortfolioConstraints(1, 1, None),
+        inputs, execution=execution, allowed_symbols=["AAA"],
+    ).intents
+
+
+@pytest.mark.parametrize("entry", ["build_intents", "plan", "plan_portfolio"])
+@pytest.mark.parametrize("current", [
+    0, 1, 0.25, np.float64(0.25), np.float32(0.25), np.int64(0), np.int32(1),
+], ids=["int-zero", "int-one", "float", "float64", "float32", "int64", "int32"])
+@pytest.mark.parametrize("target", [0.5, 0.125, None], ids=["buy", "reduce", "dropped"])
+def test_finite_current_scalars_preserve_real_delta_intents(entry, current, target):
+    ts = datetime(2023, 1, 4, tzinfo=UTC)
+    final = target or 0.0
+    expected = ([] if final == float(current) else [
+        OrderIntent("AAA", Side.BUY if final > float(current) else Side.SELL, final, ts),
+    ])
+    assert _scalar_planner_intents(entry, current, target) == expected
+    assert _scalar_planner_intents(entry, current, target) == _scalar_planner_intents(
+        entry, float(current), target,
+    )
+
+
+@pytest.mark.parametrize("entry", ["build_intents", "plan", "plan_portfolio"])
+@pytest.mark.parametrize("current", [True, False, np.bool_(True), "0.25"])
+def test_current_scalars_do_not_coerce_bool_or_string(entry, current):
+    with pytest.raises(ValueError):
+        _scalar_planner_intents(entry, current, 0.5)
+
+
+@pytest.mark.parametrize("entry", ["build_intents", "plan"])
+@pytest.mark.parametrize("current", [
+    np.float64("nan"), np.float64("inf"), np.float32("-inf"),
+])
+def test_nonfinite_numpy_current_scalars_fail_closed(entry, current):
+    with pytest.raises(ValueError, match="must be a finite number"):
+        _scalar_planner_intents(entry, current, 0.5)
+
+
+@pytest.mark.parametrize("helper", ["finite_number", "numeric_mapping"])
+@pytest.mark.parametrize("value", [
+    np.float64(0.25), np.float32(0.25), np.int64(1), True, np.bool_(True), "0.25",
+])
+def test_late_shared_helpers_keep_exact_scalar_default(helper, value):
+    from algua.live import planner_late
+
+    argument = {"AAA": value} if helper == "numeric_mapping" else value
+    with pytest.raises(ValueError, match="must be a finite number"):
+        getattr(planner_late, helper)(argument, "captured")
+
+
+@pytest.mark.parametrize("field", [
+    "drawdown_equity", "persisted_peak_equity", "quantities", "market_values",
+])
+@pytest.mark.parametrize("value", [np.float64(0.25), True, "0.25"])
+def test_late_captured_state_keeps_exact_scalar_boundary(field, value):
+    from dataclasses import replace
+
+    from algua.live.planner_contract import CapturedStrategyState, VenueBeliefDisabled
+    from algua.live.planner_late import _late_state
+
+    captured = CapturedStrategyState(
+        "a" * 32, 100.0, 100.0, {"AAA": 1.0}, {"AAA": 25.0}, 100.0,
+        VenueBeliefDisabled(),
+    )
+    replacement = {"AAA": value} if field in ("quantities", "market_values") else value
+    with pytest.raises(ValueError, match="must be a finite number"):
+        _late_state(replace(captured, **{field: replacement}), None)
+
+
+@pytest.mark.parametrize("value", [0, 1, -1, 0.25, -0.25])
+def test_late_shared_helpers_preserve_finite_native_numbers(value):
+    from algua.live.planner_late import finite_number, numeric_mapping
+
+    assert finite_number(value, "captured") == float(value)
+    assert numeric_mapping({"AAA": value}, "captured") == {"AAA": float(value)}
+
+
+@pytest.mark.parametrize("entry", ["build_intents", "finite_number", "numeric_mapping"])
+@pytest.mark.parametrize("sign", [1, -1])
+def test_oversized_native_integer_is_contract_value_error(monkeypatch, entry, sign):
+    from algua.live import planner_decision as decision
+
+    def forbidden_intent(*args, **kwargs):
+        pytest.fail("OrderIntent constructed before rejecting oversized holding")
+
+    monkeypatch.setattr(decision, "OrderIntent", forbidden_intent)
+    value = sign * 10**400
+    with pytest.raises(ValueError, match="must be a finite number") as ei:
+        if entry == "build_intents":
+            decision.build_intents(
+                pd.Series({"AAA": 0.5, "ZZZ": 0.5}), {"AAA": 0.0, "ZZZ": value},
+                datetime(2023, 1, 4, tzinfo=UTC),
+            )
+        elif entry == "numeric_mapping":
+            decision.numeric_mapping({"ZZZ": value}, "captured")
+        else:
+            decision.finite_number(value, "captured")
+    assert type(ei.value) is ValueError
 
 
 def test_planner_dependency_closure_has_no_operational_authority():

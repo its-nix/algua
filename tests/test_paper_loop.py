@@ -121,13 +121,56 @@ def test_run_paper_non_positive_close_for_held_symbol_is_unvaluable_marks(close)
     assert broker.submitted == []
 
 
-def test_run_paper_nan_close_for_held_symbol_is_unvaluable_marks():
+@pytest.mark.parametrize("close", [float("nan"), float("inf"), float("-inf")])
+def test_run_paper_nan_close_for_held_symbol_is_unvaluable_marks(close):
     broker = _HoldingBroker("AAA", 10.0)
-    bars = _bars({"AAA": [float("nan"), 100.0, 100.0, 100.0]})
+    bars = _bars({"AAA": [close, 100.0, 100.0, 100.0]})
     with pytest.raises(RiskBreach) as ei:
         run_paper(_all_in("AAA"), broker, _FakeProvider(bars), DATES[0], DATES[-1])
     assert ei.value.kind == "unvaluable_marks"
     assert broker.submitted == []
+
+
+@pytest.mark.parametrize("close", [None, float("nan"), float("inf"), float("-inf"), 0.0, -1.0])
+def test_held_marks_fail_before_paper_sizing_or_orders(monkeypatch, close):
+    from algua.live import paper_loop
+
+    broker = _HoldingBroker("BBB" if close is None else "AAA", 10.0)
+    bars = _bars({"AAA": [100.0 if close is None else close, 100.0, 100.0, 100.0]})
+
+    def forbidden_decision(*args, **kwargs):
+        pytest.fail("paper decision/sizing reached with unusable held marks")
+
+    monkeypatch.setattr(paper_loop, "decide", forbidden_decision)
+    with pytest.raises(RiskBreach) as ei:
+        run_paper(_all_in("AAA"), broker, _FakeProvider(bars), DATES[0], DATES[-1])
+    assert ei.value.kind == "unvaluable_marks"
+    assert broker.submitted == []
+
+
+def test_positive_finite_held_mark_allows_paper_sizing_and_orders():
+    broker = _HoldingBroker("AAA", 10.0)
+    bars = _bars({"AAA": [100.0] * 4})
+    decisions = []
+    result = run_paper(_all_in("AAA"), broker, _FakeProvider(bars), DATES[0], DATES[-1],
+                       on_decision=lambda ts, weights: decisions.append(ts))
+    assert decisions
+    assert broker.submitted
+    assert result.final_equity == pytest.approx(11_000.0)
+
+
+@pytest.mark.parametrize("close", [float("nan"), float("inf"), float("-inf"), 0.0, -1.0])
+def test_held_marks_precede_drawdown_after_a_healthy_fill(close):
+    # The close becomes unusable only AFTER a real t+1 fill. Drawdown must not classify an
+    # untrustworthy valuation as an economic loss before the held-mark wall can reject it.
+    broker = SimBroker(cash=10_000.0)
+    bars = _bars({"AAA": [100.0, close, 100.0, 100.0]})
+    bars["open"] = 100.0
+    with pytest.raises(RiskBreach) as ei:
+        run_paper(_strategy({"AAA": 0.5}), broker, _FakeProvider(bars),
+                  DATES[0], DATES[-1], max_drawdown=0.05)
+    assert ei.value.kind == "unvaluable_marks"
+    assert broker.get_positions()["AAA"] > 0.0  # the first order really filled
 
 
 def test_run_paper_missing_close_for_held_symbol_is_unvaluable_marks():

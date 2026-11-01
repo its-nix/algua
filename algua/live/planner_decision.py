@@ -7,6 +7,7 @@ import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from numbers import Real
 from typing import TYPE_CHECKING
 
 import pandas as pd
@@ -38,18 +39,26 @@ class PlannerResult:
     protocol_version: int = PLANNER_PROTOCOL_VERSION
 
 
-def finite_number(value: object, label: str) -> float:
-    """Shared finite-number contract. Public because ``planner_late`` imports it."""
-    if type(value) not in (int, float):
+def finite_number(value: object, label: str, *, allow_real_scalars: bool = False) -> float:
+    """Finite float; captured state defaults to exact built-in int/float types.
+
+    Current holdings opt into real numeric scalars (including NumPy), excluding bool.
+    """
+    scalar = allow_real_scalars and isinstance(value, Real) and not isinstance(value, bool)
+    if not scalar and type(value) not in (int, float):
         raise ValueError(f"{label} must be a finite number")
-    assert isinstance(value, (int, float))
-    if not math.isfinite(float(value)):
+    assert isinstance(value, (int, float, Real))
+    try:
+        number = float(value)
+    except OverflowError as exc:
+        raise ValueError(f"{label} must be a finite number") from exc
+    if not math.isfinite(number):
         raise ValueError(f"{label} must be a finite number")
-    return float(value)
+    return number
 
 
 def numeric_mapping(
-    value: object, label: str, *, normalize: bool = True
+    value: object, label: str, *, normalize: bool = True, allow_real_scalars: bool = False
 ) -> dict[str, float]:
     """Non-empty string keys and finite values. Public because ``planner_late`` imports it.
 
@@ -57,6 +66,7 @@ def numeric_mapping(
     collision after that. ``build_intents`` passes ``normalize=False`` so a valid holding
     label is checked and kept byte-for-byte. Renaming it would disagree with the strategy
     label, which this contract does not NFC-normalize.
+    ``allow_real_scalars`` is only enabled for current holdings; late state keeps exact types.
     """
     if not isinstance(value, Mapping):
         raise ValueError(f"{label} must be a mapping")
@@ -67,7 +77,9 @@ def numeric_mapping(
         key = unicodedata.normalize("NFC", symbol) if normalize else symbol
         if normalize and key in result:
             raise ValueError(f"{label} keys collide after Unicode normalization")
-        result[key] = finite_number(number, f"{label}[{symbol!r}]")
+        result[key] = finite_number(
+            number, f"{label}[{symbol!r}]", allow_real_scalars=allow_real_scalars
+        )
     return result
 
 
@@ -80,7 +92,9 @@ def build_intents(
     and not renamed: strategy labels are outside NFC normalization. A violation raises before
     any intent is built.
     """
-    holdings = numeric_mapping(current_weights, "current_weights", normalize=False)
+    holdings = numeric_mapping(
+        current_weights, "current_weights", normalize=False, allow_real_scalars=True
+    )
     intents: list[OrderIntent] = []
     for symbol in sorted(set(weights.index) | set(holdings)):
         target = float(weights.get(symbol, 0.0))

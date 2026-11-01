@@ -119,7 +119,8 @@ def check_finite_weights(weights: pd.Series, strategy_name: str) -> None:
     """
     if len(weights) == 0:
         return
-    if weights.index.isnull().any():
+    # MultiIndex labels are tuples: reject them below; pandas cannot run isnull on that index.
+    if not isinstance(weights.index, pd.MultiIndex) and weights.index.isnull().any():
         raise RiskBreach(
             "non_finite_weight",
             f"strategy '{strategy_name}' returned a null symbol label",

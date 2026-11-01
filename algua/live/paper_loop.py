@@ -105,17 +105,19 @@ def run_paper(
         # Equity/drawdown are tracked every bar (including warm-up) so the breaker sees losses.
         equity = broker.equity(closes.loc[t])
         peak = max(peak, equity)
-        check_drawdown(equity, peak, max_drawdown)
         # warmup_bars = N holds the first N bars flat: bars_seen runs 1..len(ts)-1, so the
         # first DECIDED bar is bars_seen == N+1 (session index N) — identical to the backtest
         # loop's `if i < warmup: continue` (#1: reconcile the historical off-by-one).
         if bars_seen <= warmup:
+            check_drawdown(equity, peak, max_drawdown)
             continue  # warm-up: observe only — no signal evaluation, validation, or orders
         positions = broker.get_positions()
         bar_closes = closes.loc[t]
         # Held marks before the equity guard: a NaN close poisons equity and would otherwise be
         # reported as non_positive_equity, and a missing close must not be sized at 0.0.
         _require_held_marks(positions, bar_closes)
+        # A corrupt held mark is not evidence of an economic drawdown.
+        check_drawdown(equity, peak, max_drawdown)
         # Equity is the sizing denominator; a value that is not a positive finite number would
         # ZeroDivision (== 0), flip every weight's sign (< 0), or NaN-poison every weight to a
         # silent no-op (NaN). The drawdown breaker should have halted long before, so this is a
