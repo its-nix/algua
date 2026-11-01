@@ -42,8 +42,7 @@ def _equal_weight():
 def test_to_dict_excludes_holdout_returns():
     d = _minimal_wf().to_dict()
     assert "holdout_returns" not in d
-    # the rest of the payload is unchanged
-    assert d["holdout_metrics"] == {"n_bars": 3}
+    assert "holdout_metrics" not in d
 
 
 def test_holdout_returns_defaults_to_none():

@@ -25,6 +25,7 @@ from algua.backtest.result import config_hash, provenance
 from algua.backtest.run_inputs import RunInputBundle, capture_run_inputs
 from algua.backtest.stamps import runtime_stamps
 from algua.contracts.types import DataProvider, FundamentalsProvider, NewsProvider
+from algua.provenance.research_disclosure import public_window_result
 from algua.strategies.base import LoadedStrategy
 
 _MIN_WINDOW_BARS = 5
@@ -160,12 +161,10 @@ class WalkForwardResult:
     execution_costs: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        # holdout_returns is SENSITIVE — never serialized (#221 Slice 1).
-        # market_returns is bulky (full-period aggregate) — internal gate input (#221 Slice 4).
-        # Both are excluded so the raw vectors never appear in operator-facing output.
-        return {f.name: getattr(self, f.name)
-                for f in dataclasses.fields(self)
-                if f.name not in ("holdout_returns", "market_returns")}
+        # Public by construction. Promotion consumes private attributes directly after its burn.
+        return public_window_result({f.name: getattr(self, f.name) for f in dataclasses.fields(self)
+                                     if f.name not in ("holdout_metrics", "holdout_returns",
+                                                       "market_returns")})
 
 
 def _segment_record(returns: pd.Series, start_i: int, end_i: int) -> dict[str, Any]:

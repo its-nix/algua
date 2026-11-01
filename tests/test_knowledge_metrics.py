@@ -38,7 +38,7 @@ def test_latest_run_metrics_reads_latest(tmp_path):
              metrics={"sharpe": 0.4}, params={"snapshot_id": "ds_1", "seed": "7"})
     # Run includes holdout metrics (as logged before writers were sealed) plus a normal metric.
     _log_run(uri, "alpha", kind="walk_forward",
-             metrics={"holdout.sharpe": 0.28, "sharpe": 0.35},
+             metrics={"holdout.sharpe": 0.28, "sharpe": 0.35, "mean_sharpe": 0.0},
              params={"snapshot_id": "ds_2", "seed": "7"})
 
     out = latest_run_metrics("alpha", tracking_uri=uri)
@@ -49,8 +49,8 @@ def test_latest_run_metrics_reads_latest(tmp_path):
     # Pins the holdout seal at the knowledge surface: holdout.* keys must be withheld.
     assert "holdout.sharpe" not in out["metrics"]
     assert "holdout_metrics" not in out["metrics"]
-    # Normal metrics must still be present.
-    assert out["metrics"]["sharpe"] == 0.35
+    # Only explicitly named public window metrics survive; the ambiguous bare Sharpe does not.
+    assert out["metrics"] == {"mean_sharpe": 0.0}
     assert isinstance(out["run_id"], str) and out["run_id"]
 
 
