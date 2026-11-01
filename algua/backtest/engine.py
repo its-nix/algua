@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping
 from datetime import date, datetime
+from math import isfinite
 
 import numpy as np
 import pandas as pd
@@ -98,10 +99,11 @@ def simulate(
     delisting_records: Mapping[str, list[DelistingRecord]] | None = None,
     assume_terminal_last_close: bool = False,
     _run_inputs: RunInputBundle | None = None,
+    initial_cash: float | None = None,
 ) -> tuple[vbt.Portfolio, pd.DataFrame, list[dict]]:
     """Fetch bars, compute pre-lag decision weights through the canonical loop or parity-guarded
     fast path, enforce shared risk checks, then apply the t->t+1 shift and delisting-aware exit.
-    Returns (portfolio, executed-weights, forced-exits).
+    Returns (portfolio, executed-weights, forced-exits); initial_cash can pin replay capital.
     The shift lives ONLY here — the panel fn (like the loop) returns DECISION-time weights, never
     executable ones.
 
@@ -207,11 +209,11 @@ def simulate(
     except DelistingExitError as exc:
         raise BacktestError(str(exc)) from exc
 
-    # call_seq="auto" (sells before buys under cash_sharing) only when a forced exit needs the
-    # same-bar liquidation cash — keeps non-delisting backtests bit-identical to today.
-    extra = {"call_seq": "auto"} if forced_exits else {}
-    # Charge default-on fees/slippage on already-lagged, delisting-adjusted execution weights;
-    # forced liquidations pay the same conservative cost (#325).
+    extra: dict[str, object] = {"call_seq": "auto"} if forced_exits else {}
+    if initial_cash is not None:
+        if isinstance(initial_cash, bool) or not isfinite(initial_cash) or initial_cash <= 0:
+            raise BacktestError("initial_cash must be finite and positive")
+        extra["init_cash"] = initial_cash
     pf = vbt.Portfolio.from_orders(
         close=adj_exec,
         size=weights_exec,
