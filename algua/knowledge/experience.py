@@ -97,3 +97,33 @@ def write_experience_note(settings: Settings, record: dict[str, Any], *, record_
     with path.open("x", encoding="utf-8") as fh:
         fh.write(render_experience_note(record, record_id=record_id))
     return path
+
+
+def render_campaign_experience(scorecard: dict) -> str:
+    """Consolidate lifetime family notes in the existing experience domain. Pure; no KB writes.
+
+    This derived view is advisory, never a second ledger. Evidence IDs resolve in the same
+    registry as the supplied scorecard; preserve that registry's provenance alongside the note.
+    """
+    parts = ["# Campaign feedback\n\nAdvisory lifetime history. Claims are attempt slots, "
+             "not independent statistical trials. Negative logs are context, not alpha verdicts.\n"]
+    ideas = scorecard["hypotheses"]
+    for family in sorted({i["history_key"] for i in ideas}):
+        ids = {i["id"] for i in ideas if i["history_key"] == family}
+        counts = scorecard["by_family"].get(family, {})
+        parts.append(f"## {family}\n\n```json\n"
+                     + json.dumps(counts, sort_keys=True, indent=2) + "\n```\n")
+        for a in scorecard["attempts"]:
+            if a["idea_id"] in ids:
+                parts.append(f"- {a['evidence_id']} (ideas:{a['idea_id']}): "
+                             f"{a['outcome'] or 'unfinished'} — {a['reason'] or 'no conclusion'}; "
+                             f"evidence_ref={a['evidence_ref']}\n")
+        for n in scorecard["negative_results"]:
+            if ids.intersection(n.get("idea_ids", [])):
+                parts.append(f"- {n['evidence_id']} (context): {n['reason']}\n")
+    # Keep unattached notes visible rather than inventing a family for them.
+    parts.append("## Negative-result context\n")
+    for n in scorecard["negative_results"]:
+        parts.append(f"- {n['evidence_id']}: {n['verdict']} — {n['reason']}\n")
+    return render_doc({"type": "campaign-feedback", "scope": "lifetime", "advisory": True},
+                      "\n".join(parts))

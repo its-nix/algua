@@ -72,3 +72,49 @@ unless you explicitly point `ALGUA_DB_PATH` at the authoritative DB (or set `ALG
 
 **Assumptions / limits:** linux/amd64; a local filesystem (SQLite WAL is not safe on NFS); data
 *ingest* (which writes snapshots) is a separate step, not part of the read-only disposable-run path.
+
+## Advisory campaign feedback (Task6)
+
+```bash
+ALGUA_DB_PATH=/path/to/existing/registry.db uv run algua research campaign-menu \
+  --budget 4 --novelty-min 1 --novelty-max 2
+# Supply a NEW disposable directory; the example refuses reuse and ignores ALGUA_DB_PATH.
+uv run python scripts/examples/campaign_feedback.py --output-dir "$TASK6_SCRATCH/new-demo"
+```
+
+The command reads lifetime idea attempts and negative-result context, then returns deterministic
+`CampaignChoice(category, hypothesis_id, reason, prior_evidence_ids, budget)` options. One budget
+unit is an attempt slot. Set `TASK6_SCRATCH` to an authorized scratch directory for the example.
+Novelty uses unseen pool families (category fallback); an unavailable
+novelty reserve stays unspent. Missing DB/schema and a source changing during capture refuse as
+JSON. Source DB/WAL files are copied to a private temporary directory before SQLite opens them;
+there is no source connection, migration, claim, KB write, or scheduling change.
+
+Attempted, completed, unfinished, invalid, run-error, abandoned, economically rejected, preview
+and promoted counts remain separate. Preview is provisional; negative-log labels never become
+economic evidence or additional trials. These counts do not estimate alpha or independent trials.
+Duplicates reuse the existing signature/family comparison. A changed hypothesis needs a new pool
+entry with `duplicate_of_idea_id` identifying a colliding older Idea. Its `override_reason` must
+begin `changed_fields=source_ref,falsification;` (choose the actual changed fields), followed by
+exact `ideas:ID`, `idea_attempts:ID`, and `negative_results:ID` anchors and a distinct explanation.
+Separate anchors with whitespace, commas or semicolons. Supported fields are `source_ref`,
+`source_date`, `falsification`, `required_data`, `market` and `horizon`. Every declared field must
+have a nonempty persisted value different from the parent; at least one must differ from every
+colliding entry. Mere prose, cosmetic falsification edits and reordered data requirements do not
+establish a change. All collision attempts and matching negative logs must be cited; every cited
+ID must resolve to this causal history. An unattached log alone cannot establish changed inputs.
+The new entry must postdate all blocking ideas, attempt claims/outcomes and negative logs; missing,
+ambiguous or stale timestamps fail closed. Freshness uses persisted timestamps, never today's date.
+Reused normalized explanations and unfinished/preview duplicate work are excluded. These checks
+validate recorded differences and references, not semantic truth or independent economic evidence.
+`exclusions` maps idea IDs to `{reason, prior_evidence_ids}` objects, including the exact blocking
+ideas, attempts and matching negative logs even when the idea itself is claimed or already attempted.
+
+Acceptance mapping: `tests/test_campaign_policy.py` covers history causality, duplicate exceptions,
+rejected yield, non-alpha failures, bounds, reserves and determinism;
+`tests/test_campaign_registry.py` covers truthful persisted denominators, WAL reads and refusals;
+`tests/test_campaign_experience.py` covers consolidated family notes in the existing experience
+domain. The executable example saves before/after menus, explicit **SYNTHETIC_FIXTURE** outcomes,
+evidence IDs, reasons, counts and KB notes in its disposable directory. It demonstrates feedback,
+not autonomous research cycles, market qualification or deployment authority. Full-root testing,
+independent review and publication remain coordinator acceptance steps.
