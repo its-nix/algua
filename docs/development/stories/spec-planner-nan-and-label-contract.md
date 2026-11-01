@@ -2,7 +2,7 @@
 title: 'Planner input contract: non-finite current weights and symbol labels'
 type: 'correctness'
 created: '2026-10-22'
-status: 'ready-for-dev'
+status: 'in-review'
 baseline_commit: 'a3c71fa'
 context:
   - 'docs/development/stories/deferred-work.md'
@@ -208,12 +208,12 @@ Lior approved on 2026-10-22:
 ## Tasks & Acceptance
 
 **Execution (after owner approval):**
-- [ ] Readiness: scan registered strategies and `algua/strategies/` for non-`str` weight labels;
+- [x] Readiness: scan registered strategies and `algua/strategies/` for non-`str` weight labels;
   rerun readiness if any exist.
-- [ ] Tests first: one failing test per I/O-matrix row.
-- [ ] Implement N1/L1 (or the chosen options) and the `run_paper` mark check.
-- [ ] Mutation-check each new guard (break it, confirm a test fails, restore it).
-- [ ] Independent review round (story-delivery §4); record findings here.
+- [x] Tests first: one failing test per I/O-matrix row.
+- [x] Implement N1/L1 (or the chosen options) and the `run_paper` mark check.
+- [x] Mutation-check each new guard (break it, confirm a test fails, restore it).
+- [x] Independent review round (story-delivery §4); record findings here.
 
 **Acceptance Criteria:**
 - Given a NaN, +inf or -inf current weight for any symbol, when `plan()` or `build_intents` runs,
@@ -251,12 +251,218 @@ Lior approved on 2026-10-22:
 - Broker or ledger valuation changes outside `run_paper`'s held-symbol mark check.
 - Any live-activation, capital or authority-boundary change.
 
+## Implementation record
+
+### Approved implementation retained
+
+The original PR #712 implements owner-approved N1 + L1 and the held-symbol mark check.
+`build_intents` validates all current holdings through the shared `numeric_mapping` before
+constructing any `OrderIntent`, with `normalize=False` to preserve raw symbol identities.
+`planner_late` keeps the shared helpers' default NFC normalization and collision rejection.
+Target labels are checked at `check_finite_weights`; no new breach kind is introduced.
+
+The earlier implementation reported a synthetic readiness scan of 26 bundled strategies and an
+empty local registry. That is historical evidence, not a fresh scan of this integration tree or
+production. This recovery did not open a production registry or repeat registry readiness checks.
+
+### Integration recovery — 2026-11-01
+
+This subsection records the prior author handoff; the bounded independent-review fixes below
+supersede its then-open scalar findings.
+
+Lior explicitly authorized Codex authorship for this bounded recovery. The coordinator supplied
+the sole integration worktree after merging current main `d6f5d1a25619469e08382ae2139d7a1306354fdd`
+into original `8818d32`. Those Git identities are coordinator-provided; the author ran no Git
+commands, created no commit and performed no merge/deployment/activation.
+
+Only the original eight paths were permitted. Fresh changes are confined to `paper_loop.py`,
+`limits.py`, the three original test files and this nonfrozen execution record. The retained
+`planner_decision.py` and `planner_late.py` bytes are unchanged after every mutation is restored.
+The aggregate entry in the supplied source is named `plan_portfolio` (there is no
+`plan_aggregate` definition). Its complete function source is byte-identical to the verified
+current-default copy; `portfolio/allocator.py` and all frozen wrappers remain unchanged.
+
+**Test-first fixes:**
+
+- Important: tuple labels represented by a pandas `MultiIndex` raised `NotImplementedError`
+  inside `Index.isnull`, escaping L1. The new two-case shared-rail regression first produced
+  one failure and one pass. Skip the unsupported null-index operation for `MultiIndex`; the
+  existing label guard then rejects its tuple symbols as `non_finite_weight`.
+- Important: after a healthy real fill, an unusable held close could reach drawdown before the
+  mark check. The new five-case regression first produced three failures (`-inf`, `0`, `-1`
+  reported `drawdown`) and two passes. Post-warm-up held-mark validation now precedes drawdown;
+  warm-up keeps its original drawdown check. This completes the already approved held-mark
+  `unvaluable_marks` outcome; breach kinds, routing tables, risk thresholds and live gates are
+  unchanged. The acceptance reviewer confirmed this specific fix in one verification pass.
+
+**Fresh coverage:**
+
+- Both `plan` and `build_intents`: NaN, +inf and -inf current holdings against targets `0.0`,
+  `0.5` and an omitted target (exit). A valid earlier-sorted symbol needs an order, while an
+  `OrderIntent` sentinel proves that no intent is constructed before the later invalid holding
+  is rejected with an exact `ValueError` rather than `RiskBreach`.
+- Shared finite rail: non-string/empty/tuple labels; stable mixed duplicate-label errors.
+  Existing direct mixed-label cap, short-policy and universe sibling tests remain intact.
+- Unicode: decomposed holding at target, actual buys/sells/exits, and simultaneous raw/NFC
+  holdings remain distinct; late's default normalization and collision rejection remain tested.
+- Paper: held marks missing, NaN, +inf, -inf, zero and negative reject before decision/sizing
+  or order submission, with a positive finite held-mark control that actually submits orders.
+  A separate enabled-drawdown test first fills a real position, then corrupts its next close.
+- Current portfolio allocation/replay, late planner, frozen dispatch/attempt/runtime/wire,
+  decision/lane parity, closed breach vocabularies and the unchanged module ratchet all pass.
+
+**Actual current-default-source RED:** the author copied only
+`task3-portfolio/algua/live/planner_decision.py` to the external evidence directory, verified
+its builder has the same unguarded contract and its `plan_portfolio` source is identical, then
+loaded that copied module without modifying the other worktree. All 18 N1 cases failed because
+`ValueError` was not raised. Dependencies were supplied by this integration environment; this
+is a source-level reproduction, not a Git/head or deployed-runtime certification.
+
+**Mutations:** 16 sequential mutations each exited 1 on the intended regression assertion or
+expected-exception mismatch; each source file was restored byte-for-byte before continuing.
+They cover current mapping/finite/key checks, raw Unicode identity, late default NFC/collisions,
+label validation/rendering, MultiIndex handling, direct cap/long-only rendering, and held-mark
+call/missing/finite/positive/precedence checks. No collecting/import failure was counted as a
+killed mutation. Duplicate/value diagnostic `key=str` calls are downstream of the string-label
+rail; their historical non-killing mutations are not claimed as fresh killed guards here.
+
+**Source-closure inspection:** both planner/late runtime first-party closures contain the shared
+validator and aggregate allocator, with no registry, execution, operator, data or CLI authority.
+The sampled `cross_sectional_momentum` identity closure does not include the planner: identity
+roots remain signal/construction/overlays, not universal orchestration coverage. Frozen source
+export covers `algua/`, but no export/preparation or trust-anchor change was performed.
+
+**Scalar-contract findings at the prior handoff (historical):**
+
+The following were unpatched at that handoff. Both are resolved by the explicitly authorized
+bounded disposition below; they are no longer unresolved blockers.
+
+- Important, `planner_decision.py:43`: finite `numpy.float64(0.5)` current holdings are rejected
+  by the retained exact built-in numeric check. Native `0.5` passes. The old unguarded builder
+  accepted NumPy floats. Decide the supported scalar contract before broadening the shared
+  captured-state validator; this recovery does not claim that compatibility is resolved.
+- Minor, `planner_decision.py:46`: `10**400` raises `OverflowError` during conversion rather than
+  `ValueError`. It still fails closed. Decide whether oversized numeric inputs belong in the
+  shared helper's contract before altering late validation.
+
+These observations and the paper finding came from one read-only blind/edge/acceptance review
+round. The paper fix alone received a subsequent bounded verification; no further review loop.
+
+### Bounded independent-review disposition — 2026-11-01
+
+The fresh independent reviewer returned **REQUEST CHANGES** for finite `numpy.float64(0.25)`
+holdings rejected by `build_intents`, `plan` and `plan_portfolio`, and oversized native integers
+escaping as `OverflowError`. Lior explicitly authorized fixing these compatibility and error-type
+bugs without another approval wall. This is an author verification of those fixes, not a new
+independent approval or a new broad review round. The original reviewer and author evidence
+remains unchanged outside the repository.
+
+- **Important — resolved:** the shared `finite_number` / `numeric_mapping` helpers now expose
+  `allow_real_scalars=False`. Only current holdings in `build_intents` opt in, accepting finite
+  `numbers.Real` scalars including NumPy floats/integers and converting them once to native float.
+  Booleans and strings remain rejected. There is no third validator implementation.
+- **Minor — resolved:** float-conversion overflow becomes the existing finite-number contract
+  `ValueError`, including both signs of `10**400`. Finite native late-state numbers keep their
+  prior values.
+- **Preserved:** both helpers default to exact native `int`/`float` types; the actual late
+  captured-state calls retain those defaults. NumPy scalars, booleans and strings remain invalid
+  there. Late NFC normalization/collision rejection, raw current-symbol identity, refusal before
+  intent construction, breach vocabularies and risk controls are preserved.
+- Only `planner_decision.py`, `tests/test_planner.py` and this nonfrozen record changed during
+  this bounded pass. The complete `plan_portfolio` source remains byte-for-byte unchanged.
+  No frozen decoder, safety/cap/CI file, DB, trading, deployment or publication operation is part
+  of this pass; no Git commands or commits were made.
+
+**Test-first evidence:** before the fix, the new targeted selection exited 1 with **42 failed,
+74 passed**: 36 finite NumPy compatibility failures and six leaked overflow exceptions. After
+the minimal helper change, the identical selection exited 0 with **116 passed**. Tests cover
+native and NumPy real scalars across all three entry points with actual buys/reductions/exits,
+native parity controls, current bool/string/non-finite refusal, default helper and actual late
+captured-state rejection, native late valid numbers and oversized-integer refusal before intents.
+
+**Mutation evidence:** eight sequential mutations were killed by the intended test assertions,
+not collection/import errors: remove the builder opt-in, stop forwarding the mode, loosen either
+helper default, accept booleans, accept strings, leak overflow and bypass finiteness. Each was
+restored byte-for-byte to the fixed source before proceeding. Exact commands/exits, logs and
+restoration records are in `bounded-commands.jsonl` and `bounded-mutations.json` under the evidence
+directory. The separate report is `bounded-fix-report.md`.
+
 ## Spec Change Log
 
-- 2026-10-22: drafted from the Story 1.1 deferred-work entries; awaiting owner decision.
-- 2026-10-22: owner approved N1 + L1; status ready-for-dev.
+- 2026-10-22: owner approved N1 + L1 and the held-symbol mark check; original implementation
+  and review fixed raw Unicode identity preservation without changing late NFC defaults.
+- 2026-11-01: recovered the retained implementation against coordinator-integrated current main;
+  added missing matrix/sentinel/Unicode/held-mark coverage, fixed MultiIndex error handling and
+  held-mark/drawdown precedence test-first, and replaced stale gate evidence with fresh results.
+  Frozen owner intent, breach vocabulary, aggregate function and protected siblings are unchanged.
+- 2026-11-01: resolved the independent review's finite-scalar and overflow findings test-first
+  using an explicit current-holdings scalar mode and shared conversion error normalization.
+  Kept exact late defaults, the complete aggregate function, frozen owner intent and old evidence.
 
-## Verification
+## Verification — prior author handoff
 
-**Commands:**
-- `uv run pytest -q && uv run ruff check . && uv run mypy algua && uv run lint-imports`
+All commands used the explicit interpreter
+`/home/liornisimov/Projects/algua/.worktrees/pr712-current-integration/.venv/bin/python`.
+The final focused test command was:
+
+```bash
+/home/liornisimov/Projects/algua/.worktrees/pr712-current-integration/.venv/bin/python -m pytest -q tests/test_planner.py tests/test_risk_limits.py tests/test_paper_loop.py tests/test_portfolio_allocator.py tests/test_portfolio_risk_estimates.py tests/test_book_portfolio_parity.py tests/test_book_portfolio_controls.py tests/test_live_loop.py tests/test_planner_parity.py tests/test_decision_parity.py tests/test_frozen_dispatch.py tests/test_frozen_attempt.py tests/test_failure_vocabularies.py tests/test_module_size_ratchet.py tests/test_frozen_runtime.py tests/test_frozen_wire_result.py tests/test_frozen_wire.py tests/test_lane_parity.py tests/test_registry_approvals.py::test_code_hash_covers_construction_module -o cache_dir=/home/liornisimov/.hermes/profiles/algua/cache/scratch/pr712-evidence/pytest-cache
+```
+
+Exit 0: **672 passed in 30.12s**, including the module ratchet.
+
+Final static commands (each exit 0):
+
+```bash
+/home/liornisimov/Projects/algua/.worktrees/pr712-current-integration/.venv/bin/python -m ruff check . --no-cache
+/home/liornisimov/Projects/algua/.worktrees/pr712-current-integration/.venv/bin/python -m mypy algua --cache-dir /home/liornisimov/.hermes/profiles/algua/cache/scratch/pr712-evidence/mypy-cache
+/home/liornisimov/Projects/algua/.worktrees/pr712-current-integration/.venv/bin/python .venv/bin/lint-imports --no-cache
+```
+
+Mypy: 376 source files. Import-linter: 29 kept, 0 broken.
+
+**Full pytest gate was not run**, as explicitly reserved for the coordinator under its frozen
+lock. No historical resource-budget waiver is used as acceptance evidence. This is an author
+handoff, not merge approval or a claim that the full gate is green. Status remains `in-review`.
+
+Exact argv/exits, RED logs, mutation logs/restoration hashes, source snapshots/closure reports,
+review prompts/results and the separate `author-report.md` are outside the repository at
+`/home/liornisimov/.hermes/profiles/algua/cache/scratch/pr712-evidence`.
+
+## Verification — bounded independent-review fixes
+
+The same explicit `.venv/bin/python` interpreter ran the new RED/GREEN selection, all eight
+mutations and the final focused siblings. Final focused result: **736 passed, 14 deselected**
+in 13.56s, exit 0. The selection covers planner/risk/paper, aggregate allocation/replay,
+live/late and decision parity, frozen dispatch/attempt/wire/result validation, closed breach
+vocabularies and the module ratchet. Four DB-backed test functions and two real-child test
+functions (14 parameterized cases total) were explicitly deselected to keep DB operations and
+alternate-interpreter launches outside this pass. No tests were changed to disable them.
+
+Targeted static checks also exited 0:
+
+```bash
+/home/liornisimov/Projects/algua/.worktrees/pr712-current-integration/.venv/bin/python -m ruff check algua/live/planner_decision.py tests/test_planner.py --no-cache
+/home/liornisimov/Projects/algua/.worktrees/pr712-current-integration/.venv/bin/python -m mypy algua/live/planner_decision.py --cache-dir /home/liornisimov/.hermes/profiles/algua/cache/scratch/pr712-evidence/bounded-mypy-cache
+```
+
+The exact focused pytest argv, deselections and exits are saved in `bounded-commands.jsonl`;
+the runnable selection is `bounded_focused.py`. This pass did **not** run the full pytest,
+repository-wide Ruff/mypy or import-linter gates and does not claim those gates are green.
+The prior handoff results above remain dated evidence only. The spec remains `in-review`.
+The separate `bounded-fix-report.md` records disposition and preservation checks.
+
+## Suggested Review Order
+
+- Check the approved caller contract and unchanged raw identities.
+  [planner_decision.py:86](../../../algua/live/planner_decision.py#L86)
+- Reject tuple labels through the existing shared label rail.
+  [limits.py:122](../../../algua/risk/limits.py#L122)
+- Validate held marks before interpreting post-warm-up economic losses.
+  [paper_loop.py:111](../../../algua/live/paper_loop.py#L111)
+- Verify no intent construction can precede a later invalid holding.
+  [test_planner.py:163](../../../tests/test_planner.py#L163)
+- Check real-fill bad-mark classification under an enabled drawdown breaker.
+  [test_paper_loop.py:163](../../../tests/test_paper_loop.py#L163)
+- Check shared-rail tuple and mixed duplicate label diagnostics.
+  [test_risk_limits.py:227](../../../tests/test_risk_limits.py#L227)

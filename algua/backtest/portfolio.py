@@ -1,8 +1,8 @@
 """Bounded reference book replay through the real backtest simulator.
 
-Prefix replay is intentionally quadratic and capped at 64 complete daily sessions. It derives
-actual holdings including fills/costs before each allocation, rather than calling last target
-"current weights". No runtime dispatch, registry access or second fill/accounting model.
+Prefix replay is intentionally quadratic, bounded to about two years on a small explicit book.
+It derives actual holdings including fills/costs before each allocation, rather than calling last
+target "current weights". No runtime dispatch, registry access or second fill/accounting model.
 """
 
 from __future__ import annotations
@@ -29,7 +29,36 @@ from algua.portfolio.allocator import PortfolioConstraints, RiskEstimate, alloca
 from algua.risk.limits import validate_decision_weights
 from algua.strategies.base import LoadedStrategy, StrategyConfig, config_hash
 
-MAX_REPLAY_SESSIONS = 64
+MAX_REPLAY_SESSIONS = 512
+MAX_REPLAY_SYMBOLS = 8
+MAX_REPLAY_SLEEVES = 8
+MAX_REPLAY_WORK_UNITS = 2_000_000
+
+
+def _work_units(sessions: int, symbols: int, sleeve_symbols: int) -> int:
+    # Engine prefix grids + expanding sleeve history rows + the final engine grid. This is a
+    # deterministic workload bound, not a wall-clock guarantee for arbitrary strategy callables.
+    return (symbols + sleeve_symbols) * sessions * (sessions + 1) // 2 + symbols * sessions
+
+
+def _window_sessions(start: datetime, end: datetime) -> int:
+    start_ts, end_ts = pd.Timestamp(start), pd.Timestamp(end)
+    if pd.isna(start_ts) or pd.isna(end_ts):
+        raise BacktestError("portfolio replay requires valid start/end")
+    if start_ts.tzinfo is None or end_ts.tzinfo is None:
+        raise BacktestError("portfolio replay requires tz-aware start/end")
+    if start_ts >= end_ts:
+        raise BacktestError("portfolio replay requires start before end")
+    # Count UTC-midnight bars inside [start, end), including for non-UTC/intraday bounds.
+    first = start_ts.tz_convert("UTC").ceil("D")
+    last = end_ts.tz_convert("UTC").ceil("D") - timedelta(days=1)
+    try:
+        count = len(MarketCalendar().sessions_in_range(first.date(), last.date()))
+    except ValueError as exc:
+        raise BacktestError(f"portfolio replay window outside session calendar: {exc}") from exc
+    if not 1 <= count <= MAX_REPLAY_SESSIONS:
+        raise BacktestError(f"portfolio replay requires 1..{MAX_REPLAY_SESSIONS} sessions")
+    return count
 
 
 @dataclass(frozen=True)
@@ -106,8 +135,15 @@ def simulate_portfolio(
     Explicit account execution supplies costs; no qualification or cost inference. Unsupported
     sidecars/PIT membership/delistings/longer lags fail closed, rather than approximate them.
     Results include the original snapshot, captured content digest, configs, constraints, risk
-    sources, seed and runtime stamps. This is an offline simulation, not promotion evidence.
+    sources, seed and runtime stamps. Session/symbol/sleeve and aggregate work limits are checked
+    before fetching data. Prefix replay reuses the canonical engine without a continuation API;
+    its finite grid/history bound does not bound arbitrary sleeve computation time. This is an
+    offline research simulation, not promotion or elapsed forward-test evidence.
     """
+    if len(strategies) > MAX_REPLAY_SLEEVES:
+        raise BacktestError(f"portfolio replay supports at most {MAX_REPLAY_SLEEVES} sleeves")
+    if len(symbols) > MAX_REPLAY_SYMBOLS:
+        raise BacktestError(f"portfolio replay supports at most {MAX_REPLAY_SYMBOLS} symbols")
     _validate_members(strategies, execution)
     if (not symbols or isinstance(symbols, str)
             or any(not isinstance(s, str) or not s.strip() for s in symbols)):
@@ -115,6 +151,13 @@ def simulate_portfolio(
     symbols = sorted(set(symbols))
     if any(not set(s.universe) <= set(symbols) for s in strategies.values()):
         raise BacktestError("portfolio symbols must include every supplied strategy universe")
+    requested_sessions = _window_sessions(start, end)
+    sleeve_symbols = sum(len(s.universe) for s in strategies.values())
+    requested_work = _work_units(requested_sessions, len(symbols), sleeve_symbols)
+    if requested_work > MAX_REPLAY_WORK_UNITS:
+        raise BacktestError(f"portfolio replay work exceeds {MAX_REPLAY_WORK_UNITS} units")
+    if (isinstance(initial_cash, bool) or not math.isfinite(initial_cash) or initial_cash <= 0):
+        raise BacktestError("initial_cash must be finite and positive")
     decisions: dict[pd.Timestamp, pd.Series] = {}
     replay = _replay_strategy(symbols, execution, decisions)
     snapshot_id = getattr(provider, "snapshot_id", None)
@@ -123,11 +166,12 @@ def simulate_portfolio(
         raise BacktestError("portfolio replay requires a pinned bars snapshot_id")
     if snapshot_id != captured.bars_snapshot_id:
         raise BacktestError("bars snapshot_id changed during capture")
-    bars = captured.bars().sort_index(kind="stable")
+    bars = captured.bars()
+    if len(bars) > requested_sessions * len(symbols):
+        raise BacktestError("provider returned more bars than the bounded replay workload")
+    bars = bars.sort_index(kind="stable")
     if not isinstance(bars.index, pd.DatetimeIndex) or str(bars.index.tz) != "UTC":
         raise BacktestError("portfolio replay requires UTC daily timestamps")
-    if pd.Timestamp(start).tzinfo is None or pd.Timestamp(end).tzinfo is None:
-        raise BacktestError("portfolio replay requires tz-aware start/end")
     if bool(((bars.index < start) | (bars.index >= end)).any()):
         raise BacktestError("provider returned bars outside the half-open replay window")
     dates = bars.index.unique().sort_values()
@@ -185,6 +229,14 @@ def simulate_portfolio(
         "config_hash": hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest(),
         "bars_digest": hashlib.sha256(captured.bars_payload).hexdigest(),
         "period": {"start": start.isoformat(), "end": end.isoformat()},
+        "replay": {
+            "method": "canonical_engine_prefix", "scope": "research_only",
+            "sessions": len(dates), "symbols": len(symbols), "sleeves": len(strategies),
+            "work_units": _work_units(len(dates), len(symbols), sleeve_symbols),
+            "requested_sessions": requested_sessions, "requested_work_units": requested_work,
+            "limits": {"sessions": MAX_REPLAY_SESSIONS, "symbols": MAX_REPLAY_SYMBOLS,
+                       "sleeves": MAX_REPLAY_SLEEVES, "work_units": MAX_REPLAY_WORK_UNITS},
+        },
     }
     return PortfolioSimulation(
         pf, pd.DataFrame.from_dict(decisions, orient="index").reindex(index=dates, columns=symbols)
