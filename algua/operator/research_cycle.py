@@ -22,7 +22,9 @@ from typing import Any
 
 from algua.contracts.idea import AttemptOutcome, Idea
 from algua.operator.research_cycle_results import report_outcomes
+from algua.registry.campaign_selection import menu_from_history, selection_ids
 from algua.registry.idea_attempts import ClaimTokenMismatch, IdeaAttemptsRepository
+from algua.registry.idea_scorecard import campaign_scorecard
 
 
 @dataclass(frozen=True)
@@ -94,16 +96,34 @@ class ResearchCycle:
             raise ValueError("cycle context belongs to another registry")
         return metadata
 
-    def start(self, *, limits: CycleLimits, context: dict[str, Any], ttl_minutes: int,
-              category: str | None = None, preview_hold_hours: int = 72,
-              ) -> tuple[list[Idea], dict[str, Any]]:
-        """Persist intent before claiming. Repeating an ID only reconciles existing work."""
+    def _request(self, *, limits: CycleLimits, context: dict[str, Any], ttl_minutes: int,
+                 category: str | None = None, preview_hold_hours: int = 72) -> dict[str, Any]:
         database = str(Path(self.conn.execute("PRAGMA database_list").fetchone()[2]).resolve())
         if ttl_minutes * 60 < limits.max_wall_seconds:
             raise ValueError("claim TTL must cover the complete cycle wall-time budget")
-        request = {"research_cycle_id": self.cycle_id, "database": database,
-                   "limits": asdict(limits), "context": context, "category": category,
-                   "claim_ttl_minutes": ttl_minutes, "preview_hold_hours": preview_hold_hours}
+        return {"research_cycle_id": self.cycle_id, "database": database,
+                "limits": asdict(limits), "context": context, "category": category,
+                "claim_ttl_minutes": ttl_minutes, "preview_hold_hours": preview_hold_hours}
+
+    def campaign_menu(self, **kwargs: Any) -> dict[str, Any]:
+        """Read one consistent feedback snapshot for an explicit chooser; claim nothing."""
+        if self.conn.in_transaction:
+            raise RuntimeError("campaign_menu requires a top-level connection")
+        with self.conn:
+            self.conn.execute("BEGIN")
+            return menu_from_history(campaign_scorecard(self.conn), self._request(**kwargs))
+
+    def start(self, *, limits: CycleLimits, context: dict[str, Any], ttl_minutes: int,
+              category: str | None = None, preview_hold_hours: int = 72,
+              campaign: dict | None = None) -> tuple[list[Idea], dict[str, Any]]:
+        """Persist intent before claiming. Repeating an ID only reconciles existing work."""
+        request = self._request(limits=limits, context=context, ttl_minutes=ttl_minutes,
+                                category=category, preview_hold_hours=preview_hold_hours)
+        if campaign is not None:
+            selection_ids(campaign)
+            if campaign["menu"]["request"] != request:
+                raise ValueError("campaign resource/source context changed")
+            request["campaign"] = campaign
         # Round-trip detaches caller-owned mutable objects and enforces serializable context.
         request = json.loads(json.dumps(request, allow_nan=False))
         with self._locked():
@@ -143,10 +163,12 @@ class ResearchCycle:
                 os.close(directory_fd)
             if limits.max_cost is not None:
                 return [], self.summary(phase="cost_unknown")
+            campaign_args: dict[str, Any] = (
+                {} if campaign is None else {"campaign": request["campaign"]})
             claimed = self.attempts.claim(
                 run_stamp=self.cycle_id, limit=limits.max_hypotheses,
                 ttl_minutes=ttl_minutes, category=category,
-                preview_hold_hours=preview_hold_hours)
+                preview_hold_hours=preview_hold_hours, **campaign_args)
             return claimed, self.summary(phase="running" if claimed else "pool_empty")
 
     def finish(self, *, phase: str, worker_exit: int, report: Path | None = None,
@@ -213,5 +235,8 @@ class ResearchCycle:
                 "unfinished_count": unfinished, "terminal_count": len(rows) - unfinished,
                 "monetary_cost": None, "cost_status": "unknown", "cost_gate_passed": False,
                 "write_errors": write_errors or [],
-                "attempts": [{k: row[k] for k in (
-                    "idea_id", "outcome", "reason", "evidence_ref")} for row in rows]}
+                "campaign": metadata["request"].get("campaign"),
+                "attempts": [{"evidence_id": f"idea_attempts:{row['id']}",
+                              **{k: row[k] for k in (
+                                  "idea_id", "outcome", "reason", "evidence_ref")}}
+                             for row in rows]}

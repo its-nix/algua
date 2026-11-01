@@ -49,6 +49,7 @@
 #
 # Usage:
 #   .opencode/scripts/run-research-loop.sh [--hypotheses N] [--timeout DUR] [--category SLUG] [--dry-run]
+#   Optional --campaign FILE binds a cycle-start --menu-only snapshot and explicit chooser reply.
 #
 set -euo pipefail
 ORIGINAL_ARGS=("$@")
@@ -84,6 +85,7 @@ MAX_COST="${ALGUA_RESEARCH_MAX_COST:-}"
 CYCLE_ACTIVE=0
 CYCLE_PHASE=setup_failed
 CYCLE_RESULT=""
+CAMPAIGN=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -95,6 +97,7 @@ while [[ $# -gt 0 ]]; do
     --memory-mb)  MEMORY_MB="$2"; shift 2 ;;
     --file-mb)    FILE_MB="$2"; shift 2 ;;
     --max-cost)   MAX_COST="$2"; shift 2 ;;
+    --campaign)   CAMPAIGN="$2"; shift 2 ;;
     --dry-run)    DRY_RUN=1; shift ;;
     -h|--help)    sed -n '2,52p' "$0"; exit 0 ;;   # through the Usage: block
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -180,7 +183,8 @@ append_digest() {
   python3 - "${AUTH_DIGEST}" "${outcome}" "${STAMP}" "${DIGEST_BRANCH}" "${CATEGORY}" \
     "${rc}" "${timed_out}" "${wall_s}" "${n_strategy_files}" "${rate_limited}" \
     "${DIGEST_REPORT_PATH}" "${STRATEGY_MODULE_NAMES}" "${REPO_ROOT}" \
-    "${AUTH_QUEUE}" "${AUTH_QUEUE_LOCK}" "${REPO_ROOT}" "${CLAIMED_JSON}" "${CYCLE_RESULT}" <<'PY' && digest_ok=1
+    "${AUTH_QUEUE}" "${AUTH_QUEUE_LOCK}" "${REPO_ROOT}" "${CLAIMED_JSON}" "${CYCLE_RESULT}" \
+    "${CAMPAIGN:-}" <<'PY' && digest_ok=1
 import importlib.util
 import json
 import os
@@ -202,7 +206,18 @@ from pathlib import Path
  claimed_json) = sys.argv[1:18]
 
 sys.path.insert(0, repo_root)
-from algua.operator.research_cycle_results import clean_report_text, read_report
+from algua.operator.research_cycle_results import (
+    campaign_hypotheses, clean_report_text, read_report,
+)
+
+cycle_result = {}
+if len(sys.argv) > 18 and sys.argv[18]:
+    try:
+        with open(sys.argv[18], encoding="utf-8") as stream:
+            cycle_result = json.load(stream)
+    except Exception:
+        pass
+campaign_required = len(sys.argv) > 19 and bool(sys.argv[19])
 
 _STRATEGY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 _UNIVERSE_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -298,6 +313,8 @@ def _validate_merge_back(mb, *, verdict, strategy_names, seen_strategies, today,
 def _parse_trailer(path: str, *, strategy_names: set,
                    claim_tokens: dict) -> tuple[list, dict | None, list]:
     hyps, gate = read_report(Path(path))
+    if campaign_required:
+        hyps = campaign_hypotheses(hyps, cycle_result, cycle_id=stamp, claim_tokens=claim_tokens)
     candidates: list = []
     seen_strategies: set = set()
     today = datetime.now(UTC).date().isoformat()
@@ -370,13 +387,6 @@ if candidates and branch and git_root and mergeback_queue is not None:
             print(f"WARNING: branch rename {branch} -> {target} failed "
                   f"(rc={proc.returncode}: {proc.stderr.strip()!r}); keeping {branch}")
 
-cycle_result = {}
-if len(sys.argv) > 18 and sys.argv[18]:
-    try:
-        with open(sys.argv[18], encoding="utf-8") as stream:
-            cycle_result = json.load(stream)
-    except Exception:
-        pass
 row = {
     "research_cycle_id": stamp,
     "finished_at": datetime.now(UTC).isoformat(),
@@ -602,6 +612,7 @@ else
               --memory-mb "${MEMORY_MB}" --file-mb "${FILE_MB}")
   if [[ -n "${MAX_COST}" ]]; then CLAIM_ARGS+=(--max-cost "${MAX_COST}"); fi
   if [[ -n "${CATEGORY}" ]]; then CLAIM_ARGS+=(--category "${CATEGORY}"); fi
+  if [[ -n "${CAMPAIGN:-}" ]]; then CLAIM_ARGS+=(--campaign "${CAMPAIGN}"); fi
   CLAIMED_JSON="$(ALGUA_DB_PATH="${AUTH_DB}" ALGUA_DATA_DIR="${AUTH_DATA_DIR}" "${AUTH_CLI[@]}" "${CLAIM_ARGS[@]}" \
     | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["claimed"]))')" \
     || { echo "claim failed; refusing to run without claimed ideas" >&2

@@ -95,3 +95,33 @@ def report_outcomes(path: Path | None) -> dict[int, tuple[AttemptOutcome, str]]:
     return {row["idea_id"]: (AttemptOutcome(row["outcome"]), row["reason"])
             for row in rows if type(row["idea_id"]) is int
             and row["outcome"] is not None and row["reason"]}
+
+
+def campaign_hypotheses(rows: list[dict[str, Any]], result: dict[str, Any], *,
+                        cycle_id: str, claim_tokens: dict) -> list[dict[str, Any]]:
+    """Constrain digest/queue publication to selected, fenced, recorded campaign work."""
+    try:
+        campaign = result["campaign"]
+        selected = {c["hypothesis_id"] for c in campaign["selection"]["choices"]}
+        attempts = {a["idea_id"]: a for a in result["attempts"]}
+        if (result["research_cycle_id"] != cycle_id
+                or campaign["menu"]["request"]["research_cycle_id"] != cycle_id
+                or set(claim_tokens) != selected or set(attempts) != selected):
+            raise ValueError("campaign publication claim/context mismatch")
+        bound = []
+        for row in rows:
+            idea_id = row["idea_id"]
+            if idea_id not in selected:
+                continue
+            if row["outcome"] != attempts[idea_id]["outcome"]:
+                raise ValueError("campaign report differs from recorded outcome")
+            mb = row["merge_back"]
+            if mb is not None and (
+                row["outcome"] != "candidate_preview_pass" or not isinstance(mb, dict)
+                or type(mb.get("idea_id")) is not int or mb.get("idea_id") != idea_id
+            ):
+                row = {**row, "merge_back": None}
+            bound.append(row)
+        return bound
+    except (KeyError, TypeError) as exc:
+        raise ValueError("missing or malformed campaign completion context") from exc
