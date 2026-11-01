@@ -96,7 +96,7 @@ def walk_forward_cmd(
     universe: str = typer.Option(
         None, "--universe",
         help="point-in-time universe name (opt into survivorship-bias-free membership)"),
-    windows: int = typer.Option(4, "--windows", help="number of equal out-of-sample windows"),
+    windows: int = typer.Option(4, "--windows", help="number of equal research windows (not OOS)"),
     holdout_frac: float = typer.Option(0.2, "--holdout-frac", help="fraction reserved as holdout"),
     embargo: int = typer.Option(
         None, "--embargo", min=0,
@@ -119,7 +119,7 @@ def walk_forward_cmd(
         False, "--summary",
         help="emit only decision-relevant scalars (drops per-window metrics; context-rot defense)"),
 ) -> None:
-    """Walk-forward (out-of-sample) evaluation: per-window metrics + stability.
+    """Research-window evaluation: per-window metrics + stability (not independent OOS).
 
     The final OOS holdout segment is COMPUTED by walk_forward (research promote depends on it) but
     is WITHHELD from this command's output. The holdout is revealed — and burned — in exactly one
@@ -158,7 +158,6 @@ def walk_forward_cmd(
     with registry_conn() as conn:
         record_walk_forward_run(SqliteStrategyRepository(conn), name, result)
     payload = result.to_dict()
-    payload.pop("holdout_metrics")  # withhold the holdout (reserved for `research promote`)
     if track:
         record_tracking(payload, lambda: get_tracker().log_walk_forward(
             result, strategy.config.params, tracking_uri=get_settings().mlflow_tracking_uri

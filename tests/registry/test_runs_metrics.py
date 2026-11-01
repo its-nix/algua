@@ -62,11 +62,9 @@ class _FakeWalkForward:
         }
 
 
-def test_walk_forward_maps_holdout_to_oos_and_windows_to_their_own_names() -> None:
+def test_walk_forward_maps_only_public_window_stability() -> None:
     out = walk_forward_metrics(_FakeWalkForward())
-    assert out["sharpe_oos"] == pytest.approx(0.4)
-    assert out["total_return_oos"] == pytest.approx(0.05)
-    assert out["n_obs_oos"] == 120
+    assert not any(key.endswith("_oos") for key in out)
     assert out["mean_window_sharpe"] == pytest.approx(0.8)
     assert out["min_window_sharpe"] == pytest.approx(-0.2)
     assert out["pct_positive_windows"] == pytest.approx(0.75)

@@ -70,7 +70,8 @@ def test_walk_forward_shape_and_stamps():
     d = res.to_dict()
     assert d["windows"] == 4
     assert len(d["window_metrics"]) == 4
-    assert {"start", "end", "n_bars", "sharpe", "total_return"} <= set(d["holdout_metrics"])
+    assert {"start", "end", "n_bars", "sharpe", "total_return"} <= set(res.holdout_metrics)
+    assert {"holdout_metrics", "holdout_returns", "market_returns"}.isdisjoint(d)
     stability_keys = {"mean_sharpe", "std_sharpe", "min_sharpe", "pct_positive_windows"}
     assert stability_keys == set(d["stability"])
     assert 0.0 <= d["stability"]["pct_positive_windows"] <= 1.0

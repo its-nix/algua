@@ -35,7 +35,7 @@ def test_backtest_records_a_run_for_an_unregistered_strategy() -> None:
         assert len(repo.list_runs(kind="backtest")) == 1
 
 
-def test_walk_forward_records_oos_and_window_metrics() -> None:
+def test_walk_forward_records_public_windows_without_oos_aliases() -> None:
     from typer.testing import CliRunner
 
     from algua.cli.main import app
@@ -46,8 +46,8 @@ def test_walk_forward_records_oos_and_window_metrics() -> None:
         rows = SqliteStrategyRepository(conn).list_runs(kind="walk_forward")
     assert len(rows) == 1
     row = rows[0]
-    assert row["sharpe_oos"] is not None
-    assert row["n_obs_oos"] is not None
+    assert row["sharpe_oos"] is None
+    assert row["n_obs_oos"] is None
     assert row["mean_window_sharpe"] is not None
     # A walk-forward measures no full-period in-sample figure; it must not invent one.
     assert row["sharpe_is"] is None
