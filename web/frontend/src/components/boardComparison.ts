@@ -1,4 +1,4 @@
-import type { BoardComparisonContext, StrategyBoardComparisonEvidence, StrategyBoardRow } from '../types'
+import type { BoardComparisonContext, PublicWindowComparisonContext, StrategyBoardComparisonEvidence, StrategyBoardRow } from '../types'
 
 function exact(value: unknown, keys: string): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) &&
@@ -64,6 +64,47 @@ export function parseRecordedProvenance(raw: unknown): RecordedProvenance | null
   }
 }
 
+
+export function validExecution(e: unknown): boolean {
+  return exact(e, 'schema_version decision_lag_bars fill_basis valuation_basis sizing cash_sharing initial_cash symbol_order rebalance price_units simulation') &&
+    e.schema_version === 'replay-execution/v1' && positive(e.decision_lag_bars) &&
+    (e.fill_basis === 'adjusted_close' || e.fill_basis === 'adjusted_open') &&
+    e.valuation_basis === e.fill_basis && e.sizing === 'targetpercent' &&
+    simulation(e.simulation) && e.cash_sharing === true && number(e.initial_cash) &&
+    e.initial_cash > 0 && Array.isArray(e.symbol_order) && e.symbol_order.length > 0 &&
+    e.symbol_order.every(text) && new Set(e.symbol_order).size === e.symbol_order.length &&
+    e.rebalance === 'every_daily_bar' && e.price_units === 'vendor_adjusted'
+}
+
+function publicComparison(c: Record<string, unknown>): boolean {
+  if (!exact(c, 'schema_version protocol metrics timeframe period_start period_end holdout_frac embargo windows public_interval execution execution_costs snapshot_id content_hash data_tier source dependency_hash seed') ||
+    c.schema_version !== 'public-window-comparison/v1' ||
+    c.protocol !== 'continuous_portfolio_public_windows' ||
+    c.metrics !== 'window_sharpe_mean_min_population_std_positive_return_fraction/v1' ||
+    c.timeframe !== '1d' || !day(c.period_start) || !day(c.period_end) || c.period_start >= c.period_end ||
+    !number(c.holdout_frac) || c.holdout_frac <= 0 || c.holdout_frac >= 1 ||
+    !number(c.embargo) || !Number.isSafeInteger(c.embargo) || c.embargo < 0 ||
+    !(c.seed === null || (number(c.seed) && Number.isSafeInteger(c.seed) && c.seed >= 0)) ||
+    !Array.isArray(c.windows) || c.windows.length < 2 || c.windows.length > 10000 ||
+    !c.windows.every(w => segment(w) && w.n_bars >= 5) ||
+    !exact(c.public_interval, 'start end n_bars n_windows') ||
+    !validExecution(c.execution) || !parseCosts(c.execution_costs) ||
+    c.data_tier !== 'pilot_real_proxy' || !text(c.snapshot_id) || !text(c.dependency_hash) ||
+    typeof c.content_hash !== 'string' || !/^[a-f0-9]{64}$/.test(c.content_hash)) return false
+  const w = c.windows, interval = c.public_interval
+  return w[0].start >= c.period_start && w[w.length - 1].end < c.period_end &&
+    w.every((s, i) => i === 0 || s.start > w[i - 1].end) &&
+    w.slice(0, -1).every(s => s.n_bars === w[0].n_bars) &&
+    w[w.length - 1].n_bars >= w[0].n_bars && w[w.length - 1].n_bars < w[0].n_bars + w.length &&
+    interval.start === w[0].start && interval.end === w[w.length - 1].end &&
+    positive(interval.n_bars) && interval.n_bars === w.reduce((n, s) => n + s.n_bars, 0) &&
+    interval.n_windows === w.length
+}
+
+export function contextInterval(c: BoardComparisonContext | PublicWindowComparisonContext) {
+  return c.protocol === 'continuous_portfolio_public_windows' ? c.public_interval : c.oos
+}
+
 export function parseComparison(value: unknown): StrategyBoardComparisonEvidence | null {
   if (!exact(value, 'status observed_metric_sort_enabled reasons cohort_id context') ||
       !Array.isArray(value.reasons)) return null
@@ -73,6 +114,12 @@ export function parseComparison(value: unknown): StrategyBoardComparisonEvidence
       ? value as unknown as StrategyBoardComparisonEvidence : null
   }
   const c = value.context
+  if (value.status === 'COMPARABLE' && value.observed_metric_sort_enabled === true &&
+      value.reasons.length === 0 && typeof value.cohort_id === 'string' &&
+      /^[a-f0-9]{64}$/.test(value.cohort_id) && c !== null && typeof c === 'object' &&
+      (c as Record<string, unknown>).protocol === 'continuous_portfolio_public_windows') {
+    return publicComparison(c as Record<string, unknown>) ? value as unknown as StrategyBoardComparisonEvidence : null
+  }
   if (value.status !== 'COMPARABLE' || value.observed_metric_sort_enabled !== true ||
       value.reasons.length !== 0 || typeof value.cohort_id !== 'string' ||
       !/^[a-f0-9]{64}$/.test(value.cohort_id) || !exact(c,
@@ -121,14 +168,20 @@ export function selectedMetrics(row: StrategyBoardRow) {
   return Object.hasOwn(row, 'latest_research') ? row.latest_research ?? null : row.latest_gate
 }
 
-export type ObservedMetric = 'sharpe_oos' | 'total_return_oos' | 'max_drawdown_oos'
+export type ObservedMetric = 'sharpe_oos' | 'total_return_oos' | 'max_drawdown_oos' |
+  'mean_window_sharpe' | 'min_window_sharpe' | 'std_window_sharpe' | 'pct_positive_windows'
+export function metricValue(row: StrategyBoardRow, key: ObservedMetric): number | null {
+  const metrics = selectedMetrics(row)
+  const value = metrics !== null && key in metrics ? (metrics as unknown as Record<string, unknown>)[key] : null
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
 export function observedOrder(rows: StrategyBoardRow[], metric: ObservedMetric): StrategyBoardRow[] {
   return [...rows].sort((a, b) => {
-    const x = selectedMetrics(a)?.[metric], y = selectedMetrics(b)?.[metric]
+    const x = metricValue(a, metric), y = metricValue(b, metric)
     if (x == null && y == null) return a.strategy_id - b.strategy_id
     if (x == null) return 1
     if (y == null) return -1
     // Drawdowns are negative fractions; the value nearest zero comes first.
-    return y - x || a.strategy_id - b.strategy_id
+    return (metric === 'std_window_sharpe' ? x - y : y - x) || a.strategy_id - b.strategy_id
   })
 }

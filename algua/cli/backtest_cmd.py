@@ -162,7 +162,10 @@ def walk_forward_cmd(
                           assume_terminal_last_close=assume_terminal_last_close)
     with registry_conn() as conn:
         run_id = record_walk_forward_run(
-            SqliteStrategyRepository(conn), name, result, strategy_id=strategy_id)
+            SqliteStrategyRepository(conn), name, result, strategy_id=strategy_id,
+            params=strategy.config.params,
+            research_inputs={"delisting_snapshot": _delisting_prov,
+                             "assume_terminal_last_close": assume_terminal_last_close})
     payload = result.to_dict()
     payload["recorded_run"] = {"run_id": run_id, "strategy_id": strategy_id, "kind": "walk_forward"}
     if track:

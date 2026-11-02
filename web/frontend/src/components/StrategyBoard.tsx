@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { ApiError, useFetch } from '../api'
 import type { UseFetchResult } from '../api'
 import { num, pct, utcDate } from '../format'
-import type { ApiEnvelope, StrategyBoardGate, StrategyBoardPayload, StrategyBoardRow } from '../types'
+import type { ApiEnvelope, PublicWindowInterval, PublicWindowRun, StrategyBoardGate, StrategyBoardPayload, StrategyBoardRow } from '../types'
 import type {
   StrategyBoardComparisonEvidence,
   StrategyBoardEvaluationEvidence,
@@ -12,16 +12,17 @@ import type {
   StrategyBoardOosEvidence,
   StrategyBoardSnapshotEvidence,
 } from '../types'
-import { contextKey, observedOrder, parseComparison, parseRecordedProvenance, selectedMetrics } from './boardComparison'
+import { contextInterval, contextKey, metricValue, observedOrder, parseComparison, parseRecordedProvenance, selectedMetrics } from './boardComparison'
 import type { ObservedMetric, RecordedProvenance } from './boardComparison'
 import PassMark from './PassMark'
 import Sparkline from './Sparkline'
 import StaleNotice from './StaleNotice'
 import StageChip from './StageChip'
+import PublicWindowRail from './PublicWindowRail'
 
 const SCHEMA_VERSION = 'strategy-board/v1'
 const EVIDENCE_SCHEMA_VERSION = 'strategy-board-evidence/v2'
-export const RESEARCH_SCHEMA_VERSION = 'strategy-board-research/v1'
+export const RESEARCH_SCHEMA_VERSION = 'strategy-board-research/v2'
 const supportedEvidence = (schema: unknown) => schema === EVIDENCE_SCHEMA_VERSION || schema === RESEARCH_SCHEMA_VERSION
 export const STRATEGY_BOARD_EVIDENCE_URL = '/api/strategy-board?include_evidence=true&research=true'
 
@@ -37,6 +38,12 @@ export const SORT_OPTIONS: SortOption[] = [
   { key: 'sharpe_oos', label: 'oos sharpe' },
   { key: 'total_return_oos', label: 'oos return' },
   { key: 'max_drawdown_oos', label: 'oos drawdown' },
+]
+const PUBLIC_SORT_OPTIONS: SortOption[] = [
+  { key: 'mean_window_sharpe', label: 'mean window Sharpe' },
+  { key: 'min_window_sharpe', label: 'min window Sharpe' },
+  { key: 'std_window_sharpe', label: 'std window Sharpe (ascending)' },
+  { key: 'pct_positive_windows', label: 'positive-window fraction' },
 ]
 
 const LIFECYCLE_ORDER = [
@@ -71,13 +78,14 @@ export function isBoardPayload(value: unknown): value is StrategyBoardPayload {
       if (research !== null) {
         if (research === undefined || typeof research !== 'object' || Array.isArray(research)) return false
         const r = research as Record<string, unknown>
-        if (!exactKeys(r, ['kind', 'run_id', 'created_at', 'sharpe_oos', 'total_return_oos',
-          'max_drawdown_oos', 'n_obs_oos', 'mean_window_sharpe', 'min_window_sharpe', 'pct_positive_windows']) ||
-          r.kind !== 'walk_forward' || !Number.isSafeInteger(r.run_id) || Number(r.run_id) < 1 ||
+        if (!exactKeys(r, ['kind', 'run_id', 'created_at', 'mean_window_sharpe',
+          'std_window_sharpe', 'min_window_sharpe', 'pct_positive_windows']) ||
+          r.kind !== 'public_windows' || !Number.isSafeInteger(r.run_id) || Number(r.run_id) < 1 ||
           typeof r.created_at !== 'string' || !Number.isFinite(Date.parse(r.created_at)) ||
-          !['sharpe_oos', 'total_return_oos', 'max_drawdown_oos', 'mean_window_sharpe',
-            'min_window_sharpe', 'pct_positive_windows'].every(k => nullableFinite(r[k])) ||
-          !(r.n_obs_oos === null || (Number.isSafeInteger(r.n_obs_oos) && Number(r.n_obs_oos) >= 0))) return false
+          !['mean_window_sharpe', 'std_window_sharpe', 'min_window_sharpe',
+            'pct_positive_windows'].every(k => nullableFinite(r[k])) ||
+          (r.std_window_sharpe !== null && Number(r.std_window_sharpe) < 0) ||
+          (r.pct_positive_windows !== null && (Number(r.pct_positive_windows) < 0 || Number(r.pct_positive_windows) > 1))) return false
       }
     } else if (Object.hasOwn(row, 'latest_research')) return false
     if (row.latest_gate === null) return true
@@ -117,18 +125,33 @@ export function RefreshError({ error }: { error: Error | null }) {
  * through the stable-ID resolver and nothing here mutates state.
  */
 export default function StrategyBoard() {
+  const [research, setResearch] = useState(true)
+  return <>
+    <div className="chip-row" role="group" aria-label="evidence mode">
+      <button className={research ? 'filter-chip active' : 'filter-chip'} type="button" aria-pressed={research} onClick={() => setResearch(true)}>Public WF windows</button>
+      <button className={research ? 'filter-chip' : 'filter-chip active'} type="button" aria-pressed={!research} onClick={() => setResearch(false)}>Gate OOS</button>
+    </div>
+    <StrategyBoardFetch key={research ? 'public' : 'gate'} research={research} />
+  </>
+}
+
+/** Each mode owns its fetch state, so superseded completions cannot replace the selected board. */
+function StrategyBoardFetch({ research }: { research: boolean }) {
   const query = useFetch<ApiEnvelope<StrategyBoardPayload>>(
-    STRATEGY_BOARD_EVIDENCE_URL,
+    research ? STRATEGY_BOARD_EVIDENCE_URL : '/api/strategy-board?include_evidence=true',
   )
-  return <StrategyBoardView query={query} />
+  return <StrategyBoardView query={query}
+    expectedEvidenceSchema={research ? RESEARCH_SCHEMA_VERSION : EVIDENCE_SCHEMA_VERSION} />
 }
 
 export function StrategyBoardView({
   query,
   compact = false,
+  expectedEvidenceSchema,
 }: {
   query: UseFetchResult<ApiEnvelope<StrategyBoardPayload>>
   compact?: boolean
+  expectedEvidenceSchema?: string
 }) {
   const [stage, setStage] = useState<string | null>(null)
   const [family, setFamily] = useState<string | null>(null)
@@ -136,7 +159,9 @@ export function StrategyBoardView({
   const [cohort, setCohort] = useState('')
   const [order, setOrder] = useState<ObservedMetric | null>(null)
 
-  const board = isBoardPayload(query.data?.data) ? query.data.data : undefined
+  const board = isBoardPayload(query.data?.data) &&
+    (expectedEvidenceSchema === undefined || query.data.data.evidence_schema_version === expectedEvidenceSchema)
+    ? query.data.data : undefined
 
   if (board === undefined) {
     if (query.data === undefined && query.loading) {
@@ -160,6 +185,8 @@ export function StrategyBoardView({
   }
 
   const evidenceSchema = (board as unknown as Record<string, unknown>).evidence_schema_version
+  const publicMode = evidenceSchema === RESEARCH_SCHEMA_VERSION
+  const sortOptions = publicMode ? PUBLIC_SORT_OPTIONS : SORT_OPTIONS
 
   if (board.rows.length === 0 && evidenceSchema !== undefined &&
       !supportedEvidence(evidenceSchema)) {
@@ -227,10 +254,10 @@ export function StrategyBoardView({
     ? availableCohorts.find(([id]) => id === cohort)?.[1] : undefined
   const candidates = activeCohort === undefined ? [] : visible.filter(row =>
     comparisons.get(row.strategy_id)?.cohort_id === cohort)
-  const activeOrder = order !== null && candidates.filter(r => selectedMetrics(r)?.[order] != null).length >= 2
+  const activeOrder = order !== null && candidates.filter(r => metricValue(r, order) != null).length >= 2
     ? order : null
   const ordered = activeOrder === null ? [] : observedOrder(candidates.filter(
-    r => selectedMetrics(r)?.[activeOrder] != null), activeOrder)
+    r => metricValue(r, activeOrder) != null), activeOrder)
   const orderedIds = new Set(ordered.map(r => r.strategy_id))
   const remaining = visible.filter(r => !orderedIds.has(r.strategy_id))
   const familyLabel = activeFamily === UNKNOWN_FAMILY ? 'unknown family' : activeFamily ?? 'all families'
@@ -246,8 +273,10 @@ export function StrategyBoardView({
         latest {evidenceSchema === RESEARCH_SCHEMA_VERSION ? 'WF research' : 'gate'} run each
       </div>
       <p className="board-disclosure">
+        {publicMode && 'In-sample / selection / pre-holdout windows, not independent OOS. '}
         {compact ? 'Comparison is available on the leaderboard with recorded context. ' :
-          'Exploratory research only. Select a matching cohort to order observed OOS metrics; other rows stay unranked. '}
+          publicMode ? 'Select a matching cohort to order public window statistics; other rows stay unranked. ' :
+          'Exploratory research only. Select a matching cohort to order observed gate OOS metrics; other rows stay unranked. '}
         Never promotion or expected profit. Paper/live results remain in their own detail sections.
       </p>
 
@@ -325,7 +354,7 @@ export function StrategyBoardView({
               onChange={e => { setCohort(e.target.value); setOrder(null) }}>
               <option value="">select cohort · lifecycle order</option>
               {availableCohorts.map(([id, c]) => <option key={id} value={id}>
-                {id.slice(0, 8)} · {c.evidence.context?.timeframe} · {c.evidence.context?.oos.start}–{c.evidence.context?.oos.end}
+                {id.slice(0, 8)} · {publicMode ? 'public windows' : 'gate OOS'} · {c.evidence.context?.timeframe} · {c.evidence.context && contextInterval(c.evidence.context).start}–{c.evidence.context && contextInterval(c.evidence.context).end}
                 {' · '}{c.rows.length} strategies
               </option>)}
             </select>
@@ -336,10 +365,10 @@ export function StrategyBoardView({
           <div className="chip-row" role="group" aria-label="comparison order">
             <button type="button" className={activeOrder === null ? 'filter-chip active' : 'filter-chip'}
               aria-pressed={activeOrder === null} onClick={() => setOrder(null)}>lifecycle</button>
-            {SORT_OPTIONS.map(opt => <button key={opt.key} type="button"
+            {sortOptions.map(opt => <button key={opt.key} type="button"
               className={activeOrder === opt.key ? 'filter-chip active' : 'filter-chip'}
               aria-pressed={activeOrder === opt.key}
-              disabled={!activeCohort || candidates.filter(r => selectedMetrics(r)?.[opt.key] != null).length < 2}
+              disabled={!activeCohort || candidates.filter(r => metricValue(r, opt.key) != null).length < 2}
               title="Choose a cohort with at least two observed values; stale/error reads cannot be ordered"
               onClick={() => setOrder(opt.key)}>{opt.label}</button>)}
           </div>
@@ -347,7 +376,7 @@ export function StrategyBoardView({
       )}
 
       {activeOrder !== null && <p className="board-disclosure">
-        Observed {SORT_OPTIONS.find(o => o.key === activeOrder)?.label} · descending
+        Observed {sortOptions.find(o => o.key === activeOrder)?.label} · {activeOrder === 'std_window_sharpe' ? 'ascending' : 'descending'}
         {' · '}NONPIT/current-survivor proxy · {ordered.length} strategies · historical research only
       </p>}
       <div className="row-list">
@@ -383,11 +412,20 @@ function BoardRow({
   evidence: ParsedEvidence | null
 }) {
   const gate = selectedMetrics(row)
+  const publicRun = gate !== null && 'kind' in gate
+    ? evidence?.comparison.status === 'COMPARABLE' ? gate : {
+      ...gate, mean_window_sharpe: null, min_window_sharpe: null,
+      std_window_sharpe: null, pct_positive_windows: null,
+    } : null
+  const gateRun = gate !== null && 'passed' in gate ? gate : null
+  const linkLabel = Object.hasOwn(row, 'latest_research')
+    ? `View ${row.name} public WF window details (strategy ID ${row.strategy_id}, run ${publicRun?.run_id ?? 'UNKNOWN'})`
+    : `View ${row.name} strategy details (ID ${row.strategy_id})`
   if (compact) {
     return (
       <Link
         to={`/strategy/${row.strategy_id}${row.latest_research ? `?research_run=${row.latest_research.run_id}` : ''}`}
-        aria-label={`View ${row.name} strategy details (ID ${row.strategy_id})`}
+        aria-label={linkLabel}
         className="board-row"
         data-testid="board-row"
         data-strategy={row.name}
@@ -397,15 +435,15 @@ function BoardRow({
           <span className="row-link board-name" data-testid="board-row-name">{row.name}</span>
           <StageChip stage={row.stage} />
         </div>
-        {gate === null ? <div className="dim-note">no usable {Object.hasOwn(row, 'latest_research') ? 'WF research' : 'gate'} evidence</div> : (
+        {publicRun !== null ? <PublicWindowRail run={publicRun} /> : gateRun === null ? <div className="dim-note">no usable {Object.hasOwn(row, 'latest_research') ? 'WF research' : 'gate'} evidence</div> : (
           <div className="board-rail">
-            <BoardMetric label="oos" value={known(finite(gate.sharpe_oos), num)} />
-            <BoardMetric label="wf" value={known(finite(gate.mean_window_sharpe), num)} />
+            <BoardMetric label="oos" value={known(finite(gateRun.sharpe_oos), num)} />
+            <BoardMetric label="wf" value={known(finite(gateRun.mean_window_sharpe), num)} />
             <Sparkline
-              values={[finite(gate.min_window_sharpe), finite(gate.mean_window_sharpe), finite(gate.sharpe_oos)]}
-              label={`latest ${'passed' in gate ? 'gate' : 'WF research'}: worst walk-forward, mean walk-forward, OOS Sharpe`}
+              values={[finite(gateRun.min_window_sharpe), finite(gateRun.mean_window_sharpe), finite(gateRun.sharpe_oos)]}
+              label="latest gate: worst walk-forward, mean walk-forward, OOS Sharpe"
             />
-            {'passed' in gate ? <PassMark passed={gate.passed} /> : <span className="stage-chip">WF research</span>}
+            <PassMark passed={gateRun.passed} />
           </div>
         )}
         <BoardEvidence row={row} evidenceSchema={evidenceSchema} compact evidence={evidence} />
@@ -415,7 +453,7 @@ function BoardRow({
   return (
     <Link
       to={`/strategy/${row.strategy_id}${row.latest_research ? `?research_run=${row.latest_research.run_id}` : ''}`}
-      aria-label={`View ${row.name} strategy details (ID ${row.strategy_id})`}
+      aria-label={linkLabel}
       className="board-row"
       data-testid="board-row"
       data-strategy={row.name}
@@ -428,12 +466,13 @@ function BoardRow({
         </div>
         <div className="board-tags"><StageChip stage={row.stage} />{gate !== null && ('passed' in gate ? <PassMark passed={gate.passed} /> : <span className="stage-chip">WF research</span>)}</div>
       </div>
-      <div className="board-rail">
-        <BoardMetric label="sharpe" value={known(finite(gate?.sharpe_oos), num)} />
-        <BoardMetric label="return" value={known(finite(gate?.total_return_oos), pct)} />
-        <BoardMetric label="drawdown" value={known(finite(gate?.max_drawdown_oos), pct)} />
-        <BoardMetric label="sample" value={gate?.n_obs_oos == null ? 'UNKNOWN' : num(gate.n_obs_oos)} />
-      </div>
+      {Object.hasOwn(row, 'latest_research') ? publicRun !== null ? <PublicWindowRail run={publicRun} /> :
+        <div className="dim-note">no public WF windows recorded</div> : <div className="board-rail">
+        <BoardMetric label="sharpe" value={known(finite(gateRun?.sharpe_oos), num)} />
+        <BoardMetric label="return" value={known(finite(gateRun?.total_return_oos), pct)} />
+        <BoardMetric label="drawdown" value={known(finite(gateRun?.max_drawdown_oos), pct)} />
+        <BoardMetric label="sample" value={gateRun?.n_obs_oos == null ? 'UNKNOWN' : num(gateRun.n_obs_oos)} />
+      </div>}
       <div className="board-meta num">
         <span>observed {gate === null ? 'UNKNOWN' : utcDate(gate.created_at)}</span>
         <span>age UNKNOWN</span>
@@ -583,9 +622,58 @@ function parseSnapshot(value: unknown): StrategyBoardSnapshotEvidence | null {
 }
 
 
-type ParsedEvidence = StrategyBoardEvidence & { recorded: RecordedProvenance | null }
+type ParsedEvidence = StrategyBoardEvidence & {
+  recorded: RecordedProvenance | null
+  kind?: 'public_windows'
+  public_interval?: AtomicEvidence<PublicWindowInterval>
+}
 
-export function parseEvidence(value: unknown, gate: Pick<StrategyBoardGate, 'run_id' | 'n_obs_oos'>, recordedRaw: unknown): ParsedEvidence | null {
+
+function parsePublicInterval(value: unknown): PublicWindowInterval | null {
+  const v = record(value)
+  return v !== null && exactKeys(v, ['start', 'end', 'n_bars', 'n_windows']) &&
+    canonicalDate(v.start) && canonicalDate(v.end) && v.start <= v.end &&
+    positiveInt(v.n_bars) && positiveInt(v.n_windows)
+    ? v as unknown as PublicWindowInterval : null
+}
+
+function parsePublicEvidence(value: unknown, run: PublicWindowRun, recordedRaw: unknown): ParsedEvidence | null {
+  const raw = record(value)
+  if (raw === null || !exactKeys(raw, [
+    'kind', 'run_id', 'evaluation', 'public_interval', 'statistics', 'snapshot_provenance', 'comparison',
+  ]) || raw.kind !== 'public_windows' || raw.run_id !== run.run_id) return null
+  const comparison = parseComparison(raw.comparison)
+  if (comparison === null) return null
+  const evaluation = parseAtomic(raw.evaluation, parseEvaluation)
+  const interval = parseAtomic(raw.public_interval, parsePublicInterval)
+  const snapshot = parseAtomic(raw.snapshot_provenance, parseSnapshot)
+  const recorded = parseRecordedProvenance(recordedRaw)
+  const keys = ['mean_window_sharpe', 'std_window_sharpe', 'min_window_sharpe', 'pct_positive_windows'] as const
+  const statistics = parseAtomic(raw.statistics, v => {
+    const r = record(v)
+    return r !== null && exactKeys(r, keys) && keys.every(k => finite(r[k]) !== null) ? r : null
+  })
+  const c = comparison.context
+  if (comparison.status === 'COMPARABLE' && (c === null ||
+    c.protocol !== 'continuous_portfolio_public_windows' || evaluation.value === null ||
+    interval.value === null || snapshot.value === null || recorded === null ||
+    statistics.value === null || keys.some(k => statistics.value?.[k] !== run[k]) ||
+    recorded.bars_snapshot_id !== c.snapshot_id || recorded.bars_content_hash !== c.content_hash ||
+    contextKey(recorded.execution_costs) !== contextKey(c.execution_costs) ||
+    evaluation.value.metric_schema_version !== 1 ||
+    evaluation.value.period_start !== c.period_start || evaluation.value.period_end !== c.period_end ||
+    evaluation.value.timeframe !== c.timeframe ||
+    contextKey(interval.value) !== contextKey(c.public_interval) ||
+    parseSnapshot(c.source) === null || contextKey(c.source) !== contextKey(snapshot.value) ||
+    c.public_interval.start < snapshot.value.coverage_start || c.public_interval.end > snapshot.value.coverage_end ||
+    snapshot.value.data_tier !== 'pilot_real_proxy')) return null
+  return { run_id: run.run_id, kind: 'public_windows', evaluation, public_interval: interval,
+    oos_interval: { status: 'UNAVAILABLE', reason: 'no_holdout_pointer', value: null },
+    snapshot_provenance: snapshot, comparison, recorded }
+}
+
+export function parseEvidence(value: unknown, gate: Pick<StrategyBoardGate, 'run_id' | 'n_obs_oos'> | PublicWindowRun, recordedRaw: unknown): ParsedEvidence | null {
+  if ('kind' in gate) return parsePublicEvidence(value, gate, recordedRaw)
   const candidate = record(value)
   if (candidate === null || !exactKeys(candidate, [
     'run_id', 'evaluation', 'oos_interval', 'snapshot_provenance', 'comparison',
@@ -610,7 +698,7 @@ export function parseEvidence(value: unknown, gate: Pick<StrategyBoardGate, 'run
     : parseAtomic(candidate.snapshot_provenance, parseSnapshot)
   const recorded = parseRecordedProvenance(recordedRaw)
   const c = comparison.context
-  if (comparison.status === 'COMPARABLE' && (c === null || evaluation.value === null ||
+  if (comparison.status === 'COMPARABLE' && (c === null || c.protocol !== 'continuous_portfolio_tail_holdout' || evaluation.value === null ||
       oos.value === null || snapshot.value === null || recorded === null ||
       recorded.bars_snapshot_id !== c.snapshot_id || recorded.bars_content_hash !== c.content_hash ||
       contextKey(recorded.execution_costs) !== contextKey(c.execution_costs) ||
@@ -708,7 +796,13 @@ export function BoardEvidence({
             </span>
           </div>
         )}
-        {evidence.oos_interval.value === null ? (
+        {evidence.kind === 'public_windows' ? (
+          evidence.public_interval?.value ? <div className="board-evidence-field">
+            <span className="board-evidence-label">public in-sample / selection / pre-holdout windows</span>
+            <span className="num">{evidence.public_interval.value.start}–{evidence.public_interval.value.end}
+              {' · '}{evidence.public_interval.value.n_bars} bars · {evidence.public_interval.value.n_windows} windows</span>
+          </div> : <div className="board-evidence-field">public window interval UNKNOWN</div>
+        ) : evidence.oos_interval.value === null ? (
           <AtomicUnavailable label={row.latest_research ? 'recorded WF tail OOS' : 'lineage-valid OOS'} evidence={evidence.oos_interval} />
         ) : (
           <div className="board-evidence-field">
@@ -755,10 +849,20 @@ export function BoardEvidence({
       <div className="board-evidence-comparison">
         {evidence.comparison.status === 'COMPARABLE' && evidence.comparison.context !== null ? <>
           Research cohort {evidence.comparison.cohort_id?.slice(0, 8)} · NONPIT/current-survivor proxy
-          <div>Continuous portfolio tail holdout · {evidence.comparison.context.windows.length} windows
+          <div>{evidence.comparison.context.protocol === 'continuous_portfolio_public_windows'
+            ? 'In-sample / selection / pre-holdout windows; not independent OOS'
+            : 'Continuous portfolio tail holdout'} · {evidence.comparison.context.windows.length} windows
             {' · '}embargo {evidence.comparison.context.embargo} bars
             {' · '}holdout fraction {evidence.comparison.context.holdout_frac}</div>
-          <div>Net daily returns · Sharpe √252, rf 0, sample std · compounded return · drawdown ≤ 0</div>
+          <div>{evidence.comparison.context.protocol === 'continuous_portfolio_public_windows'
+            ? 'Mean / minimum window Sharpe · population std across window Sharpes · fraction of windows with positive return'
+            : 'Net daily returns · Sharpe √252, rf 0, sample std · compounded return · drawdown ≤ 0'}</div>
+          {evidence.comparison.context.protocol === 'continuous_portfolio_public_windows' &&
+            <div>Each window Sharpe: net daily returns · √252 · rf 0 · sample std. Zero-volatility sentinel is 0.</div>}
+          {evidence.comparison.context.protocol === 'continuous_portfolio_public_windows' &&
+            <ul>{evidence.comparison.context.windows.map((w, i) => <li key={w.start}>
+              window {i + 1}: {w.start}–{w.end} · {w.n_bars} bars
+            </li>)}</ul>}
           <div>Fees {evidence.comparison.context.execution_costs.fees} of trade notional/side
             {' · '}slippage {evidence.comparison.context.execution_costs.slippage} adverse price fraction/side
             {' · '}vectorbt.from_orders</div>

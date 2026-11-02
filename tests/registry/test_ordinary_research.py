@@ -52,9 +52,10 @@ def test_ordinary_registered_cli_persists_identity_and_projects_without_gate(tmp
         board = strategy_board_payload(repo, snapshot_evidence=lambda _: {}, research=True)
         row = board["rows"][0]
         assert row["latest_gate"] is None
-        assert row["latest_research"]["kind"] == "walk_forward"
+        assert row["latest_research"]["kind"] == "public_windows"
         assert row["latest_research"]["run_id"] == run["id"]
-        assert row["latest_research"]["sharpe_oos"] == run["sharpe_oos"]
+        assert "sharpe_oos" not in row["latest_research"]
+        assert row["latest_research"]["mean_window_sharpe"] == run["mean_window_sharpe"]
         assert row["evidence"]["comparison"]["status"] == "COMPARABLE"
         assert row["evidence"]["run_id"] == run["id"]
         assert conn.execute("SELECT count(*) FROM holdout_evaluations").fetchone()[0] == 0
@@ -72,7 +73,7 @@ def test_latest_failure_and_unbound_history_never_fall_back_or_rebind(tmp_path, 
                                  config={"error": "evaluation failed"})
         row = strategy_board_payload(repo, research=True)["rows"][0]
         assert row["latest_research"]["run_id"] == failed
-        assert row["latest_research"]["sharpe_oos"] is None
+        assert row["latest_research"]["mean_window_sharpe"] is None
         assert row["evidence"]["comparison"]["status"] == "UNKNOWN"
         from algua.registry.research_runs import research_run_payload
 
@@ -101,7 +102,7 @@ def test_cli_research_exact_run_and_summary_pointer(tmp_path, monkeypatch):
     assert set(detail) == {
         "ok", "strategy_id", "latest_research", "evidence", "recorded_provenance"}
     assert detail["latest_research"]["run_id"] == pointer["run_id"]
-    assert detail["latest_research"]["kind"] == "walk_forward"
+    assert detail["latest_research"]["kind"] == "public_windows"
     assert "passed" not in detail["latest_research"]
 
 
@@ -122,13 +123,13 @@ def test_independent_record_corruption_is_unranked(tmp_path, monkeypatch, field)
         elif field == "bars":
             config["run_provenance"]["bars"]["content_hash"] = "a" * 64
         elif field == "context":
-            config["comparison_context"]["execution"]["fill_basis"] = "adjusted_close"
+            config["public_window_record"]["context"]["execution"]["fill_basis"] = "adjusted_close"
         elif field == "oos":
-            config["comparison_context"]["oos"]["n_bars"] += 1
+            config["public_window_record"]["context"]["public_interval"]["n_bars"] += 1
         elif field == "binding":
-            config["research_record"]["inputs_sha256"] = "b" * 64
+            config["public_window_record"]["provenance"]["config_hash"] = "other"
         elif field == "boolean_scalar":
-            config["research_record"]["metrics"]["pct_positive_windows"] = True
+            config["public_window_record"]["statistics"]["pct_positive_windows"] = True
         else:
             column, value = {
                 "scalar": ("sharpe_oos", 99), "snapshot": ("snapshot_id", "other"),
@@ -176,7 +177,7 @@ def test_cli_exact_metadata_shape_and_no_historical_name_rebinding(
             "execution_costs", "fundamentals_snapshot", "holdout_frac", "news_snapshot", "ok",
             "period", "recorded_run", "seed", "snapshot_id", "stability", "strategy",
             "timeframe", "universe_name", "universe_snapshots", "windows"}
-    keys |= {"summary"} if summary else {"embargo", "execution_semantics", "window_metrics"}
+    keys |= {"summary"} if summary else {"embargo", "window_metrics"}
     assert set(output) == keys
     pointer = output["recorded_run"]
     assert set(pointer) == {"run_id", "strategy_id", "kind"}
@@ -187,13 +188,8 @@ def test_cli_exact_metadata_shape_and_no_historical_name_rebinding(
         assert run["strategy_id"] == pointer["strategy_id"]
         assert (run["strategy_id"] is not None) is registered
         config = json.loads(run["config_json"])
-        assert set(config) == {
-            "run_provenance", "comparison_context", "research_inputs", "research_record",
-        }
-        assert config["research_record"]["provenance"] == {
-            k: run[k] for k in config["research_record"]["provenance"]}
-        assert config["research_record"]["metrics"]["sharpe_oos"] == run["sharpe_oos"]
-        assert config["research_record"]["strategy_id"] == pointer["strategy_id"]
+        # Demo-provider provenance is unknown; never synthesize a captured public record.
+        assert set(config) == {"run_provenance", "params"}
         if not registered:
             repo.add(NAME)
             assert strategy_board_payload(repo, research=True)["rows"][0]["latest_research"] is None

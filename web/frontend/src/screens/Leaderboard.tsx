@@ -7,7 +7,7 @@ export default function Leaderboard() {
       <header className="leaderboard-intro">
         <h1>Strategy leaderboard</h1>
         <p>
-          Latest identity-bound research evidence. Compare observed OOS metrics within a recorded cohort;
+          Latest identity-bound public window evidence. Compare in-sample research within a recorded cohort;
           unknown and incompatible evidence stays unranked.
         </p>
       </header>

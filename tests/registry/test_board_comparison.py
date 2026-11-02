@@ -94,7 +94,19 @@ def record_pair(repo, name, bars):
                            derived_from=[sibling],
                            provenance=prov | {"code_hash": "artifact-closure"},
                            metrics=metrics, series_holdout_id=holdout)
+    # Simulate retained pre-repair history; ordinary writers no longer admit these fields.
+    conn.execute(
+        "UPDATE runs SET sharpe_oos=0,total_return_oos=-0.1,max_drawdown_oos=-0.2,"
+        "n_obs_oos=50,ann_vol_oos=0.2,config_json=? WHERE id=?",
+        (json.dumps({"run_provenance": {"bars": bars, "execution_costs": COSTS},
+                     "comparison_context": context()}), sibling))
     return sibling, gate
+
+
+def raw_config(repo, run_id):
+    """Historical synthetic record, not the deliberately redacted public projection."""
+    return json.loads(repo.connection.execute(
+        "SELECT config_json FROM runs WHERE id=?", (run_id,)).fetchone()[0])
 
 
 def comparison(repo):
@@ -102,17 +114,16 @@ def comparison(repo):
         "rows"][0]["evidence"]["comparison"]
 
 
-def test_independently_validated_record_can_join_observed_cohort(tmp_path, monkeypatch):
+def test_legacy_private_backed_wf_cannot_join_even_with_gate_lineage(tmp_path, monkeypatch):
     cm, repo, _, _ = pair(tmp_path, monkeypatch)
     try:
         before = repo.connection.total_changes
         result = comparison(repo)
-        assert result["status"] == "COMPARABLE", result
-        assert result["observed_metric_sort_enabled"] is True
-        assert result["context"]["oos"] == context()["oos"]
-        assert result["context"]["execution_costs"] == COSTS
-        assert result["context"]["data_tier"] == "pilot_real_proxy"
-        assert result["cohort_id"]
+        assert result["status"] == "UNKNOWN", result
+        assert result["observed_metric_sort_enabled"] is False
+        assert result["context"] is None
+        assert result["cohort_id"] is None
+        assert strategy_board_payload(repo)["rows"][0]["latest_gate"]["sharpe_oos"] == 0.0
         assert repo.connection.total_changes == before
     finally:
         cm.__exit__(None, None, None)
@@ -128,8 +139,8 @@ def test_independently_validated_record_can_join_observed_cohort(tmp_path, monke
 def test_corruption_cannot_join_a_cohort(tmp_path, monkeypatch, mutation):
     cm, repo, sibling, gate = pair(tmp_path, monkeypatch)
     try:
-        assert comparison(repo)["status"] == "COMPARABLE"
-        config = json.loads(repo.get_run(sibling)["config_json"])
+        assert comparison(repo)["status"] == "UNKNOWN"
+        config = raw_config(repo, sibling)
         ctx = config["comparison_context"]
         bars = config["run_provenance"]["bars"]
         if mutation == "missing_execution":
@@ -199,7 +210,7 @@ def test_absent_or_extreme_recorded_inputs_refuse_without_crashing(
 ):
     cm, repo, sibling, _ = pair(tmp_path, monkeypatch)
     try:
-        config = json.loads(repo.get_run(sibling)["config_json"])
+        config = raw_config(repo, sibling)
         if path[0] == "execution_costs":
             config["run_provenance"][path[0]][path[1]] = value
         else:
@@ -214,7 +225,7 @@ def test_absent_or_extreme_recorded_inputs_refuse_without_crashing(
 def test_sentinel_zero_with_missing_or_zero_volatility_is_never_rankable(tmp_path, monkeypatch):
     cm, repo, _, _ = pair(tmp_path, monkeypatch)
     try:
-        assert comparison(repo)["status"] == "COMPARABLE"
+        assert comparison(repo)["status"] == "UNKNOWN"
         for volatility in (None, 0.0, -0.2):
             repo.connection.execute("UPDATE runs SET ann_vol_oos=?", (volatility,))
             assert comparison(repo)["status"] == "UNKNOWN"
@@ -230,7 +241,7 @@ def test_validly_bound_source_still_needs_independent_semantic_validation(
 
     cm, repo, sibling, _ = pair(tmp_path, monkeypatch)
     try:
-        config = json.loads(repo.get_run(sibling)["config_json"])
+        config = raw_config(repo, sibling)
         bars = config["run_provenance"]["bars"]
         if change == "timeframe":
             bars["timeframe"] = "1h"
@@ -248,17 +259,17 @@ def test_validly_bound_source_still_needs_independent_semantic_validation(
         board = strategy_board_payload(repo, snapshot_evidence=lambda _: {})["rows"][0]
         assert board["evidence"]["snapshot_provenance"]["status"] == "VALID"
         assert board["evidence"]["comparison"]["status"] == "UNKNOWN"
-        assert board["evidence"]["comparison"]["reasons"] == ["invalid_source_metadata"]
+        assert board["evidence"]["comparison"]["observed_metric_sort_enabled"] is False
     finally:
         cm.__exit__(None, None, None)
 
 
 @pytest.mark.parametrize("field", ["costs", "lag", "fill", "embargo", "dependencies"])
-def test_supported_but_heterogeneous_contexts_never_share_a_cohort(tmp_path, monkeypatch, field):
+def test_legacy_heterogeneous_contexts_remain_unranked(tmp_path, monkeypatch, field):
     cm, repo, sibling, _ = pair(tmp_path, monkeypatch)
     try:
         original = comparison(repo)
-        config = json.loads(repo.get_run(sibling)["config_json"])
+        config = raw_config(repo, sibling)
         if field == "costs":
             config["run_provenance"]["execution_costs"]["fees"] = 0
         elif field == "lag":
@@ -274,8 +285,8 @@ def test_supported_but_heterogeneous_contexts_never_share_a_cohort(tmp_path, mon
         repo.connection.execute("UPDATE runs SET config_json=? WHERE id=?",
                                 (json.dumps(config), sibling))
         result = comparison(repo)
-        assert result["status"] == "COMPARABLE", result
-        assert result["cohort_id"] != original["cohort_id"]
+        assert result["status"] == "UNKNOWN", result
+        assert result["cohort_id"] == original["cohort_id"] is None
     finally:
         cm.__exit__(None, None, None)
 
@@ -292,8 +303,8 @@ def test_provider_declarations_must_agree_even_with_valid_rehashed_identity(
 
     cm, repo, sibling, _ = pair(tmp_path, monkeypatch)
     try:
-        assert comparison(repo)["status"] == "COMPARABLE"
-        config = json.loads(repo.get_run(sibling)["config_json"])
+        assert comparison(repo)["status"] == "UNKNOWN"
+        config = raw_config(repo, sibling)
         bars = config["run_provenance"]["bars"]
         if value is None:
             bars["source_metadata"].pop(field, None)
@@ -307,14 +318,17 @@ def test_provider_declarations_must_agree_even_with_valid_rehashed_identity(
         repo.connection.execute("UPDATE runs SET config_json=? WHERE id=?",
                                 (json.dumps(config), sibling))
         row = strategy_board_payload(repo, snapshot_evidence=lambda _: {})["rows"][0]
-        assert row["evidence"]["snapshot_provenance"]["status"] == "VALID"
+        # A lone provider field on the generic fixture producer is an unsupported shape,
+        # including a matching field. Rehashing cannot enlarge closed input admission.
+        expected = "VALID" if value is None else "INVALID"
+        assert row["evidence"]["snapshot_provenance"]["status"] == expected
         result = row["evidence"]["comparison"]
         if value in ("1h", "split_only"):
             assert result["status"] == "UNKNOWN"
             assert result["observed_metric_sort_enabled"] is False
-            assert result["reasons"] == ["invalid_source_metadata"]
+            assert result["observed_metric_sort_enabled"] is False
         else:
-            assert result["status"] == "COMPARABLE", (bars["adjustment"], result)
+            assert result["status"] == "UNKNOWN", (bars["adjustment"], result)
     finally:
         cm.__exit__(None, None, None)
 
@@ -326,12 +340,12 @@ def test_overflowing_json_number_is_isolated_from_healthy_row_and_default_board(
 ):
     cm, repo, sibling, _ = pair(tmp_path, monkeypatch)
     try:
-        config = json.loads(repo.get_run(sibling)["config_json"])
+        config = raw_config(repo, sibling)
         record_pair(repo, "healthy_second", config["run_provenance"]["bars"])
         default = strategy_board_payload(repo)
         healthy_before = next(row for row in strategy_board_payload(
             repo, snapshot_evidence=lambda _: {})["rows"] if row["name"] == "healthy_second")
-        assert healthy_before["evidence"]["comparison"]["status"] == "COMPARABLE"
+        assert healthy_before["evidence"]["comparison"]["status"] == "UNKNOWN"
         config["run_provenance"]["bars"][field] = "exponent_overflow_control"
         raw = json.dumps(config).replace('"exponent_overflow_control"', literal)
         repo.connection.execute("UPDATE runs SET config_json=? WHERE id=?", (raw, sibling))

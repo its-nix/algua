@@ -1,9 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { clearFetchCache } from '../api'
+import { clearFetchCache, useFetch } from '../api'
 import type { ApiEnvelope, StrategyBoardGate, StrategyBoardPayload, StrategyBoardRow } from '../types'
-import StrategyBoard, { SORT_OPTIONS } from './StrategyBoard'
+import { SORT_OPTIONS, StrategyBoardView } from './StrategyBoard'
 
 function gate(overrides: Partial<StrategyBoardGate> & { run_id: number }): StrategyBoardGate {
   return {
@@ -116,10 +116,17 @@ function mockBoard(body: unknown, status = 200) {
   return fetchMock
 }
 
+// These gate/legacy projection controls exercise the view with its own requested schema.
+// The live selector's strict mode/request binding is covered separately in BoardMode.test.tsx.
+function GateBoardFixture() {
+  const query = useFetch<ApiEnvelope<StrategyBoardPayload>>('/api/strategy-board?include_evidence=true')
+  return <StrategyBoardView query={query} />
+}
+
 function renderBoard() {
   return render(
     <MemoryRouter>
-      <StrategyBoard />
+      <GateBoardFixture />
     </MemoryRouter>,
   )
 }
@@ -265,7 +272,7 @@ it('opts into and renders metadata-bound evaluation, OOS, snapshot coverage, and
   const measuredRow = (await screen.findAllByTestId('board-row'))[1]
   const measured = within(measuredRow)
   expect(fetchMock).toHaveBeenCalledWith(
-    '/api/strategy-board?include_evidence=true&research=true',
+    '/api/strategy-board?include_evidence=true',
     { headers: { accept: 'application/json' } },
   )
   expect(measured.getByText(/metadata-bound only.*not payload or PIT proof/i)).toBeTruthy()

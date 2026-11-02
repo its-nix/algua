@@ -10,6 +10,7 @@ from algua.provenance.research_disclosure import (
     public_numbers,
     public_run_provenance,
 )
+from algua.registry.store.public_windows import public_record
 
 WINDOW_METRICS = frozenset({
     "mean_window_sharpe", "std_window_sharpe", "min_window_sharpe", "pct_positive_windows",
@@ -44,6 +45,8 @@ def public_config(config: Any) -> dict[str, Any]:
         out["rank_by"] = rank if rank in ("mean_sharpe", "min_sharpe") else None
     if "run_provenance" in config:
         out["run_provenance"] = public_run_provenance(config["run_provenance"])
+    if "public_window_record" in config:
+        out["public_window_record"] = public_record(config["public_window_record"])
     return out
 
 

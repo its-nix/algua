@@ -63,8 +63,9 @@ import StrategyDetail from '../screens/StrategyDetail'
  * `marks` is the OTHER half of spec §5.2 (fix wave 2026-08-27, FIX 7): a per-screen MINIMUM count
  * of `<svg>`/`<canvas>` elements (the logo excluded — see `marks()` below — so it can never
  * satisfy this floor by itself). Without it, a screen with zero visualizations passes the word
- * ceiling forever, which was true of Now/Money/Fleet before this fix (Research already carries
- * 12 via ScatterISOOS + the strategy board's sparklines). Each value below is pinned at TODAY's measured
+ * ceiling forever, which was true of Now/Money/Fleet before this fix. Research's public-window
+ * board uses scalar rails, not gate sparklines; its scatter and all 14 registered rows are checked.
+ * Each value below is pinned at TODAY's measured
  * count (0 where a screen genuinely has no chart yet) purely to stop a regression; slices 2 and 3
  * are expected to RAISE these numbers as marks land, the same deliberate, reviewed bump the word
  * ceiling already requires.
@@ -79,8 +80,9 @@ export const BUDGETS: Record<string, { min: number; max: number; marks: number }
   Money: { min: 43, max: 94, marks: 0 },
   // The decision layer and collapsed board/venue controls reduce the persistent view from 292
   // to 242 words against the 14-strategy fixture. The ceiling retains the documented 10% margin
-  // and the floor remains half the measured count. Marks stay 12: scatter + board sparklines.
-  Research: { min: 121, max: 267, marks: 12 },
+  // and the floor remains half the measured count. Public mode keeps the scatter; gate samples
+  // cannot supply public sparklines. waitUntilPopulated still requires all 14 registered rows.
+  Research: { min: 121, max: 267, marks: 1 },
   Fleet: { min: 38, max: 84, marks: 0 },
   // The collapsed decision report is intentionally terse; supporting/raw evidence is mounted
   // only after explicit disclosure. Measured at 57 words, with a 10% ceiling. Expanded evidence
@@ -191,6 +193,12 @@ describe.each([
     await waitUntilPopulated(name, container as HTMLElement)
     const count = marks(container as HTMLElement)
     expect(count).toBeGreaterThanOrEqual(BUDGETS[name].marks)
+    if (name === 'Research') {
+      const rows = container.querySelectorAll('[data-testid="board-row"]')
+      expect(rows).toHaveLength(14)
+      expect([...rows].every(row => row.getAttribute('aria-label')?.includes('public WF'))).toBe(true)
+      expect(container.textContent).toMatch(/in-sample.*selection.*pre-holdout.*not independent OOS/i)
+    }
   })
 })
 

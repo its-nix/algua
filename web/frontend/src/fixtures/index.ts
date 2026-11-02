@@ -38,6 +38,15 @@ import type {
 
 export { FIXTURE_SENTINEL }
 
+// Demo-only schema parity: existing synthetic gates supply no ordinary public-window records.
+// Preserve those gate rows separately, rather than inventing public statistics or lineage.
+const PUBLIC_BOARD = {
+  ...BOARD,
+  data: { ...BOARD.data, evidence_schema_version: 'strategy-board-research/v2' as const,
+    rows: BOARD.data.rows.map(row => ({ ...row, latest_research: null,
+      evidence: null, recorded_provenance: null })) },
+}
+
 /** Lifecycle order (algua/contracts/lifecycle.py), used to reconstruct a plausible transition
  * history and gate-history depth for any seed on demand. */
 const LIFECYCLE_ORDER = ['idea', 'backtested', 'candidate', 'paper', 'forward_tested', 'live']
@@ -281,8 +290,11 @@ export function resolveFixture(url: string): unknown | undefined {
     case '/api/ideas':       return IDEAS
     case '/api/strategies':  return STRATEGIES
     case '/api/runs':        return RUNS
-    case '/api/strategy-board': return new URLSearchParams(url.split('?')[1] ?? '')
-      .get('include_evidence') === 'true' ? BOARD : LEGACY_BOARD
+    case '/api/strategy-board': {
+      const params = new URLSearchParams(url.split('?')[1] ?? '')
+      return params.get('research') === 'true' ? PUBLIC_BOARD :
+        params.get('include_evidence') === 'true' ? BOARD : LEGACY_BOARD
+    }
     case '/api/activity':    return ACTIVITY
     // The run-ledger series endpoint deliberately never returns a per-bar OOS vector
     // (holdout_returns.returns_blob is SENSITIVE) — an empty series map is the honest fixture.

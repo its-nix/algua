@@ -71,6 +71,18 @@ for (const { route, width } of cases) {
     continue
   }
 
+  if (route === '/') {
+    // Public is the default mode. Its demo has no ordinary WF records; do not manufacture
+    // gate-backed public windows to satisfy the separate gate-ledger checks below.
+    await page.getByText(/in-sample.*selection.*pre-holdout windows, not independent OOS/i).waitFor()
+    const publicWidth = await page.evaluate(() => document.documentElement.scrollWidth)
+    if (publicWidth > width) failures.push(`${route} public WF: scrollWidth=${publicWidth} vw=${width}`)
+    console.log(`ok   / public WF vw=${width} scrollWidth=${publicWidth}`)
+    await page.getByRole('button', { name: 'Gate OOS', exact: true }).click()
+    await page.getByText(/latest gate run each/).waitFor()
+    await page.waitForLoadState('networkidle')
+  }
+
   const m = await page.evaluate((currentRoute) => {
     const vw = window.innerWidth
     // An element clipped by an ancestor's own horizontal scrollport (overflow-x: auto/scroll/

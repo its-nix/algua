@@ -146,3 +146,54 @@ Independent whole-diff review and the coordinator's one staged, frozen full-root
 required. PR736 stays draft/held; its public-window UI adaptation is separate. No real reserved-tail
 experiment, production-registry inspection, deployment or historical data operation is acceptance
 evidence for this patch.
+
+## Identity-bound public-window exploration (Task8)
+
+The opt-in research board uses strategy-board-research/v2. Its latest_research member is
+discriminated as kind=public_windows and has only the four existing public stability columns,
+run ID and creation time. This mode has no OOS Sharpe/return/drawdown axes. The default
+strategy-board/v1 payload, lifecycle order, authentic stages and latest gate selection are unchanged.
+
+The existing recorder stores public-wf-windows/v1 in config_json.public_window_record. It captures
+actual public window start/end/count/Sharpe/return records, their existing four statistics,
+effective execution and the original admitted input provenance. Its public-window-comparison/v1
+context names continuous_portfolio_public_windows. The public interval is the first/last included
+public window date; its observation count is the sum of the actual window counts. Neither comes
+from the private tail or snapshot coverage.
+
+The detached record is validated again on projection/read. Independent window metadata,
+statistics, row scalars, strategy/config/dependency/source identities, seed, requested interval,
+declared window count, holdout-fraction input, embargo, execution, user parameters and original
+bars/cost inputs must agree. The statistics are checked against public windows using their existing
+definitions. Validation detects inconsistent recorded declarations; it is not cryptographic
+authorization, input-payload verification or investment evidence.
+
+Closed input admission remains all-or-nothing. Admitted original SnapshotRecord values and research
+envelopes keep their identity. Unsupported metadata is never stripped and rehashed into a new
+original. The comparison class additionally requires a safe observation count, unique symbols
+and canonical SHA256 content digest. A flag, supplied hash, recomputed old binding, later gate or
+populated legacy sample column cannot make a historical row a new public record. Malformed,
+missing and incompatible records remain UNKNOWN/unranked without changing stored history.
+
+The first supported class is recorded daily StoreBackedProvider pilot_real_proxy input, the
+bounded effective execution protocol and complete cost units, without unsupported modal,
+universe/model or terminal-assumption inputs. Other inputs remain UNKNOWN for comparison.
+Synthetic engineering fixtures may exercise these declarations; they remain generated data, not
+real-market acceptance. All seven NONPIT/current-survivor limits stay visible. Nothing here claims
+untouched periods, alpha or qualification.
+
+A cohort binds actual window intervals/counts, method, effective execution/costs, complete source
+identity/provenance, dependencies and seed. It excludes outcomes and per-strategy code/config
+identity, allowing different strategies on matching inputs. Each strategy's code/config identity
+still must agree independently with its own record. Cohort hashes are display keys only.
+
+The UI requires explicit selection of a cohort with two valid observed values before ordering.
+Mean/minimum Sharpe and positive-window fraction descend; population Sharpe dispersion ascends.
+Stable IDs break ties. Other cohorts, missing values and latest failures remain visible and
+unranked. Stale/error reads disable ordering. Public WF links pin both strategy ID and run ID;
+a newer unknown row does not cause a fallback to the best historical run.
+
+Public WF windows and Gate OOS are separate modes. Existing gate scalars stay gate evidence;
+public mean-window Sharpe never becomes gate OOS Sharpe. Historical private-tail comparison contexts
+remain unavailable under the baseline closed projection even when gate pointers exist. No gate,
+burn, promotion, allocation or paper/live rule consumes the public record or display order.

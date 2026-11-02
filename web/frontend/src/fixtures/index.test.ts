@@ -25,6 +25,7 @@ const REAL_ENDPOINT_URLS = [
   '/api/runs',
   '/api/strategy-board',
   '/api/strategy-board?include_evidence=true',
+  '/api/strategy-board?include_evidence=true&research=true',
   '/api/runs?kind=gate&sort=sharpe_oos&limit=20',
   '/api/runs?kind=backtest&strategy=liquid10_adj_momentum&limit=1',
   '/api/runs?kind=sweep_trial&limit=200',
@@ -36,6 +37,18 @@ const REAL_ENDPOINT_URLS = [
 ]
 
 describe('resolveFixture', () => {
+  it.each(['/api/strategy-board?research=true', '/api/strategy-board?include_evidence=true&research=true'])(
+    'keeps the public demo request schema honest without converting synthetic gates into public runs (%s)', url => {
+      const publicBoard = resolveFixture(url) as ApiEnvelope<StrategyBoardPayload>
+      expect(publicBoard.data.evidence_schema_version).toBe('strategy-board-research/v2')
+      expect(publicBoard.data.rows.length).toBeGreaterThan(0)
+      expect(publicBoard.data.rows.every(row => Object.hasOwn(row, 'latest_research') &&
+        row.latest_research === null && row.evidence === null)).toBe(true)
+      const gateBoard = resolveFixture('/api/strategy-board?include_evidence=true') as ApiEnvelope<StrategyBoardPayload>
+      expect(publicBoard.data.rows.map(row => row.strategy_id)).toEqual(gateBoard.data.rows.map(row => row.strategy_id))
+      expect(gateBoard.data.evidence_schema_version).toBe('strategy-board-evidence/v2')
+    },
+  )
   it('returns undefined for an unknown URL rather than a fabricated payload', () => {
     expect(resolveFixture('/api/nope')).toBeUndefined()
   })

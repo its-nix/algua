@@ -186,7 +186,7 @@ it('puts the short cohort identity first in the native option label', () => {
   mount([row(1, -2), row(2, 0)])
   fireEvent.click(screen.getByRole('button', { name: /board controls/i }))
   const select = screen.getByRole('combobox', { name: 'comparison cohort' }) as HTMLSelectElement
-  expect(select.options[1].textContent?.trim()).toMatch(/^aaaaaaaa · 1d/)
+  expect(select.options[1].textContent?.trim()).toMatch(/^aaaaaaaa · gate OOS · 1d/)
 })
 
 it('directs compact-board comparison to the leaderboard without promising a hidden selector', () => {
@@ -203,7 +203,7 @@ it('directs compact-board comparison to the leaderboard without promising a hidd
   }
 })
 
-it('sorts ordinary WF research without a gate and preserves the exact run pointer', () => {
+it('rejects the superseded ordinary private-tail wire protocol', () => {
   const rows = [row(1, -2), row(2, -1)].map(r => {
     const { passed: _passed, ...metrics } = r.latest_gate
     return { ...r, latest_gate: null, latest_research: { kind: 'walk_forward', ...metrics } }
@@ -212,31 +212,25 @@ it('sorts ordinary WF research without a gate and preserves the exact run pointe
     count: rows.length, rows } as unknown as StrategyBoardPayload
   render(<MemoryRouter><StrategyBoardView query={{ data: { ok: true, fetched_at: '2026-01-01T00:00:00Z',
     stale: false, data }, error: null, loading: false, refetch: () => {} }} /></MemoryRouter>)
-  fireEvent.click(screen.getByRole('button', { name: /board controls/i }))
-  fireEvent.change(screen.getByRole('combobox', { name: 'comparison cohort' }),
-    { target: { value: 'a'.repeat(64) } })
-  const sort = screen.getByRole('button', { name: 'oos sharpe' })
-  expect(sort.hasAttribute('disabled')).toBe(false)
-  fireEvent.click(sort)
-  expect(names()).toEqual(['strategy_2', 'strategy_1'])
-  expect(screen.getAllByTestId('board-row')[0].getAttribute('href')).toBe('/strategy/2?research_run=102')
-  expect(screen.getAllByText(/WF research/).length).toBeGreaterThan(0)
-  expect(screen.queryByText('FAIL')).toBeNull()
+  // The historical private-tail protocol cannot be admitted as public windows.
+  expect(screen.getByText('unsupported_schema')).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'oos sharpe' })).toBeNull()
+  expect(screen.queryAllByTestId('board-row')).toHaveLength(0)
 })
 
-it('labels ordinary recorded WF tails separately from gate lineage', () => {
+it('refuses historical tail scalars instead of relabeling them as public windows', () => {
   const r = row(1, -2)
   const { passed: _passed, ...metrics } = r.latest_gate
   const data = { schema_version: 'strategy-board/v1', evidence_schema_version: 'strategy-board-research/v1',
     count: 1, rows: [{ ...r, latest_gate: null, latest_research: { kind: 'walk_forward', ...metrics } }] } as unknown as StrategyBoardPayload
   render(<MemoryRouter><StrategyBoardView query={{ data: { ok: true, fetched_at: '2026-01-01T00:00:00Z',
     stale: false, data }, error: null, loading: false, refetch: () => {} }} /></MemoryRouter>)
-  expect(screen.getByText(/latest WF research run each/)).toBeTruthy()
-  expect(screen.getByText('recorded WF tail OOS')).toBeTruthy()
+  expect(screen.getByText('unsupported_schema')).toBeTruthy()
+  expect(screen.queryByText('recorded WF tail OOS')).toBeNull()
   expect(screen.queryByText('lineage-valid OOS')).toBeNull()
 })
 
-it('names compact ordinary WF sparklines as research without claiming gate evidence', () => {
+it('refuses compact historical tail sparklines without relabeling', () => {
   const rows = [row(1, -2), row(2, -1)].map(r => {
     const { passed: _passed, ...metrics } = r.latest_gate
     return { ...r, latest_gate: null, latest_research: { kind: 'walk_forward', ...metrics } }
@@ -246,7 +240,6 @@ it('names compact ordinary WF sparklines as research without claiming gate evide
   render(<MemoryRouter><StrategyBoardView compact query={{ data: { ok: true, fetched_at: '2026-01-01T00:00:00Z',
     stale: false, data }, error: null, loading: false, refetch: () => {} }} /></MemoryRouter>)
   expect(screen.queryAllByRole('img', { name: /latest gate/i })).toHaveLength(0)
-  expect(screen.getAllByRole('img', {
-    name: 'latest WF research: worst walk-forward, mean walk-forward, OOS Sharpe',
-  })).toHaveLength(2)
+  expect(screen.getByText('unsupported_schema')).toBeTruthy()
+  expect(screen.queryAllByRole('img', { name: /WF research/i })).toHaveLength(0)
 })

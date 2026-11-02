@@ -510,7 +510,25 @@ export interface StrategyBoardComparisonEvidence {
   observed_metric_sort_enabled: boolean
   reasons: string[]
   cohort_id: string | null
-  context: BoardComparisonContext | null
+  context: BoardComparisonContext | PublicWindowComparisonContext | null
+}
+
+export interface PublicWindowInterval { start: string; end: string; n_bars: number; n_windows: number }
+export interface PublicWindowComparisonContext extends Omit<BoardComparisonContext, 'schema_version' | 'protocol' | 'metrics' | 'oos'> {
+  schema_version: 'public-window-comparison/v1'
+  protocol: 'continuous_portfolio_public_windows'
+  metrics: 'window_sharpe_mean_min_population_std_positive_return_fraction/v1'
+  public_interval: PublicWindowInterval
+  seed: number | null
+}
+export interface PublicWindowRun {
+  kind: 'public_windows'
+  run_id: number
+  created_at: string
+  mean_window_sharpe: number | null
+  min_window_sharpe: number | null
+  std_window_sharpe: number | null
+  pct_positive_windows: number | null
 }
 
 export interface StrategyBoardEvidence {
@@ -521,6 +539,12 @@ export interface StrategyBoardEvidence {
   comparison: StrategyBoardComparisonEvidence
 }
 
+export interface PublicWindowEvidence extends Omit<StrategyBoardEvidence, 'oos_interval'> {
+  kind: 'public_windows'
+  public_interval: StrategyBoardEvidenceWrapper<PublicWindowInterval>
+  statistics: StrategyBoardEvidenceWrapper<Omit<PublicWindowRun, 'kind' | 'run_id' | 'created_at'>>
+}
+
 /** One registered strategy identity; `latest_gate` is `null` when it has no identity-bound gate. */
 export interface StrategyBoardRow {
   strategy_id: number
@@ -528,10 +552,10 @@ export interface StrategyBoardRow {
   family: string | null
   stage: string
   latest_gate: StrategyBoardGate | null
-  latest_research?: (Omit<StrategyBoardGate, 'passed'> & { kind: 'walk_forward' }) | null
+  latest_research?: PublicWindowRun | null
   recorded_provenance?: unknown
   /** Absent on the legacy response; null when the selected identity has no usable gate. */
-  evidence?: StrategyBoardEvidence | null
+  evidence?: StrategyBoardEvidence | PublicWindowEvidence | null
 }
 
 /** GET /api/strategy-board — `runs board` payload, schema `strategy-board/v1`
@@ -540,7 +564,7 @@ export interface StrategyBoardRow {
 export interface StrategyBoardPayload {
   schema_version: 'strategy-board/v1'
   /** Present only for the explicit `include_evidence=true` extension. */
-  evidence_schema_version?: 'strategy-board-evidence/v2' | 'strategy-board-research/v1'
+  evidence_schema_version?: 'strategy-board-evidence/v2' | 'strategy-board-research/v2'
   count: number
   rows: StrategyBoardRow[]
 }
