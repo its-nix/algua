@@ -13,6 +13,7 @@ from algua.contracts.lifecycle import Actor, Stage, TransitionError, validate_tr
 from algua.contracts.types import DataProvider, assert_gated_costs
 from algua.registry.approvals import compute_artifact_hashes
 from algua.registry.family_assignment import classify_and_assign_family
+from algua.registry.gate_comparison_record import capture_gate_comparison
 from algua.registry.repository import (
     FamilyGraphDriftError,
     FunnelSnapshot,
@@ -282,6 +283,7 @@ def run_gate(
     reason_suffix: str,
     holdout_evaluation_id: int | None = None,
     attempt_token: str | None = None,
+    comparison_inputs: dict[str, bool | None] | None = None,
 ) -> PromotionOutcome:
     """Post-walk phase: resolve PIT, evaluate, record the gate_evaluations row (pass AND fail), and
     on pass transition BACKTESTED->CANDIDATE (which consumes the just-minted agent token).
@@ -405,11 +407,11 @@ def run_gate(
         returns_available = True
     decision.returns_available = returns_available
 
-    # The public-window sibling has the same shape as ordinary WF runs. Private tail scalars
-    # belong only to the gate row below, after the existing durable burn.
+    # Public-only WF sibling; tail scalars belong to the post-burn gate row.
     from algua.registry.runs import _sample
 
-    wf_run_id = record_walk_forward_run(repo, rec.name, wf, strategy_id=rec.id)
+    wf_run_id = record_walk_forward_run(repo, rec.name, wf, strategy_id=rec.id,
+                                        research_inputs=comparison_inputs)
 
     # Build gate_row (all record_gate_evaluation kwargs, including provisional passed flag).
     gate_row = {
@@ -448,8 +450,7 @@ def run_gate(
         "attempt_token": attempt_token,
     }
 
-    # Atomic gate-record-and-maybe-promote — always uses BEGIN IMMEDIATE for consistency
-    # (negligible overhead for ≤ a few thousand gate_evaluations rows).
+    # Atomic gate-record-and-maybe-promote always uses BEGIN IMMEDIATE.
     # #339 — capture the funnel-wide MUTABLE snapshot this decision was computed against, so the
     # commit can CAS-verify it under the write lock and refuse to serialize a mixed-snapshot
     # (stale-breadth / stale-variance) outcome. own/windowed are the exact values evaluate_gate
@@ -481,10 +482,9 @@ def run_gate(
         run_row={
             "strategy_id": rec.id,
             "derived_from": [wf_run_id],
-            # NOTE: no "passed" key here — record_gate_with_fdr_and_maybe_promote (store/gate.py)
-            # unconditionally overwrites it with final_passed, the only value known once this
-            # transaction's checks have run. Setting it here would be dead and misleading.
-            #
+            "config": capture_gate_comparison(wf, rec.id, wf_run_id, holdout_evaluation_id,
+                                               holdout_returns_id, comparison_inputs),
+            # The atomic writer supplies final_passed and the gate evaluation identity.
             # Base provenance off the SIBLING walk-forward run's own provenance_of(wf), not a
             # hand-copied field list: the two rows describe the SAME evaluation and must not drift
             # (a hand-copy here had already dropped seed/timeframe, silently). Override only the

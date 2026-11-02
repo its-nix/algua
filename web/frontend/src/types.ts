@@ -500,7 +500,7 @@ export interface BoardComparisonContext {
   }
   snapshot_id: string
   content_hash: string
-  data_tier: 'pilot_real_proxy'
+  data_tier: 'pilot_real_proxy' | 'synthetic_fixture'
   source: StrategyBoardSnapshotEvidence
   dependency_hash: string
 }

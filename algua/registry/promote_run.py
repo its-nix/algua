@@ -294,6 +294,9 @@ def promote_task(  # noqa: PLR0913, PLR0915
                 period_start=start_dt.date(), period_end=end_dt.date(), holdout_frac=holdout_frac,
                 data_source=data_source, snapshot_id=snapshot_id, allow_non_pit=allow_non_pit,
                 holdout_evaluation_id=reservation_id, attempt_token=attempt_token,
+                comparison_inputs=({"delisting_snapshot": None, "assume_terminal_last_close": False}
+                                   if delistings is None and not assume_terminal_last_close
+                                   else None),
                 reason_suffix=("; holdout_reuse=" + _HOLDOUT_REUSE_OVERRIDE) if reused else "")
         except BaseException as exc:
             try:
@@ -311,12 +314,8 @@ def promote_task(  # noqa: PLR0913, PLR0915
             )
             raise
         decision, promoted = outcome.decision, outcome.promoted
-        # Advisory negative-result capture (#332): on a gate FAIL only, record the refuted
-        # hypothesis into the experience log so it is not lost with the branch. BEST-EFFORT — a
-        # capture failure NEVER breaks the promote (it is knowledge-capture, not a gate). Pre-gate
-        # refusals / post-peek crashes are operator errors / operational burns, not refuted
-        # hypotheses, and are intentionally out of scope (a manual `research log record` covers
-        # arbitrary discards).
+        # Advisory negative-result capture (#332): failures here never break promotion;
+        # pre-gate refusals and post-peek crashes are operational burns, not refuted hypotheses.
         if not promoted:
             experience_log = capture_gate_fail_experience(
                 conn, name=name, decision=decision, actor=actor_enum,

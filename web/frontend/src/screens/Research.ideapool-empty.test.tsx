@@ -72,6 +72,6 @@ it('collapses the idea pool to a bare count when it has zero rows — no tiles, 
   expect(await screen.findByText('idea pool')).toBeTruthy()
   expect(screen.getByText('0 ideas')).toBeTruthy()
   expect(container.querySelector('.tile-row')).toBeNull()
-  expect(container.querySelector('.filter-chip')).toBeNull()
+  expect(container.querySelector('[aria-label="idea status"]')).toBeNull()
   expect(container.querySelector('.alert-list')).toBeNull()
 })

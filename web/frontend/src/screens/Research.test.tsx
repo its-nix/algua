@@ -1,7 +1,8 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, expect, it, vi } from 'vitest'
 import { clearFetchCache } from '../api'
+import { parseEvidence } from '../components/StrategyBoard'
 import Research from './Research'
 
 const strategies = {
@@ -286,4 +287,149 @@ it('shows pool depth above the tiles and yield-by-venue after the list', async (
   expect(screen.getByText('60.0%')).toBeTruthy()  // arxiv integrity_yield
   const dashCells = screen.getAllByText('--')
   expect(dashCells.length).toBeGreaterThan(0)  // forums' null rates render as --
+})
+
+// Schema-shaped UI controls only; these values are not market evidence or executed gates.
+const context = {
+  schema_version: 'research-comparison/v1', protocol: 'continuous_portfolio_tail_holdout',
+  metrics: 'net_daily_returns_252_rf0_ddof1_compounded_floored_drawdown/v1',
+  timeframe: '1d', period_start: '2024-01-01', period_end: '2024-12-31',
+  holdout_frac: 0.2, embargo: 20,
+  windows: [{ start: '2024-01-02', end: '2024-05-01', n_bars: 90 },
+    { start: '2024-05-02', end: '2024-09-01', n_bars: 90 }],
+  oos: { start: '2024-10-01', end: '2024-12-30', n_bars: 50 },
+  execution: { schema_version: 'replay-execution/v1', decision_lag_bars: 1,
+    fill_basis: 'adjusted_close', valuation_basis: 'adjusted_close', sizing: 'targetpercent', cash_sharing: true,
+    initial_cash: 100, symbol_order: ['AAPL', 'MSFT'], rebalance: 'every_daily_bar',
+    price_units: 'vendor_adjusted', simulation: {
+      fixed_fees: 0, min_size: 1e-8, max_size: '+inf', size_granularity: 'nan', reject_prob: 0,
+      lock_cash: false, allow_partial: true, raise_reject: false, log: false, price: '+inf',
+      val_price: '+inf', call_seq: 'default', ffill_val_price: true, update_value: false, seed: null,
+      fillna_close: true, direction: 'both', freq: '1D', group_by: true, engine: 'numba',
+      initial_cash_mode: 'fixed', vectorbt_version: '1.0.0',
+    } },
+  execution_costs: { schema_version: 'execution-costs/v1', model: 'vectorbt.from_orders',
+    fees: 0.0005, fees_unit: 'fraction_of_trade_notional_per_side', slippage: 0,
+    slippage_unit: 'adverse_fill_price_fraction_per_side' },
+  snapshot_id: 'recorded-snapshot', content_hash: 'b'.repeat(64), data_tier: 'pilot_real_proxy',
+  dependency_hash: 'recorded-dependencies',
+  source: { schema_version: 'pilot-provenance/v1', data_tier: 'pilot_real_proxy',
+    universe_method: 'current_survivors', coverage_start: '2024-01-02', coverage_end: '2024-12-30',
+    provider: 'yfinance', limitations: ['adjusted_close_vendor_revisable', 'corporate_actions_unverified',
+      'delisted_names_absent', 'event_timing_unavailable', 'historical_market_cap_unavailable',
+      'point_in_time_universe_unavailable', 'survivorship_biased_selection'] },
+}
+
+function scatterRow(id: number, sharpe: number | null, cohort = 'a'.repeat(64)) {
+  return { strategy_id: id, name: `strategy_${id}`, family: 'momentum', stage: id === 4 ? 'live' : 'backtested',
+    latest_gate: { run_id: id + 100, created_at: '2026-01-01T00:00:00Z', passed: false,
+      sharpe_oos: sharpe, total_return_oos: 0, max_drawdown_oos: -0.1, n_obs_oos: 50,
+      mean_window_sharpe: 99, min_window_sharpe: -5, pct_positive_windows: 0.5 },
+    recorded_provenance: { status: 'VALID', reason: null, value: {
+      bars_snapshot_id: context.snapshot_id, bars_content_hash: context.content_hash,
+      execution_costs: structuredClone(context.execution_costs),
+    } },
+    evidence: { run_id: id + 100,
+      evaluation: { status: 'VALID', reason: null, value: { period_start: '2024-01-01',
+        period_end: '2024-12-31', timeframe: '1d', metric_schema_version: 1 } },
+      oos_interval: { status: 'VALID', reason: null, value: {
+        holdout_start: '2024-10-01', holdout_end: '2024-12-30', n_bars: 50 } },
+      snapshot_provenance: { status: 'VALID', reason: null, value: structuredClone(context.source) },
+      comparison: { status: 'COMPARABLE', observed_metric_sort_enabled: true,
+        reasons: [], cohort_id: cohort, context: structuredClone(context) } } }
+}
+
+
+function syntheticScatterRow(id: number) {
+  const r = scatterRow(id, 1234, 'b'.repeat(64))
+  const source = { ...r.evidence.snapshot_provenance.value, data_tier: 'synthetic_fixture',
+    provider: 'fixture', universe_method: 'synthetic/v1', limitations: ['synthetic_not_market_data'] }
+  Object.assign(r.evidence.snapshot_provenance.value, source)
+  Object.assign(r.evidence.comparison.context, { data_tier: 'synthetic_fixture', source })
+  return r
+}
+
+function renderScatterResearch(rows: ReturnType<typeof scatterRow>[], options: {
+  evidence?: unknown
+  raw?: Record<string, unknown>[]
+} = {}) {
+  const gateBoard = { ...board, data: { schema_version: 'strategy-board/v1',
+    evidence_schema_version: 'strategy-board-evidence/v2', count: rows.length, rows } }
+  const publicBoard = { ...gateBoard, data: { ...gateBoard.data,
+    evidence_schema_version: 'strategy-board-research/v2', rows: rows.map(row => ({ ...row,
+      latest_research: null, evidence: null, recorded_provenance: null })) } }
+  const raw = options.raw ?? rows.map(r => ({
+    id: r.latest_gate.run_id, strategy_id: r.strategy_id, strategy_name: r.name,
+    kind: 'gate', created_at: r.latest_gate.created_at, passed: false,
+    mean_window_sharpe: r.latest_gate.mean_window_sharpe, sharpe_oos: r.latest_gate.sharpe_oos,
+    // Arbitrary raw metadata claims never establish the data tier for the chart.
+    config_json: { data_tier: 'pilot_real_proxy' },
+  }))
+  const fetchMock = vi.fn(async (url: string) => ({ ok: true, status: 200,
+    json: async () => url === '/api/strategy-board?include_evidence=true' ? options.evidence ?? gateBoard :
+      url.startsWith('/api/strategy-board') ? publicBoard :
+        url.startsWith('/api/runs') ? { ...runs, data: { count: raw.length, runs: raw } } : routeBody(url),
+  }))
+  vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+  render(<MemoryRouter><Research /></MemoryRouter>)
+  return fetchMock
+}
+
+it('R1 excludes default synthetic scatter points even when raw metadata claims real proxy', async () => {
+  const fixture = syntheticScatterRow(71)
+  expect(parseEvidence(fixture.evidence, fixture.latest_gate, fixture.recorded_provenance)?.comparison.status).toBe('COMPARABLE')
+  const fetchMock = renderScatterResearch([fixture])
+  await screen.findByRole('heading', { name: 'strategy board' })
+  expect(screen.queryAllByTestId('scatter-point')).toHaveLength(0)
+  expect(screen.getByText(/in-sample.*selection.*pre-holdout windows, not independent OOS/i)).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Gate OOS' }))
+  await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === '/api/strategy-board?include_evidence=true')).toBe(true))
+  fireEvent.click(await screen.findByRole('button', { name: /board controls/i }))
+  fireEvent.change(screen.getByRole('combobox', { name: 'data tier' }), { target: { value: 'synthetic_fixture' } })
+  expect(screen.getByRole('link', { name: /View strategy_71 strategy details/i })).toBeTruthy()
+  expect(screen.queryAllByTestId('scatter-point')).toHaveLength(0)
+})
+
+it('R1 separates mixed tiers in Research while retaining real observed zero and negative points', async () => {
+  const real = [scatterRow(61, 0), scatterRow(62, -0.5)]
+  const fixture = syntheticScatterRow(71)
+  for (const row of [...real, fixture]) {
+    expect(parseEvidence(row.evidence, row.latest_gate, row.recorded_provenance)?.comparison.status).toBe('COMPARABLE')
+  }
+  const fetchMock = renderScatterResearch([...real, fixture])
+  await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === '/api/strategy-board?include_evidence=true')).toBe(true))
+  await waitFor(() => expect(screen.getAllByTestId('scatter-point')).toHaveLength(2))
+  expect(screen.getByRole('img', { name: /in-sample versus out-of-sample Sharpe scatter/i })).toBeTruthy()
+  expect(screen.queryByText('1234.00')).toBeNull()
+})
+
+it.each(['missing', 'unknown', 'malformed', 'cost', 'stale', 'unsupported_schema', 'wrong_strategy', 'wrong_run', 'metric_drift', 'cohort_conflict'])
+('R1 omits raw chart observations with %s comparison evidence', async damage => {
+  const real = scatterRow(61, 0)
+  const other = scatterRow(62, -0.5)
+  const payload = { ...board, data: { schema_version: 'strategy-board/v1',
+    evidence_schema_version: 'strategy-board-evidence/v2', count: 2, rows: [real, other] } }
+  const raw = [real, other].map(r => ({ id: r.latest_gate.run_id, kind: 'gate',
+    strategy_id: r.strategy_id, strategy_name: r.name, created_at: r.latest_gate.created_at,
+    passed: false, mean_window_sharpe: r.latest_gate.mean_window_sharpe, sharpe_oos: r.latest_gate.sharpe_oos,
+    config_json: { data_tier: 'pilot_real_proxy' } }))
+  if (damage === 'missing') Reflect.deleteProperty(real, 'evidence')
+  if (damage === 'unknown') Object.assign(real.evidence.comparison, { status: 'UNKNOWN',
+    observed_metric_sort_enabled: false, reasons: ['comparison_context_absent'], cohort_id: null, context: null })
+  if (damage === 'malformed') Object.assign(real.evidence.comparison.context, { future: true })
+  if (damage === 'cost') real.recorded_provenance.value.execution_costs.fees = 0.9
+  if (damage === 'stale') payload.stale = true
+  if (damage === 'unsupported_schema') payload.data.evidence_schema_version = 'strategy-board-evidence/future'
+  if (damage === 'wrong_strategy') raw[0].strategy_id = 999
+  if (damage === 'wrong_run') raw[0].id = 999
+  if (damage === 'metric_drift') raw[0].sharpe_oos = 999
+  if (damage === 'cohort_conflict') {
+    real.evidence.comparison.context.execution_costs.fees = 0.9
+    real.recorded_provenance.value.execution_costs.fees = 0.9
+  }
+  const fetchMock = renderScatterResearch([real, other], { evidence: payload, raw })
+  await screen.findByRole('heading', { name: 'strategy board' })
+  await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === '/api/strategy-board?include_evidence=true')).toBe(true))
+  await waitFor(() => expect(screen.queryAllByTestId('scatter-point')).toHaveLength(
+    ['stale', 'unsupported_schema', 'cohort_conflict'].includes(damage) ? 0 : 1))
 })

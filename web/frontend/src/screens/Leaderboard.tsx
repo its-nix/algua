@@ -7,8 +7,8 @@ export default function Leaderboard() {
       <header className="leaderboard-intro">
         <h1>Strategy leaderboard</h1>
         <p>
-          Latest identity-bound public window evidence. Compare in-sample research within a recorded cohort;
-          unknown and incompatible evidence stays unranked.
+          Latest identity-bound evidence. Public WF windows are in-sample; gate OOS observations are separate.
+          Compare within a recorded cohort; unknown and incompatible evidence stays unranked.
         </p>
       </header>
       <OperationalHealth updateHeader />

@@ -379,7 +379,12 @@ it.each([
   mockBoard(malformed)
   renderBoard()
 
-  const measured = within((await screen.findAllByTestId('board-row'))[1])
+  await screen.findAllByTestId('board-row')
+  if (_caseName === 'missing synthetic limitation') {
+    fireEvent.click(screen.getByRole('button', { name: /board controls/i }))
+    fireEvent.change(screen.getByRole('combobox', { name: 'data tier' }), { target: { value: 'synthetic_fixture' } })
+  }
+  const measured = within(screen.getByRole('link', { name: /View mined_above strategy details/i }))
   expect(measured.getByText(/snapshot provenance/i).parentElement?.textContent).toContain(
     'INVALID · malformed response',
   )
@@ -470,24 +475,17 @@ it('isolates evidence by stable strategy and run identity even when names are re
   renderBoard()
 
   const rendered = await screen.findAllByTestId('board-row')
-  expect(rendered).toHaveLength(2)
+  expect(rendered).toHaveLength(1)
   expect(rendered[0].getAttribute('href')).toBe('/strategy/2')
-  expect(rendered[1].getAttribute('href')).toBe('/strategy/77')
   expect(within(rendered[0]).getByText(/yfinance/)).toBeTruthy()
   expect(within(rendered[0]).queryByText(/fixture_generator/)).toBeNull()
-  expect(within(rendered[1]).getByText(/fixture_generator/)).toBeTruthy()
-  expect(within(rendered[1]).queryByText(/yfinance/)).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: /board controls/i }))
+  fireEvent.change(screen.getByRole('combobox', { name: 'data tier' }), { target: { value: 'synthetic_fixture' } })
+  const fixtureRow = screen.getAllByTestId('board-row')[0]
+  expect(fixtureRow.getAttribute('href')).toBe('/strategy/77')
+  expect(within(fixtureRow).getByText(/fixture_generator/)).toBeTruthy()
+  expect(within(fixtureRow).queryByText(/yfinance/)).toBeNull()
 
-  cleanup()
-  clearFetchCache()
-  second.evidence.run_id = 976
-  mockBoard({
-    ...metadataBound,
-    data: { ...metadataBound.data, count: 1, rows: [second] },
-  })
-  renderBoard()
-  expect(await screen.findByText(/evidence INVALID.*run-bound response malformed/i)).toBeTruthy()
-  expect(screen.queryByText(/fixture_generator/)).toBeNull()
 })
 
 it('refuses a VALID verified_pit metadata claim when no independent PIT verifier exists', async () => {

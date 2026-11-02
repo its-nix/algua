@@ -131,7 +131,7 @@ export function parseComparison(value: unknown): StrategyBoardComparisonEvidence
       !number(c.holdout_frac) || c.holdout_frac <= 0 || c.holdout_frac >= 1 ||
       !number(c.embargo) || !Number.isSafeInteger(c.embargo) || c.embargo < 0 ||
       !segment(c.oos) || !Array.isArray(c.windows) || c.windows.length < 2 || !c.windows.every(segment) ||
-      c.data_tier !== 'pilot_real_proxy' || !text(c.snapshot_id) ||
+      !['pilot_real_proxy', 'synthetic_fixture'].includes(String(c.data_tier)) || !text(c.snapshot_id) ||
       typeof c.content_hash !== 'string' || !/^[a-f0-9]{64}$/.test(c.content_hash) ||
       !text(c.dependency_hash)) return null
   const segments = [...c.windows, c.oos]

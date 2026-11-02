@@ -6,6 +6,7 @@ import EquityChart, { drawableSeriesPointCount } from '../components/EquityChart
 import EvidenceDisclosure from '../components/EvidenceDisclosure'
 import EvidenceStatus from '../components/EvidenceStatus'
 import GateBulletCard from '../components/GateBulletCard'
+import GateComparisonEvidence from '../components/GateComparisonEvidence'
 import HealthBadge, { healthColor } from '../components/HealthBadge'
 import MetricTile from '../components/MetricTile'
 import PassMark from '../components/PassMark'
@@ -172,7 +173,10 @@ export default function StrategyDetail({
         )}
       </section>
 
-      {expectedStrategyId !== undefined && <WalkForwardEvidence strategyId={expectedStrategyId} />}
+      {expectedStrategyId !== undefined && <>
+        <GateComparisonEvidence strategyId={expectedStrategyId} />
+        <WalkForwardEvidence strategyId={expectedStrategyId} />
+      </>}
 
       <div className="strategy-evidence-grid">
         <EvidenceDisclosure

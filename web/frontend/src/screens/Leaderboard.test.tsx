@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, expect, it, vi } from 'vitest'
 import { clearFetchCache } from '../api'
@@ -53,3 +53,24 @@ it('leads with the strategy leaderboard while keeping stale operational warnings
   expect((await screen.findByText('quality_momentum')).closest('a')?.getAttribute('href')).toBe('/strategy/41')
 })
 
+
+
+it('F1 distinguishes public in-sample windows from separate gate observations in either mode', async () => {
+  const gateBoard = structuredClone(board)
+  gateBoard.data.evidence_schema_version = 'strategy-board-evidence/v2'
+  for (const row of gateBoard.data.rows) delete row.latest_research
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+    ok: true, status: 200, json: async () => url === '/api/triage' ? triage :
+      url === '/api/strategy-board?include_evidence=true' ? gateBoard : board,
+  })) as unknown as typeof fetch)
+  render(<MemoryRouter><Leaderboard /></MemoryRouter>)
+  const intro = screen.getByRole('heading', { name: 'Strategy leaderboard' }).closest('header')!
+  expect(intro.textContent).toMatch(/public WF windows are in-sample/i)
+  expect(intro.textContent).toMatch(/gate OOS observations are separate/i)
+  expect(screen.getByRole('button', { name: 'Public WF windows' }).getAttribute('aria-pressed')).toBe('true')
+  fireEvent.click(screen.getByRole('button', { name: 'Gate OOS' }))
+  expect(screen.getByRole('button', { name: 'Gate OOS' }).getAttribute('aria-pressed')).toBe('true')
+  expect(intro.textContent).toMatch(/public WF windows are in-sample/i)
+  expect(intro.textContent).toMatch(/gate OOS observations are separate/i)
+  expect(intro.textContent).toMatch(/unknown and incompatible evidence stays unranked/i)
+})

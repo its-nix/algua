@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from algua.contracts.lifecycle import Actor, Stage, TransitionError
 from algua.registry.db import FDR_COHORT_SIZE
+from algua.registry.gate_comparison_write import seal_gate_comparison
 from algua.registry.repository import (
     FamilyGraphDriftError,
     FdrGateOutcome,
@@ -424,17 +425,14 @@ class GateLedgerMixin(TransitionMixin):
             assert gate_id is not None
 
             if run_row is not None:
-                # Keep the run row's `passed` in lockstep with the gate row it derives from — even
-                # though final_passed == provisional_passed unconditionally today (the LORD++
-                # binding-rewrite branch is retired, stage 4a), a run row whose `passed` disagrees
-                # with its own gate row would be a corrupt audit trail if that ever changes back.
-                # (run_row's own "passed" key, if any, is dead — always overwritten here.)
+                # The run verdict and evaluation ID belong to this atomic gate transaction.
                 row = dict(run_row)
                 row["passed"] = final_passed
                 # Name the gate_evaluations row THIS run derives from — minted one line above, in
                 # the SAME BEGIN IMMEDIATE, so the two ids can never mismatch or drift apart.
                 row["gate_id"] = gate_id
-                self._insert_run_locked("gate", rec.name, **row)
+                run_id = self._insert_run_locked("gate", rec.name, **row)
+                seal_gate_comparison(self._conn, run_id)
 
             updated_rec: StrategyRecord | None = None
             if final_passed:
