@@ -4,7 +4,7 @@
 # this and nothing else; it is the only file in the repo that names the runtime or a model.
 #
 # Usage:
-#   run_agent.sh --mode research|leap|forage --workdir DIR --prompt-file FILE
+#   run_agent.sh --mode research|leap|forage|chooser --workdir DIR --prompt-file FILE
 #                [--model PROVIDER/MODEL] [--variant high|max|minimal] [--timeout DUR]
 #                [--log FILE] [--dry-run]
 #
@@ -56,9 +56,9 @@ while [ $# -gt 0 ]; do
 done
 
 case "$MODE" in
-  research|leap|forage) ;;
+  research|leap|forage|chooser) ;;
   "") die "--mode is required" ;;
-  *)  die "unknown --mode: $MODE (expected research|leap|forage)" ;;
+  *)  die "unknown --mode: $MODE (expected research|leap|forage|chooser)" ;;
 esac
 [ -n "$WORKDIR" ] || die "--workdir is required"
 [ -d "$WORKDIR" ] || die "--workdir does not exist: $WORKDIR"
@@ -79,8 +79,14 @@ fi
 # HERMETIC CONFIG. The user's global opencode config injects plugins, ~90 skills and a global
 # AGENTS.md into every run. A cheap model does not need three `brainstorming` skills competing for
 # its attention, and an unattended loop must not change behaviour because a human edited their
-# personal config. XDG_DATA_HOME is deliberately NOT overridden — that is where auth.json lives.
+# personal config. Legacy loops retain XDG_DATA_HOME for their native login store;
+# the output-only chooser routes session writes separately and reads that store in memory.
 XDG_DIR="${REPO_ROOT}/.opencode/xdg"
+if [ "$MODE" = "chooser" ]; then
+  # Disposable caller-owned output directory; never load project or personal agent definitions.
+  XDG_DIR="${WORKDIR}/config"
+  cd "$WORKDIR" || exit 3
+fi
 mkdir -p "${XDG_DIR}/opencode"
 
 ENVV=(
@@ -88,6 +94,14 @@ ENVV=(
   "OPENCODE_DISABLE_EXTERNAL_SKILLS=1"
   "OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1"
 )
+if [ "$MODE" = "chooser" ]; then
+  ENVV+=("OPENCODE_CONFIG=${REPO_ROOT}/.opencode/opencode.json"
+         "OPENCODE_CONFIG_CONTENT={}"
+         'OPENCODE_PERMISSION={"*":"deny"}'
+         "OPENCODE_DISABLE_AUTOCOMPACT=1"
+         "XDG_DATA_HOME=${WORKDIR}/data"
+         "XDG_CACHE_HOME=${WORKDIR}/cache" "XDG_STATE_HOME=${WORKDIR}/state")
+fi
 # Forage is the only loop that may reach the web, and it does so through opencode's search tool.
 [ "$MODE" = "forage" ] && ENVV+=("OPENCODE_ENABLE_EXA=1")
 
@@ -95,6 +109,7 @@ CMD=(opencode run --pure --agent "$MODE" --dir "$WORKDIR")
 [ -n "$MODEL" ]   && CMD+=(-m "$MODEL")
 [ -n "$VARIANT" ] && CMD+=(--variant "$VARIANT")
 CMD+=(--print-logs --log-level INFO)
+[ "$MODE" = "chooser" ] && CMD+=(--format json --title "Constrained campaign choice")
 # The prompt is passed as a FILE, never as argv: Linux caps a single argument at 128 KiB and the
 # leap prompt (inspirations + pool state + refuted list) is the one that gets close.
 #
@@ -140,6 +155,30 @@ fi
 command -v opencode >/dev/null 2>&1 || { echo "run_agent.sh: opencode is not on PATH" >&2; exit 3; }
 
 LOGFILE="${LOGFILE:-${WORKDIR}/agent.log}"
+LOGS=("$LOGFILE")
+[ "$MODE" = "chooser" ] && LOGS+=("${LOGFILE}.stderr")
+if [ "$MODE" = "chooser" ]; then
+  # Inspect the actual installed runtime. A missing agent or exposed tool stops BEFORE spending.
+  timeout 15s env "${ENVV[@]}" opencode debug agent chooser --pure \
+    >"${WORKDIR}/effective-agent.json" 2>"${WORKDIR}/effective-agent.stderr" || exit 3
+  "${REPO_ROOT}/.venv/bin/python" - "${WORKDIR}/effective-agent.json" <<'PYCONFIG' || exit 3
+import json, sys
+agent = json.load(open(sys.argv[1]))
+if agent.get("name") != "chooser" or agent.get("mode") != "primary" or agent.get("steps") != 1:
+    raise ValueError("output-only agent unavailable")
+if not agent.get("tools") or any(v is not False for v in agent["tools"].values()):
+    raise ValueError("tool exposed")
+if not any(r == {"permission": "*", "pattern": "*", "action": "deny"}
+           for r in agent.get("permission", [])):
+    raise ValueError("deny-all permission missing")
+PYCONFIG
+  # Reuse the native login store in memory. Runtime session/cache/refresh writes stay disposable;
+  # never put credential contents in argv, printed ENVV, logs or a copied configuration file.
+  native_auth="${XDG_DATA_HOME:-${HOME}/.local/share}/opencode/auth.json"
+  if [ -z "${OPENCODE_AUTH_CONTENT:-}" ] && [ -f "$native_auth" ]; then
+    export OPENCODE_AUTH_CONTENT="$(cat "$native_auth")"
+  fi
+fi
 
 # Terminal provider failures. These never resolve by waiting, so the watchdog below kills the run
 # the moment one appears rather than letting it burn the whole --timeout doing nothing.
@@ -154,12 +193,16 @@ FATAL_RE='Monthly usage limit reached|usage limit|quota exceeded|Token refresh f
 # recovers cannot flip a good run.
 REJECT_RE='level=ERROR .*message="stream error" .*small=false .*AI_APICallError: (Bad Request|Unauthorized|Forbidden|Not Found)'
 
-"${FULL[@]}" >"$LOGFILE" 2>&1 &
+if [ "$MODE" = "chooser" ]; then
+  "${FULL[@]}" >"$LOGFILE" 2>"${LOGFILE}.stderr" &
+else
+  "${FULL[@]}" >"$LOGFILE" 2>&1 &
+fi
 AGENT_PID=$!
 
 (
   while kill -0 "$AGENT_PID" 2>/dev/null; do
-    if grep -qE "$FATAL_RE" "$LOGFILE" 2>/dev/null; then
+    if grep -qE "$FATAL_RE" "${LOGS[@]}" 2>/dev/null; then
       echo "run_agent.sh: terminal provider error detected; killing the run early" >>"$LOGFILE"
       kill -TERM "$AGENT_PID" 2>/dev/null
       sleep 5
@@ -176,12 +219,28 @@ kill "$WATCHDOG_PID" 2>/dev/null; wait "$WATCHDOG_PID" 2>/dev/null
 
 # A run the watchdog killed is a PROVIDER failure, not a timeout and not a model verdict. Report it
 # as 3 so a driver can tell "the provider is down" from "the agent ran and produced nothing".
-if [ "$rc" -ne 0 ] && grep -qE "$FATAL_RE" "$LOGFILE" 2>/dev/null; then
+if [ "$rc" -ne 0 ] && grep -qE "$FATAL_RE" "${LOGS[@]}" 2>/dev/null; then
   rc=3
 fi
-if [ "$rc" -eq 0 ] && grep -qE "$REJECT_RE" "$LOGFILE" 2>/dev/null; then
+if [ "$rc" -eq 0 ] && grep -qE "$REJECT_RE" "${LOGS[@]}" 2>/dev/null; then
   echo "run_agent.sh: the provider rejected the primary agent's request but the runtime exited 0; reporting failure" >>"$LOGFILE"
   rc=3
+fi
+if [ "$MODE" = "chooser" ] && [ "$rc" -eq 0 ]; then
+  session_id="$("${REPO_ROOT}/.venv/bin/python" - "$LOGFILE" <<'PYSESSION'
+import json, re, sys
+rows = [json.loads(line) for line in open(sys.argv[1])]
+sessions = {r["sessionID"] for r in rows}
+if len(sessions) != 1:
+    raise ValueError("missing or mixed chooser sessions")
+session = sessions.pop()
+if not isinstance(session, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,200}", session):
+    raise ValueError("invalid chooser session")
+print(session)
+PYSESSION
+)" || exit 3
+  timeout 15s env "${ENVV[@]}" opencode export --pure --sanitize "$session_id" \
+    >"${WORKDIR}/session.json" 2>"${WORKDIR}/session.stderr" || exit 3
 fi
 cat "$LOGFILE"
 exit "$rc"
