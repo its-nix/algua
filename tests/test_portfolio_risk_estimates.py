@@ -18,7 +18,7 @@ def test_persisted_risk_is_identity_bound_known_at_and_not_selected_by_performan
                    code="code", observations=63, sharpe=1.0):
             monkeypatch.setattr("algua.registry.store.runs._now", lambda: created)
             return repo.record_run(
-                "walk_forward", name,
+                "gate", name,
                 provenance={"code_hash": code, "config_hash": "config", "period_end": end},
                 metrics={"ann_vol_oos": vol, "n_obs_oos": observations, "sharpe_oos": sharpe},
             )

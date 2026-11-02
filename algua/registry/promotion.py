@@ -405,11 +405,10 @@ def run_gate(
         returns_available = True
     decision.returns_available = returns_available
 
-    # The walk-forward this decision was computed on, as its own run row. Recorded here rather
-    # than by the CLI because `research promote` runs the walk-forward internally — this is the
-    # only place its result exists. Routed through the shared recorder (not an inline
-    # repo.record_run call) so a `walk_forward` row has ONE shape regardless of which command
-    # produced it.
+    # The public-window sibling has the same shape as ordinary WF runs. Private tail scalars
+    # belong only to the gate row below, after the existing durable burn.
+    from algua.registry.runs import _sample
+
     wf_run_id = record_walk_forward_run(repo, rec.name, wf, strategy_id=rec.id)
 
     # Build gate_row (all record_gate_evaluation kwargs, including provisional passed flag).
@@ -500,7 +499,8 @@ def run_gate(
                 "config_hash": identity.config_hash,
                 "dependency_hash": identity.dependency_hash,
             },
-            "metrics": walk_forward_metrics(wf),
+            "metrics": walk_forward_metrics(wf) | _sample(wf.holdout_metrics, "_oos")
+                       | {"n_obs_oos": holdout_n_bars},
             # The ~40 DSR / IR / regime diagnostics: queryable, but deliberately outside the fixed
             # vocabulary. Finite scalars only — decision.to_dict() also carries strings, lists and
             # bools, and `bool` is an `int` subclass so it must be excluded explicitly.

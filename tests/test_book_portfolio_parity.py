@@ -155,13 +155,17 @@ def test_persisted_risk_drives_real_simulation_and_paper_plan(tmp_path, monkeypa
         monkeypatch.setattr("algua.registry.store.runs._now",
                             lambda: "2024-01-04T00:00:00+00:00")
         identities = {n: ("fixture-code", config_hash(s)) for n, s in strategies.items()}
+        # Synthetic persisted gate-risk reader fixture, not a promotion or qualification.
+        # Ordinary research rows must not supply reserved-tail risk measurements.
         for n, vol in [("a", 0.2), ("b", 0.4)]:
             repo.record_run(
-                "walk_forward", n, provenance={"code_hash": "fixture-code",
+                "gate", n, provenance={"code_hash": "fixture-code",
                 "config_hash": identities[n][1], "period_end": "2024-01-03"},
                 metrics={"ann_vol_oos": vol, "n_obs_oos": 63},
             )
         risk = portfolio_risk_estimates(repo, identities, as_of=DATES[0])
+        assert {name: tuple(r.volatility for r in estimates)
+                for name, estimates in risk.items()} == {"a": (0.2,), "b": (0.4,)}
     provider = FixtureProvider()
     limits = PortfolioConstraints(0.9, 0.9, None)
     budgets = {"a": 0.5, "b": 0.5}

@@ -21,6 +21,7 @@ from typing import Any
 
 from algua.registry.gate_history import GATE_DECISION_ALLOWLIST, _project_decision
 from algua.registry.store import SqliteStrategyRepository
+from algua.registry.store.run_public import public_extra
 
 __all__ = ["run_detail_payload", "run_list_payload", "run_series_payload"]
 
@@ -87,7 +88,8 @@ def run_detail_payload(repo: SqliteStrategyRepository, run_id: int) -> dict[str,
     metric_rows = repo.connection.execute(
         "SELECT key, value FROM run_metrics WHERE run_id = ?", (run_id,)
     ).fetchall()
-    payload["extra_metrics"] = {r["key"]: r["value"] for r in metric_rows}
+    payload["extra_metrics"] = public_extra(
+        payload["kind"], {r["key"]: r["value"] for r in metric_rows})
     if payload["kind"] == "gate" and payload["gate_id"] is not None:
         # `decision_json` is NEVER emitted raw — reuse gate_history.py's two-layer allowlist
         # projection (the same one `registry gates` uses) rather than re-deriving it: a

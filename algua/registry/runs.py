@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from algua.provenance.research_disclosure import public_stability
 from algua.registry.db import MAX_PERSISTED_TRIALS
 
 if TYPE_CHECKING:
@@ -81,18 +82,9 @@ def backtest_metrics(result: BacktestResult) -> dict[str, float | int | None]:
 
 
 def walk_forward_metrics(result: WalkForwardResult) -> dict[str, float | int | None]:
-    """Fixed-vocabulary metrics for a `walk_forward` run.
-
-    The holdout segment is the OUT-OF-SAMPLE measurement; the per-window stability figures keep
-    their own names (they are neither IS nor OOS — they are a dispersion across folds). No
-    in-sample full-period figure is emitted: a walk-forward does not measure one, and inventing
-    it would put a fabricated number on the scatter's x-axis.
-    """
-    holdout = dict(result.holdout_metrics)
-    out = _sample(holdout, "_oos")
-    if holdout.get("n_bars") is not None:
-        out["n_obs_oos"] = int(holdout["n_bars"])
-    stability = dict(result.stability)
+    """Public research-window stability only; the reserved tail belongs to promotion."""
+    out: dict[str, float | int | None] = {}
+    stability = public_stability(result.stability)
     out["mean_window_sharpe"] = stability.get("mean_sharpe")
     out["std_window_sharpe"] = stability.get("std_sharpe")
     out["min_window_sharpe"] = stability.get("min_sharpe")

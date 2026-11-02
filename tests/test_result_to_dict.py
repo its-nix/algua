@@ -1,4 +1,4 @@
-"""Tests for #51: to_dict uses dataclasses.asdict (no hand-listed field duplication)."""
+"""Result serialization preserves public fields and excludes private/internal values."""
 import dataclasses
 
 from algua.backtest.result import BacktestResult
@@ -71,15 +71,17 @@ def test_backtest_result_to_dict_excludes_returns():
     assert d == expected
 
 
-def test_walkforward_result_to_dict_matches_asdict():
-    # holdout_returns is SENSITIVE and excluded from to_dict() (#221 Slice 1).
-    # market_returns is bulky (full-period aggregate) and excluded from to_dict() (#221 Slice 4).
-    # Strip both from the dataclasses.asdict reference so the invariant holds.
+def test_walkforward_result_to_dict_preserves_public_fixture_fields():
+    # This known valid fixture preserves all public fields. Private tail metrics/returns
+    # and the full-period internal return vector must not enter ordinary serialization.
     r = _walkforward_result()
     expected = dataclasses.asdict(r)
-    expected.pop("holdout_returns", None)
-    expected.pop("market_returns", None)
-    assert r.to_dict() == expected
+    private_fields = {"holdout_metrics", "holdout_returns", "market_returns"}
+    for field in private_fields:
+        expected.pop(field)
+    public = r.to_dict()
+    assert private_fields.isdisjoint(public)
+    assert public == expected
 
 
 def test_sweep_result_to_dict_matches_asdict():
@@ -106,10 +108,11 @@ def test_backtest_result_to_dict_has_expected_keys():
 
 def test_walkforward_result_to_dict_has_expected_keys():
     d = _walkforward_result().to_dict()
+    assert {"holdout_metrics", "holdout_returns", "market_returns"}.isdisjoint(d)
     assert set(d) == {
         "strategy", "config_hash", "data_source", "snapshot_id", "timeframe",
         "seed", "period", "windows", "holdout_frac", "embargo", "window_metrics",
-        "holdout_metrics", "stability", "code_hash", "dependency_hash",
+        "stability", "code_hash", "dependency_hash",
         "universe_name", "universe_snapshots",
         "fundamentals_snapshot", "news_snapshot",
         "bars_provenance", "execution_costs",

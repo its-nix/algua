@@ -255,6 +255,8 @@ INTEGRITY_CRITICAL_MODULES = frozenset(
         "algua/backtest/grid.py",
         "algua/backtest/errors.py",
         "algua/backtest/walkforward.py",
+        "algua/provenance/research_disclosure.py",
+        "algua/registry/store/run_public.py",
         "algua/research/gates.py",
         "algua/research/gate_serialization.py",
         "algua/research/forward_gates.py",

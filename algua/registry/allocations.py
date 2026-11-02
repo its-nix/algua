@@ -148,7 +148,7 @@ def portfolio_risk_estimates(
     *,
     as_of: datetime,
 ) -> dict[str, tuple[RiskEstimate, ...]]:
-    """Read persisted OOS volatility for EXPLICIT (code_hash, config_hash) identities.
+    """Read promotion gate OOS volatility for EXPLICIT (code_hash, config_hash) identities.
 
     No selection/qualification, capital write or equity-curve fit. Both the sample end and the
     row's creation time must be known at the cutoff. Require at least the existing 63-observation
@@ -163,7 +163,7 @@ def portfolio_risk_estimates(
         found: list[RiskEstimate] = []
         if not code or not config:
             raise AllocationError("risk estimates require code and config identities")
-        for row in repo.list_runs(kind="walk_forward", strategy_name=name, limit=-1):
+        for row in repo.list_runs(kind="gate", strategy_name=name, limit=-1):
             if row["code_hash"] != code or row["config_hash"] != config:
                 continue
             try:

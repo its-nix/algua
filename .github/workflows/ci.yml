@@ -40,6 +40,10 @@ jobs:
         run: uv sync --project web --locked
       - name: Backend tests
         run: uv run --project web pytest web/backend/tests -q
+      - name: Prepare root CLI for HTTP integration (separate project)
+        run: uv sync --locked
+      - name: HTTP integration tests (standalone web to root CLI)
+        run: uv run --project web pytest web/integration -q
       - name: Frontend install
         run: npm ci
         working-directory: web/frontend
