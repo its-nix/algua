@@ -1,4 +1,3 @@
-# algua/cli/idea_ops_cmd.py
 """Driver-facing idea-pool commands (spec 2026-09-08 §7). Agents never run these against
 authority; the research/leap/forage drivers and the merge-back drainer do."""
 from __future__ import annotations
@@ -15,6 +14,7 @@ from algua.cli.errors import json_errors
 from algua.cli.idea_json import idea_json
 from algua.config.settings import get_settings
 from algua.contracts.idea import AttemptOutcome
+from algua.operator.campaign_choice import choose_campaign
 from algua.operator.research_cycle import (
     CycleLimits,
     ResearchCycle,
@@ -36,8 +36,7 @@ from algua.research.categories import load_categories
 
 
 def _critic_rows(critic_file: Path) -> tuple[list[dict], int]:
-    """Parse `leap-critic.jsonl` line by line. A line that is not a JSON OBJECT is counted, never
-    raised — the whole file is agent output, and one bad line must not cost the ledger the rest."""
+    """Count malformed critic lines without losing the other untrusted output rows."""
     rows: list[dict] = []
     errors = 0
     for line in critic_file.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -77,8 +76,7 @@ def _cycle_context(data_dir: Path, *, root: Path | None = None) -> dict:
     sources = {key: file_hash(root / path) for key, path in required.items()}
     if any(value is None for value in sources.values()):
         raise ValueError("missing required cycle source identity")
-    # Content identity covers the checkout's Python and runtime inputs, independently of Git
-    # refs or the caller's cwd. A fresh HEAD worktree must match the tree pinned before claim.
+    # Pin checkout Python/runtime content independently of Git refs and the caller's cwd.
     paths = sorted({*required.values(), *(
         str(path.relative_to(root)) for directory in ("algua", ".opencode")
         for path in (root / directory).rglob("*") if path.is_file()
@@ -107,28 +105,31 @@ def cycle_start(
     category: str | None = typer.Option(None, "--category"),
     menu_only: bool = typer.Option(False, "--menu-only", help="Capture chooser context only"),
     campaign: Path | None = typer.Option(None, "--campaign", help="Menu and explicit choices JSON"),
+    choose: bool = typer.Option(False, "--choose", help="Opt in to an output-only menu chooser"),
+    choice_dir: Path | None = typer.Option(None, "--choice-dir", help="Private chooser artifacts"),
 ) -> None:
     """Start/recover one bounded driver cycle under the driver's existing flock."""
+    if choose and (menu_only or campaign is not None) or (choose != (choice_dir is not None)):
+        raise ValueError("--choose requires --choice-dir and excludes --menu-only/--campaign")
     s = get_settings()
     limits = CycleLimits(limit, duration_seconds(timeout), workers, cpu_seconds,
                          memory_mb, file_mb, max_cost)
+    args: dict = dict(limits=limits, context=_cycle_context(s.data_dir), category=category,
+                ttl_minutes=s.idea_claim_ttl_minutes, preview_hold_hours=s.idea_preview_hold_hours)
     with registry_conn() as conn:
         cycle = ResearchCycle(conn, s.data_dir / "research-cycles", run)
         if menu_only:
             if campaign is not None:
                 raise ValueError("--menu-only cannot accept --campaign")
-            emit(ok({"menu": cycle.campaign_menu(
-                limits=limits, context=_cycle_context(s.data_dir), category=category,
-                ttl_minutes=s.idea_claim_ttl_minutes,
-                preview_hold_hours=s.idea_preview_hold_hours)}))
-            return
+            return emit(ok({"menu": cycle.campaign_menu(**args)}))
         adoption = {} if campaign is None else {"campaign": json.loads(campaign.read_text())}
         if campaign is not None and not isinstance(adoption["campaign"], dict):
             raise ValueError("--campaign requires a menu and selection JSON object")
-        claimed, result = cycle.start(
-            limits=limits, context=_cycle_context(s.data_dir), category=category,
-            ttl_minutes=s.idea_claim_ttl_minutes, preview_hold_hours=s.idea_preview_hold_hours,
-            **adoption)
+        if choose:
+            adoption = {"campaign": choose_campaign(
+                cycle, menu=cycle.campaign_menu(**args), directory=choice_dir, **args)}
+            args["context"] = _cycle_context(s.data_dir)
+        claimed, result = cycle.start(**args, **adoption)
         result["claimed"] = [idea_json(i, IdeaRepository(conn)) for i in claimed]
         emit(result)
     if not result["ok"]:
