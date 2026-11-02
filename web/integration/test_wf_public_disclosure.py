@@ -1,33 +1,58 @@
-"""HTTP -> actual CLI subprocess -> synthetic ledger, without canned CLI responses."""
+"""HTTP -> actual root CLI -> synthetic ledger, using separate Python projects.
+
+Run from the repository root after ``uv sync --locked`` and
+``uv sync --project web --locked``:
+``uv run --project web pytest web/integration -q``.
+"""
 from __future__ import annotations
 
+import asyncio
 import json
+import os
+import sqlite3
+import subprocess
+from contextlib import closing
 
 import httpx
 import pytest
+from backend import algua_cli
 from backend.main import create_app
 
-from algua.registry.db import registry_conn
-from algua.registry.runs import record_walk_forward_run
-from algua.registry.store import SqliteStrategyRepository
-from tests.test_wf_public_disclosure import PARAMS, PRIVATE, wf_result
+
+@pytest.fixture(autouse=True)
+def isolated_http_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "synthetic.db"))
+    monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("ALGUA_KNOWLEDGE_DIR", str(tmp_path / "kb"))
+    monkeypatch.setenv("ALGUA_WEB_STATE", str(tmp_path / "push-state"))
+    algua_cli._cache.clear()
+    algua_cli._locks.clear()
+    algua_cli._semaphore = asyncio.Semaphore(algua_cli._MAX_CONCURRENT_SUBPROCESSES)
+    assert algua_cli._cli_command(("runs", "list"))[0] == str(
+        algua_cli.REPO / ".venv/bin/algua")
+    yield
+    algua_cli._cache.clear()
+    algua_cli._locks.clear()
+
+
+def prepare_fixture(case, *args):
+    result = subprocess.run(
+        [str(algua_cli.REPO / ".venv/bin/python"), "-m", "tests._wf_http_fixture",
+         case, "--", *args],
+        cwd=algua_cli.REPO, capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
 
 
 @pytest.mark.asyncio
 async def test_actual_http_reads_redact_legacy_wf_without_burning(tmp_path, monkeypatch):
-    monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "synthetic.db"))
-    monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setenv("ALGUA_KNOWLEDGE_DIR", str(tmp_path / "kb"))
-    with registry_conn() as conn:
-        repo = SqliteStrategyRepository(conn)
-        repo.add("synthetic")
-        fresh = record_walk_forward_run(repo, "synthetic", wf_result())
-        old = repo.record_run("walk_forward", "synthetic")
-        with conn:
-            conn.execute("UPDATE runs SET sharpe_oos=?,config_json=? WHERE id=?", (
-                PRIVATE, json.dumps({"params": PARAMS, "result": {
-                    "holdout_metrics": {"sharpe": PRIVATE}, "holdout_returns": [PRIVATE]}}), old))
-            conn.execute("INSERT INTO run_metrics VALUES (?,?,?)", (old, "alias", PRIVATE))
+    fixture = prepare_fixture("legacy")
+    PRIVATE = fixture["PRIVATE"]
+    PARAMS = fixture["PARAMS"]
+    fresh = fixture["fresh"]
+    old = fixture["old"]
+    with closing(sqlite3.connect(os.environ["ALGUA_DB_PATH"])) as conn:
         before = [tuple(r) for r in conn.execute("SELECT * FROM runs")]
         transport = httpx.ASGITransport(app=create_app())
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -50,33 +75,14 @@ async def test_actual_http_reads_redact_legacy_wf_without_burning(tmp_path, monk
 async def test_review_fixes_preserve_exact_inputs_and_invalidity_over_actual_http(
     tmp_path, monkeypatch,
 ):
-    from copy import deepcopy
-
-    from tests.test_run_provenance import COSTS
-    from tests.test_wf_public_disclosure import canonical_bars_record, record_provenance_pair
-
-    monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "review-fixes.db"))
-    monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setenv("ALGUA_KNOWLEDGE_DIR", str(tmp_path / "kb"))
-    bars = canonical_bars_record()
-    malformed = deepcopy(bars)
-    malformed["source_metadata"]["research_provenance"] = {"tail": PRIVATE}
-    numeric = COSTS | {"fees": json.dumps({"holdout_returns": [PRIVATE]})}
-    with registry_conn() as conn:
-        repo = SqliteStrategyRepository(conn)
-        valid_id, _ = record_provenance_pair(repo, bars, name="canonical")
-        invalid_id, _ = record_provenance_pair(repo, malformed, name="malformed")
-        numeric_id, _ = record_provenance_pair(repo, bars, costs=numeric, name="numeric")
-        # Read the original unsafe legacy shapes, without relying on the write projector.
-        with conn:
-            for run_id, original, costs in [(invalid_id, malformed, COSTS),
-                                             (numeric_id, bars, numeric)]:
-                config = {"params": PARAMS, "run_provenance": {"bars": original,
-                                                              "execution_costs": costs}}
-                conn.execute("UPDATE runs SET config_json=? WHERE id=?",
-                             (json.dumps(config), run_id))
-            conn.execute("UPDATE runs SET mean_window_sharpe=? WHERE id=?",
-                         (json.dumps({"tail": PRIVATE}), numeric_id))
+    fixture = prepare_fixture("review_fixes")
+    PRIVATE = fixture["PRIVATE"]
+    PARAMS = fixture["PARAMS"]
+    bars = fixture["bars"]
+    valid_id = fixture["valid_id"]
+    invalid_id = fixture["invalid_id"]
+    numeric_id = fixture["numeric_id"]
+    with closing(sqlite3.connect(os.environ["ALGUA_DB_PATH"])) as conn:
         before = [tuple(r) for r in conn.execute("SELECT * FROM runs")]
         transport = httpx.ASGITransport(app=create_app())
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -106,23 +112,13 @@ async def test_review_fixes_preserve_exact_inputs_and_invalidity_over_actual_htt
 async def test_actual_http_rejects_new_scalar_input_metadata_with_matching_hash(
     tmp_path, monkeypatch,
 ):
-    from algua.provenance.snapshot_evidence import project_snapshot_record
-    from tests.test_run_provenance import COSTS
-    from tests.test_wf_public_disclosure import canonical_bars_record, record_provenance_pair
-
-    monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "closed-input.db"))
-    monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setenv("ALGUA_KNOWLEDGE_DIR", str(tmp_path / "kb"))
-    bars = canonical_bars_record({"observation": str(PRIVATE)})
-    assert project_snapshot_record(bars["snapshot_id"], bars)["status"] == "VALID"
-    with registry_conn() as conn:
-        repo = SqliteStrategyRepository(conn)
-        fresh, _ = record_provenance_pair(repo, bars, name="new-scalar")
-        historical, _ = record_provenance_pair(repo, bars, name="historical-scalar")
-        with conn:
-            conn.execute("UPDATE runs SET config_json=? WHERE id=?", (json.dumps({
-                "params": PARAMS, "run_provenance": {"bars": bars, "execution_costs": COSTS}}),
-                historical))
+    fixture = prepare_fixture("closed_input")
+    PRIVATE = fixture["PRIVATE"]
+    PARAMS = fixture["PARAMS"]
+    bars = fixture["bars"]
+    fresh = fixture["fresh"]
+    historical = fixture["historical"]
+    with closing(sqlite3.connect(os.environ["ALGUA_DB_PATH"])) as conn:
         before = [tuple(row) for row in conn.execute("SELECT * FROM runs")]
         transport = httpx.ASGITransport(app=create_app())
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -154,24 +150,11 @@ async def test_actual_http_rejects_new_scalar_input_metadata_with_matching_hash(
 async def test_actual_http_integer_overflow_keeps_healthy_neighbors_and_raw_history(
     tmp_path, monkeypatch, field, exponent,
 ):
-    from backend import algua_cli
-
-    from tests.test_wf_public_disclosure import canonical_bars_record
-
-    monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "overflow.db"))
-    monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setenv("ALGUA_KNOWLEDGE_DIR", str(tmp_path / "kb"))
-    bars = canonical_bars_record()
-    wf = wf_result()
-    wf.snapshot_id, wf.bars_provenance = bars["snapshot_id"], bars
-    with registry_conn() as conn:
-        repo = SqliteStrategyRepository(conn)
-        healthy = record_walk_forward_run(repo, "healthy", wf)
-        malformed = repo.record_run("walk_forward", "malformed")
-        config = json.dumps({"run_provenance": {"bars": bars | {field: "overflow"}}})
-        config = config.replace('"overflow"', exponent)
-        with conn:
-            conn.execute("UPDATE runs SET config_json=? WHERE id=?", (config, malformed))
+    fixture = prepare_fixture("overflow", field, exponent)
+    bars = fixture["bars"]
+    healthy = fixture["healthy"]
+    malformed = fixture["malformed"]
+    with closing(sqlite3.connect(os.environ["ALGUA_DB_PATH"])) as conn:
         before = [tuple(row) for row in conn.execute("SELECT * FROM runs")]
         outputs = []
         async with httpx.AsyncClient(
