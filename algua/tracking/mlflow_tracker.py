@@ -157,7 +157,7 @@ def log_sweep(result: SweepResult, *, tracking_uri: str) -> str:
         mlflow.set_tags({"kind": "sweep", "strategy": result.strategy})
         mlflow.log_dict(result.to_dict(), "sweep.json")
 
-        for entry in result.ranked:
+        for entry in result.to_dict()["ranked"]:
             with mlflow.start_run(nested=True):
                 mlflow.log_params({
                     **{f"param.{k}": v for k, v in entry["params"].items()},
@@ -278,16 +278,11 @@ def log_walk_forward(
             "embargo": result.embargo,
             **_stamp_params(result),
         })
-        mlflow.log_metrics(_numeric_metrics(result.stability))
+        mlflow.log_metrics(_numeric_metrics(result.to_dict()["stability"]))
         mlflow.set_tags({
             "kind": "walk_forward", "strategy": result.strategy,
             "config_hash": result.config_hash, "snapshot_id": str(result.snapshot_id),
             "timeframe": result.timeframe,
         })
-        # Strip the holdout from the persisted artifact too (it lives only in `research promote`).
-        # No default: a KeyError here means the field was renamed and the strip silently no-oped,
-        # which would re-leak the holdout into result.json — fail loud so the rename is caught.
-        wf_dict = result.to_dict()
-        wf_dict.pop("holdout_metrics")
-        mlflow.log_dict(wf_dict, "result.json")
+        mlflow.log_dict(result.to_dict(), "result.json")
         return run.info.run_id

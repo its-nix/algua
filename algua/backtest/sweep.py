@@ -24,10 +24,10 @@ from algua.backtest.walkforward import walk_forward
 from algua.contracts.types import DataProvider, FundamentalsProvider, NewsProvider
 from algua.portfolio.construction import ConstructionError, validate_construction_params
 from algua.portfolio.overlays import OverlayError, resolve_overlays
+from algua.provenance.research_disclosure import public_window_result
 from algua.strategies.base import LoadedStrategy
 
 _MAX_COMBOS = 200
-
 _CONSTRUCTION_PREFIX = "construction."
 _OVERLAY_PREFIX = "overlay."
 
@@ -208,7 +208,7 @@ class SweepResult:
     execution_costs: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return dataclasses.asdict(self)
+        return public_window_result(dataclasses.asdict(self))
 
 
 def _evaluate_combo(

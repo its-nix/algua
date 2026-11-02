@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from algua.provenance.research_disclosure import STABILITY_KEYS
+
 
 def latest_run_metrics(strategy: str, *, tracking_uri: str) -> dict[str, Any] | None:
     """Most recent MLflow run for `strategy` as a flat dict, or None if there are none.
@@ -42,18 +44,23 @@ def latest_run_metrics(strategy: str, *, tracking_uri: str) -> dict[str, Any] | 
     # The OOS holdout is revealed in exactly ONE place: `research promote` (which burns it).
     # The knowledge doc is an operator-facing surface and must withhold holdout metrics,
     # even for runs logged before the writers were sealed (defense-in-depth).
-    # Drop any key that is "holdout_metrics" or starts with "holdout." (the flattened shape
-    # produced by the tracker's _flatten helper, e.g. "holdout.sharpe").
+    # Windowed and ambiguous historical runs use closed public vocabularies, never aliases.
     raw_metrics = run.data.metrics
     filtered_metrics = {
         k: v
         for k, v in raw_metrics.items()
-        if k != "holdout_metrics" and not k.lower().startswith("holdout.")
+        if not k.lower().startswith(("holdout.", "holdout_")) and not k.endswith("_oos")
     }
+    kind = run.data.tags.get("kind", "unknown")
+    if kind != "backtest":
+        allowed = (set(STABILITY_KEYS) | ({"score"} if kind == "sweep_combo" else set())
+                   if kind in {"walk_forward", "sweep_combo"} else
+                   {"best_score"} if kind == "sweep" else set())
+        filtered_metrics = {k: v for k, v in filtered_metrics.items() if k in allowed}
     params = run.data.params
     return {
         "run_id": run.info.run_id,
-        "kind": run.data.tags.get("kind", "unknown"),
+        "kind": kind,
         "snapshot_id": params.get("snapshot_id"),
         "seed": params.get("seed"),
         # Reproduction provenance (#333): the identity + coordinates needed to re-run this

@@ -12,6 +12,16 @@ from typing import Any
 
 from algua.registry.db import MAX_PERSISTED_TRIALS, METRIC_SCHEMA_VERSION
 from algua.registry.store._util import _now
+from algua.registry.store.run_public import (
+    WINDOW_METRICS,
+    WINDOWED_KINDS,
+    public_config,
+    public_extra,
+    public_lineage,
+    public_number,
+    public_rows,
+    public_sort_metric,
+)
 
 #: The fixed metric vocabulary v1 (spec §4.2). A key outside this set is a caller bug, not a
 #: reason to widen the table: it either belongs in `extra_metrics` (the overflow tail) or it earns
@@ -145,6 +155,13 @@ class RunLedgerMixin:
                 raise ValueError(
                     f"{key!r} is not in the fixed metric vocabulary; "
                     f"pass it via extra_metrics or give it a column")
+        if kind in WINDOWED_KINDS:
+            mets = {k: public_number(v) for k, v in mets.items()
+                    if k in WINDOW_METRICS and kind != "sweep"}
+            config, components = public_config(config), []
+            extra_metrics = public_extra(kind, extra_metrics)
+            derived_from = public_lineage(derived_from)
+            series_backtest_id = series_holdout_id = None
 
         columns = ["kind", "strategy_name", "strategy_id", "created_at",
                    "metric_schema_version", "derived_from", "components", "config_json",
@@ -213,12 +230,12 @@ class RunLedgerMixin:
                         f"expected one of {sorted(SWEEP_TRIAL_METRIC_COLUMNS)}")
             rows.append((
                 strategy_name, now, lineage,
-                json.dumps(trial.get("config") or {}, sort_keys=True, default=str),
+                json.dumps(public_config(trial.get("config")), sort_keys=True, default=str),
                 trial.get("config_hash"),
-                _finite_or_none(mets.get("mean_window_sharpe")),
-                _finite_or_none(mets.get("std_window_sharpe")),
-                _finite_or_none(mets.get("min_window_sharpe")),
-                _finite_or_none(mets.get("pct_positive_windows")),
+                public_number(mets.get("mean_window_sharpe")),
+                public_number(mets.get("std_window_sharpe")),
+                public_number(mets.get("min_window_sharpe")),
+                public_number(mets.get("pct_positive_windows")),
             ))
         with self._conn:
             self._conn.executemany(
@@ -231,7 +248,8 @@ class RunLedgerMixin:
         return len(kept), truncated_at
 
     def get_run(self, run_id: int) -> sqlite3.Row | None:
-        return self._conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
+        rows = public_rows(self._conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)))
+        return rows[0] if rows else None
 
     def list_runs(
         self, *, kind: str | None = None, strategy_name: str | None = None,
@@ -271,8 +289,8 @@ class RunLedgerMixin:
             params.extend(strategy_names)
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         # NULLS LAST: a run with no measurement must never outrank one with a real number.
-        order = (f" ORDER BY {sort} IS NULL, {sort} DESC, id DESC"
+        metric = public_sort_metric(sort)
+        order = (f" ORDER BY ({metric}) IS NULL, ({metric}) DESC, id DESC"
                  if sort else " ORDER BY id DESC")
         params.append(int(limit))
-        return list(self._conn.execute(
-            f"SELECT * FROM runs{where}{order} LIMIT ?", params).fetchall())
+        return public_rows(self._conn.execute(f"SELECT * FROM runs{where}{order} LIMIT ?", params))
