@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from algua.provenance.research_disclosure import public_stability
 from algua.registry.db import MAX_PERSISTED_TRIALS
+from algua.registry.research_record import capture_public_record
 
 if TYPE_CHECKING:
     from algua.backtest.result import BacktestResult
@@ -130,7 +131,8 @@ def run_provenance_config(result: Any) -> dict[str, Any]:
 
 def record_walk_forward_run(
     repo: SqliteStrategyRepository | RunLedger, name: str, result: WalkForwardResult,
-    *, strategy_id: int | None = None,
+    *, strategy_id: int | None = None, params: dict[str, Any] | None = None,
+    research_inputs: dict[str, Any] | None = None,
 ) -> int:
     """Record one `walk_forward` run.
 
@@ -145,12 +147,22 @@ def record_walk_forward_run(
     resolved `StrategyRecord` — passes its own id, so a `walk_forward` run has ONE shape
     regardless of which command produced it.
     """
+    config = run_provenance_config(result)
+    metrics = walk_forward_metrics(result)
+    public = capture_public_record(result, strategy_id, provenance_of(result), metrics,
+                                   config["run_provenance"], research_inputs, params)
+    if params is not None:
+        config["params"] = dict(params)
+    if public is not None:
+        config["public_window_record"] = public
+        config.update(windows=result.windows, holdout_frac=result.holdout_frac,
+                      embargo=result.embargo)
     return repo.record_run(
         "walk_forward", name,
         strategy_id=strategy_id,
         provenance=provenance_of(result),
-        metrics=walk_forward_metrics(result),
-        config=run_provenance_config(result),
+        metrics=metrics,
+        config=config,
         components=list(_components_of(result)),
     )
 

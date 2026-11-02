@@ -304,6 +304,7 @@ INTEGRITY_CRITICAL_MODULES = frozenset(
         "algua/registry/frozen_view.py",
         "algua/registry/frozen_tenant_errors.py",
         "algua/registry/store/artifacts.py",
+        "algua/registry/store/public_windows.py",
         "algua/primitives/module_refresh.py",
         "algua/primitives/module_source_scan.py",
         "algua/primitives/module_commit_check.py",

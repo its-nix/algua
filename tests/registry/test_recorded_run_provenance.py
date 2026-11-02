@@ -70,7 +70,7 @@ def test_board_requires_exact_recorded_context(tmp_path, monkeypatch, corruption
             assert recorded_evidence["value"]["bars_content_hash"] is None
     elif corruption in {"legacy", "unknown_costs"}:
         assert recorded_evidence["status"] == "UNAVAILABLE"
-        assert "historical_cost_context_unavailable" in evidence["comparison"]["reasons"]
+        assert "recorded_inputs_unavailable" in evidence["comparison"]["reasons"]
     else:
         assert recorded_evidence["status"] == "INVALID"
         assert recorded_evidence["value"] is None

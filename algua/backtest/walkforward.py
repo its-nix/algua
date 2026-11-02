@@ -20,6 +20,7 @@ from algua.backtest.engine import (
     fetch_symbols,
 )
 from algua.backtest.errors import BacktestError
+from algua.backtest.execution_evidence import recorded_execution
 from algua.backtest.metrics import metrics_from_returns
 from algua.backtest.result import config_hash, provenance
 from algua.backtest.run_inputs import RunInputBundle, capture_run_inputs
@@ -159,6 +160,7 @@ class WalkForwardResult:
     market_returns: tuple[list[float], list[str]] | None = None
     bars_provenance: dict[str, Any] | None = None
     execution_costs: dict[str, Any] | None = None
+    execution_semantics: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         # Public by construction. Promotion consumes private attributes directly after its burn.
@@ -290,6 +292,7 @@ def walk_forward(
         provider_seed=run_inputs.provider_seed,
     )
     prov.update(run_inputs.provenance(seed))
+    prov["execution_semantics"] = recorded_execution(pf)
     cfg_hash = config_hash(strategy)
 
     # Holdout STATISTIC + single-use burn: the holdout metric is evaluated on the NEXT line, so any

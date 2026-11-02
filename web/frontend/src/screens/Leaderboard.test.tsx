@@ -23,9 +23,9 @@ const board: ApiEnvelope<StrategyBoardPayload> = {
   fetched_at: '2026-10-31T10:00:00Z',
   stale: false,
   data: {
-    schema_version: 'strategy-board/v1', count: 1, rows: [{
+    schema_version: 'strategy-board/v1', evidence_schema_version: 'strategy-board-research/v2', count: 1, rows: [{
       strategy_id: 41, name: 'quality_momentum', family: 'momentum', stage: 'candidate',
-      latest_gate: null,
+      latest_gate: null, latest_research: null,
     }],
   },
 }

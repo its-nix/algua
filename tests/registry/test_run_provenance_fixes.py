@@ -46,8 +46,9 @@ def board_pair(tmp_path, monkeypatch, *, sibling_update=None, gate_update=None, 
     }
     assert row["evidence"]["comparison"] == {
         "status": "UNKNOWN", "observed_metric_sort_enabled": False,
-        "reasons": ["historical_cost_context_unavailable",
-                    "homogeneous_comparison_context_unavailable"],
+        "reasons": ["lineage_or_source_unavailable"
+                    if row["recorded_provenance"]["status"] == "VALID"
+                    else "recorded_inputs_unavailable"], "cohort_id": None, "context": None,
     }
     return row
 

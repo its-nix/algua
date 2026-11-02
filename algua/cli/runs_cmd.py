@@ -17,6 +17,7 @@ from algua.config.settings import get_settings
 from algua.data.board_provenance import SnapshotProvenanceReader
 from algua.data.manifest import SnapshotManifest
 from algua.registry.db import registry_conn
+from algua.registry.research_runs import research_run_payload
 from algua.registry.run_views import run_detail_payload, run_list_payload, run_series_payload
 from algua.registry.store import SqliteStrategyRepository
 from algua.registry.strategy_board import strategy_board_payload
@@ -59,6 +60,8 @@ def runs_list(
 @runs_app.command("board")
 @json_errors
 def runs_board(
+    research: bool = typer.Option(
+        False, "--research", help="Select ordinary WF research evidence."),
     include_evidence: bool = typer.Option(
         False,
         "--include-evidence",
@@ -78,7 +81,20 @@ def runs_board(
         snapshot_evidence = SnapshotProvenanceReader(manifest).resolve
     with registry_conn() as conn:
         repo = SqliteStrategyRepository(conn)
-        payload = strategy_board_payload(repo, snapshot_evidence=snapshot_evidence)
+        payload = strategy_board_payload(
+            repo, snapshot_evidence=snapshot_evidence, research=research)
+    emit(ok(payload))
+
+
+@runs_app.command("research")
+@json_errors
+def runs_research(
+    strategy_id: int = typer.Argument(..., min=1),
+    run_id: int | None = typer.Option(None, "--run-id", min=1),
+) -> None:
+    """Read one identity's actual WF record, optionally pinned to an exact run; scalars only."""
+    with registry_conn() as conn:
+        payload = research_run_payload(SqliteStrategyRepository(conn), strategy_id, run_id)
     emit(ok(payload))
 
 

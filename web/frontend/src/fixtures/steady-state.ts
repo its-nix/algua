@@ -480,10 +480,7 @@ export const BOARD: ApiEnvelope<StrategyBoardPayload> = (() => {
         },
         comparison: {
           status: 'UNKNOWN', observed_metric_sort_enabled: false,
-          reasons: [
-            'historical_cost_context_unavailable',
-            'homogeneous_comparison_context_unavailable',
-          ],
+          reasons: ['recorded_inputs_unavailable'], cohort_id: null, context: null,
         },
       },
     }
@@ -500,7 +497,7 @@ export const BOARD: ApiEnvelope<StrategyBoardPayload> = (() => {
   )
   return envelope({
     schema_version: 'strategy-board/v1' as const,
-    evidence_schema_version: 'strategy-board-evidence/v1' as const,
+    evidence_schema_version: 'strategy-board-evidence/v2' as const,
     count: rows.length,
     rows,
   })

@@ -10,6 +10,8 @@ from datetime import date, datetime
 from typing import Any
 
 from algua.contracts.lifecycle import Stage
+from algua.registry.board_comparison import comparison_evidence
+from algua.registry.research_runs import RESEARCH_SCHEMA_VERSION, research_run_payload
 from algua.registry.run_provenance import recorded_run_evidence
 from algua.registry.store import SqliteStrategyRepository
 
@@ -22,7 +24,7 @@ __all__ = [
 ]
 
 SCHEMA_VERSION = "strategy-board/v1"
-EVIDENCE_SCHEMA_VERSION = "strategy-board-evidence/v1"
+EVIDENCE_SCHEMA_VERSION = "strategy-board-evidence/v2"
 type SnapshotEvidenceResolver = Callable[[str], dict[str, Any]]
 
 #: The gate-run scalars the board exposes — a subset of the fixed run vocabulary, selected from
@@ -245,14 +247,6 @@ def _evidence(row: sqlite3.Row, recorded: tuple[dict[str, Any], dict[str, Any]])
         "evaluation": _evaluation(row),
         "oos_interval": _oos_interval(row),
         "snapshot_provenance": snapshot,
-        "comparison": {
-            "status": "UNKNOWN",
-            "observed_metric_sort_enabled": False,
-            "reasons": [
-                "historical_cost_context_unavailable",
-                "homogeneous_comparison_context_unavailable",
-            ],
-        },
     }
 
 
@@ -260,6 +254,7 @@ def strategy_board_payload(
     repo: SqliteStrategyRepository,
     *,
     snapshot_evidence: SnapshotEvidenceResolver | None = None,
+    research: bool = False,
 ) -> dict[str, Any]:
     """`runs board` — every registered strategy once, in lifecycle order, with its latest gate run
     (or ``None``). An empty registry is a successful empty payload."""
@@ -280,19 +275,25 @@ def strategy_board_payload(
             "stage": row["stage"],
             "latest_gate": gate,
         }
-        if snapshot_evidence is not None:
+        if research:
+            entry.update(research_run_payload(repo, row["strategy_id"]))
+        elif snapshot_evidence is not None:
             if gate is None:
                 entry["evidence"] = entry["recorded_provenance"] = None
             else:
                 recorded = recorded_run_evidence(repo, row)
                 entry["recorded_provenance"] = recorded[0]
                 entry["evidence"] = _evidence(row, recorded)
+                entry["evidence"]["comparison"] = comparison_evidence(
+                    repo, row, entry["evidence"], recorded[0])
         board.append(entry)
     payload: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "count": len(board),
         "rows": board,
     }
-    if snapshot_evidence is not None:
+    if research:
+        payload["evidence_schema_version"] = RESEARCH_SCHEMA_VERSION
+    elif snapshot_evidence is not None:
         payload["evidence_schema_version"] = EVIDENCE_SCHEMA_VERSION
     return payload

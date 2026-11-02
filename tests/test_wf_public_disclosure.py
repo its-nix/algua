@@ -57,6 +57,31 @@ def test_recorder_withholds_tail_and_retains_public_measurements():
         assert conn.execute("SELECT count(*) FROM holdout_evaluations").fetchone()[0] == 0
 
 
+def test_registered_recorder_never_accesses_private_result_attributes():
+    synthetic = wf_result()
+
+    class PublicResultOnly:
+        def __getattr__(self, name):
+            if name in {"holdout_metrics", "holdout_returns"}:
+                raise AssertionError(f"ordinary recorder accessed private attribute: {name}")
+            return getattr(synthetic, name)
+
+    with registry_conn() as conn:
+        repo = SqliteStrategyRepository(conn)
+        strategy = repo.add("synthetic")
+        run_id = record_walk_forward_run(
+            repo, strategy.name, PublicResultOnly(), strategy_id=strategy.id)
+        row = repo.get_run(run_id)
+        assert row["strategy_id"] == strategy.id
+        assert row["mean_window_sharpe"] == 0.0
+        assert row["min_window_sharpe"] == -2.5
+        assert row["sharpe_oos"] is None
+        config = json.loads(row["config_json"])
+        assert "comparison_context" not in config
+        assert "research_record" not in config
+        assert conn.execute("SELECT count(*) FROM holdout_evaluations").fetchone()[0] == 0
+
+
 def test_generic_recording_and_historical_reads_cannot_export_nested_tail():
     with registry_conn() as conn:
         repo = SqliteStrategyRepository(conn)
@@ -88,7 +113,8 @@ def test_generic_recording_and_historical_reads_cannot_export_nested_tail():
         assert conn.execute("SELECT count(*) FROM holdout_evaluations").fetchone()[0] == 0
 
 
-def test_cli_and_serialization_withhold_nested_outcomes(monkeypatch):
+@pytest.mark.parametrize("registered", [False, True])
+def test_cli_and_serialization_withhold_nested_outcomes(monkeypatch, registered):
     from algua.cli import backtest_cmd
 
     wf = wf_result()
@@ -97,6 +123,7 @@ def test_cli_and_serialization_withhold_nested_outcomes(monkeypatch):
     wf.bars_provenance = {"snapshot_id": "snapshot", "raw_result": {"alias": PRIVATE},
                           "source_metadata": {"raw_json": json.dumps({"tail": PRIVATE})}}
     wf.execution_costs = {"fees": 0.0, "nested": {"tail": PRIVATE}}
+    wf.execution_semantics = {"raw_json": json.dumps({"tail": PRIVATE})}
     strategy = type("Strategy", (), {"config": type("Config", (), {
         "needs_fundamentals": False, "needs_news": False, "params": PARAMS})()})()
     monkeypatch.setattr(backtest_cmd, "resolve_eval_inputs",
@@ -104,12 +131,22 @@ def test_cli_and_serialization_withhold_nested_outcomes(monkeypatch):
     monkeypatch.setattr(backtest_cmd, "resolve_universe_inputs", lambda *a: (None, None))
     monkeypatch.setattr(backtest_cmd, "resolve_delisting_inputs", lambda *a: (None, None))
     monkeypatch.setattr(backtest_cmd, "walk_forward", lambda *a, **kw: wf)
+    with registry_conn() as conn:
+        strategy_id = SqliteStrategyRepository(conn).add("synthetic").id if registered else None
     assert str(PRIVATE) not in json.dumps(wf.to_dict())
     for summary in [[], ["--summary"]]:
         result = CliRunner().invoke(app, ["backtest", "walk-forward", "synthetic", *summary])
         assert result.exit_code == 0, result.output
         assert str(PRIVATE) not in result.stdout
-        assert json.loads(result.stdout)["stability"] == PUBLIC
+        payload = json.loads(result.stdout)
+        assert payload["stability"] == PUBLIC
+        recorded = payload["recorded_run"]
+        assert recorded["strategy_id"] == strategy_id
+        assert recorded["kind"] == "walk_forward"
+        with registry_conn() as conn:
+            row = SqliteStrategyRepository(conn).get_run(recorded["run_id"])
+            assert row["strategy_id"] == strategy_id
+            assert row["mean_window_sharpe"] == PUBLIC["mean_sharpe"]
     with registry_conn() as conn:
         assert conn.execute("SELECT count(*) FROM holdout_evaluations").fetchone()[0] == 0
 

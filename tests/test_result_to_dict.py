@@ -79,6 +79,8 @@ def test_walkforward_result_to_dict_preserves_public_fixture_fields():
     private_fields = {"holdout_metrics", "holdout_returns", "market_returns"}
     for field in private_fields:
         expected.pop(field)
+    # Internal execution evidence has no admitted public namespace in this baseline.
+    expected.pop("execution_semantics")
     public = r.to_dict()
     assert private_fields.isdisjoint(public)
     assert public == expected
@@ -119,6 +121,7 @@ def test_walkforward_result_to_dict_has_expected_keys():
     }
     assert d["bars_provenance"] is None
     assert d["execution_costs"] is None
+    assert "execution_semantics" not in d
 
 
 def test_sweep_result_to_dict_has_expected_keys():

@@ -1742,3 +1742,6 @@ details[open] > .stage-summary::before { content: '▾'; }
 }
 
 .secondary-link:focus-visible { outline-offset: -2px; }
+
+.board-cohort-control { display: grid; gap: 6px; min-width: 0; color: var(--text-dim); }
+.board-cohort-control select { max-width: 100%; min-width: 0; width: 100%; font: inherit; color: inherit; background: var(--ink); border: 1px solid var(--line); padding: 8px; }

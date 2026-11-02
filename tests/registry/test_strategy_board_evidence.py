@@ -112,7 +112,7 @@ def test_opt_in_projects_complete_valid_evidence_for_the_selected_run(
         else pytest.fail("selected snapshot pointer changed"),
     )
 
-    assert payload["evidence_schema_version"] == "strategy-board-evidence/v1"
+    assert payload["evidence_schema_version"] == "strategy-board-evidence/v2"
     (row,) = payload["rows"]
     assert row["latest_gate"]["run_id"] == run_id
     assert row["evidence"] == {
@@ -142,10 +142,7 @@ def test_opt_in_projects_complete_valid_evidence_for_the_selected_run(
         "comparison": {
             "status": "UNKNOWN",
             "observed_metric_sort_enabled": False,
-            "reasons": [
-                "historical_cost_context_unavailable",
-                "homogeneous_comparison_context_unavailable",
-            ],
+            "reasons": ["recorded_inputs_unavailable"], "cohort_id": None, "context": None,
         },
     }
 

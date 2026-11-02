@@ -443,10 +443,92 @@ export interface StrategyBoardSnapshotEvidence {
   provider: string
 }
 
+export interface BoardComparisonContext {
+  schema_version: 'research-comparison/v1'
+  protocol: 'continuous_portfolio_tail_holdout'
+  metrics: 'net_daily_returns_252_rf0_ddof1_compounded_floored_drawdown/v1'
+  timeframe: '1d'
+  period_start: string
+  period_end: string
+  holdout_frac: number
+  embargo: number
+  windows: Array<{ start: string; end: string; n_bars: number }>
+  oos: { start: string; end: string; n_bars: number }
+  execution: {
+    schema_version: 'replay-execution/v1'
+    decision_lag_bars: number
+    fill_basis: 'adjusted_close' | 'adjusted_open'
+    valuation_basis: 'adjusted_close' | 'adjusted_open'
+    sizing: 'targetpercent'
+    cash_sharing: true
+    initial_cash: number
+    symbol_order: string[]
+    rebalance: 'every_daily_bar'
+    price_units: 'vendor_adjusted'
+    simulation: {
+      fixed_fees: number
+      min_size: number
+      max_size: '+inf'
+      size_granularity: 'nan'
+      reject_prob: number
+      lock_cash: false
+      allow_partial: true
+      raise_reject: false
+      log: false
+      price: '+inf'
+      val_price: '+inf'
+      call_seq: 'default'
+      ffill_val_price: true
+      update_value: false
+      seed: null
+      fillna_close: true
+      direction: 'both'
+      freq: '1D'
+      group_by: true
+      engine: 'numba'
+      initial_cash_mode: 'fixed'
+      vectorbt_version: '1.0.0'
+    }
+  }
+  execution_costs: {
+    schema_version: 'execution-costs/v1'
+    model: 'vectorbt.from_orders'
+    fees: number
+    fees_unit: 'fraction_of_trade_notional_per_side'
+    slippage: number
+    slippage_unit: 'adverse_fill_price_fraction_per_side'
+  }
+  snapshot_id: string
+  content_hash: string
+  data_tier: 'pilot_real_proxy'
+  source: StrategyBoardSnapshotEvidence
+  dependency_hash: string
+}
+
 export interface StrategyBoardComparisonEvidence {
-  status: 'UNKNOWN'
-  observed_metric_sort_enabled: false
+  status: 'UNKNOWN' | 'COMPARABLE'
+  observed_metric_sort_enabled: boolean
   reasons: string[]
+  cohort_id: string | null
+  context: BoardComparisonContext | PublicWindowComparisonContext | null
+}
+
+export interface PublicWindowInterval { start: string; end: string; n_bars: number; n_windows: number }
+export interface PublicWindowComparisonContext extends Omit<BoardComparisonContext, 'schema_version' | 'protocol' | 'metrics' | 'oos'> {
+  schema_version: 'public-window-comparison/v1'
+  protocol: 'continuous_portfolio_public_windows'
+  metrics: 'window_sharpe_mean_min_population_std_positive_return_fraction/v1'
+  public_interval: PublicWindowInterval
+  seed: number | null
+}
+export interface PublicWindowRun {
+  kind: 'public_windows'
+  run_id: number
+  created_at: string
+  mean_window_sharpe: number | null
+  min_window_sharpe: number | null
+  std_window_sharpe: number | null
+  pct_positive_windows: number | null
 }
 
 export interface StrategyBoardEvidence {
@@ -457,6 +539,12 @@ export interface StrategyBoardEvidence {
   comparison: StrategyBoardComparisonEvidence
 }
 
+export interface PublicWindowEvidence extends Omit<StrategyBoardEvidence, 'oos_interval'> {
+  kind: 'public_windows'
+  public_interval: StrategyBoardEvidenceWrapper<PublicWindowInterval>
+  statistics: StrategyBoardEvidenceWrapper<Omit<PublicWindowRun, 'kind' | 'run_id' | 'created_at'>>
+}
+
 /** One registered strategy identity; `latest_gate` is `null` when it has no identity-bound gate. */
 export interface StrategyBoardRow {
   strategy_id: number
@@ -464,8 +552,10 @@ export interface StrategyBoardRow {
   family: string | null
   stage: string
   latest_gate: StrategyBoardGate | null
+  latest_research?: PublicWindowRun | null
+  recorded_provenance?: unknown
   /** Absent on the legacy response; null when the selected identity has no usable gate. */
-  evidence?: StrategyBoardEvidence | null
+  evidence?: StrategyBoardEvidence | PublicWindowEvidence | null
 }
 
 /** GET /api/strategy-board — `runs board` payload, schema `strategy-board/v1`
@@ -474,7 +564,7 @@ export interface StrategyBoardRow {
 export interface StrategyBoardPayload {
   schema_version: 'strategy-board/v1'
   /** Present only for the explicit `include_evidence=true` extension. */
-  evidence_schema_version?: 'strategy-board-evidence/v1'
+  evidence_schema_version?: 'strategy-board-evidence/v2' | 'strategy-board-research/v2'
   count: number
   rows: StrategyBoardRow[]
 }
