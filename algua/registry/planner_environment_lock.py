@@ -96,11 +96,29 @@ def _port(raw: str | None) -> int | None:
     return None if number == _HTTPS_DEFAULT_PORT else number
 
 
+def _ipv6_identity(address: ipaddress.IPv6Address) -> str:
+    """Spell the validated numeric address in all-hex, independent of stdlib text policy."""
+    packed = address.packed
+    groups = [int.from_bytes(packed[index:index + 2], "big") for index in range(0, 16, 2)]
+    start, length, index = -1, 0, 0
+    while index < len(groups):
+        end = index
+        while end < len(groups) and groups[end] == 0:
+            end += 1
+        if end - index > length:
+            start, length = index, end - index
+        index = max(end, index + 1)
+    hextets = [format(group, "x") for group in groups]
+    if length < 2:
+        return ":".join(hextets)
+    return f"{':'.join(hextets[:start])}::{':'.join(hextets[start + length:])}"
+
+
 def _authority(authority: str) -> str:
     literal = _IP_LITERAL.fullmatch(authority)
     if literal is not None:
         try:
-            host = f"[{ipaddress.IPv6Address(literal['address']).compressed}]"
+            host = f"[{_ipv6_identity(ipaddress.IPv6Address(literal['address']))}]"
         except ValueError as exc:
             raise EnvironmentIncompatible("locked wheel URL IPv6 address is invalid") from exc
         port = _port(literal["port"])

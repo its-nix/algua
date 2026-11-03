@@ -3,7 +3,9 @@ versioned, and extracting its locked wheels is total -- any malformation stays i
 non-retryable `EnvironmentIncompatible` boundary, never a raw `KeyError` or `TypeError`."""
 from __future__ import annotations
 
+import ipaddress
 import sys
+from itertools import combinations
 from pathlib import Path
 
 import pytest
@@ -254,6 +256,249 @@ def test_repository_lock_has_canonical_identities() -> None:
     assert len(locked) == 1900
     assert sorted(wheels) == sorted(locked)  # keyed by each exact raw URL
     assert all(planner_environment_lock.wheel_url_identity(url) == url for url in locked)
+
+
+# Literal vectors from the approved Python 3.12 wheel-identity compatibility companion.
+# Existing WHEEL_URL_IDENTITIES and the mapped golden above remain unchanged.
+IPV6_COMPATIBILITY_IDENTITIES = [
+    ("https://[::FFFF:192.0.2.10]/x.whl", "https://[::ffff:c000:20a]/x.whl"),
+    ("https://[::ffff:192.0.2.10]/x.whl", "https://[::ffff:c000:20a]/x.whl"),
+    ("https://[::ffff:c000:20a]/x.whl", "https://[::ffff:c000:20a]/x.whl"),
+    ("https://[::FFFF:C000:020A]/x.whl", "https://[::ffff:c000:20a]/x.whl"),
+    ("https://[0:0:0:0:0:ffff:c000:20a]/x.whl", "https://[::ffff:c000:20a]/x.whl"),
+    ("https://[0000:0000:0000:0000:0000:ffff:c000:020a]/x.whl", "https://[::ffff:c000:20a]/x.whl"),
+    ("https://[0:0:0:0:0:FFFF:192.0.2.10]/x.whl", "https://[::ffff:c000:20a]/x.whl"),
+    ("https://[0000:0000:0000:0000:0000:ffff:192.0.2.10]/x.whl", "https://[::ffff:c000:20a]/x.whl"),
+    ("https://[::ffff:0.0.0.0]/x.whl", "https://[::ffff:0:0]/x.whl"),
+    ("https://[::ffff:0.0.0.1]/x.whl", "https://[::ffff:0:1]/x.whl"),
+    ("https://[::ffff:0.1.0.0]/x.whl", "https://[::ffff:1:0]/x.whl"),
+    ("https://[::ffff:255.255.255.255]/x.whl", "https://[::ffff:ffff:ffff]/x.whl"),
+    ("https://[0000:0000:0000:0000:0000:ffff:255.255.255.255]/x.whl", "https://[::ffff:ffff:ffff]/x.whl"),
+    ("https://[::192.0.2.10]/x.whl", "https://[::c000:20a]/x.whl"),
+    ("https://[64:ff9b::192.0.2.10]/x.whl", "https://[64:ff9b::c000:20a]/x.whl"),
+    ("https://[::ffff:0:192.0.2.10]/x.whl", "https://[::ffff:0:c000:20a]/x.whl"),
+    ("https://[0:0:0:0:0:0:0:0]/x.whl", "https://[::]/x.whl"),
+    ("https://[0000:0000:0000:0000:0000:0000:0000:0000]/x.whl", "https://[::]/x.whl"),
+    ("https://[::]/x.whl", "https://[::]/x.whl"),
+    ("https://[0:0:0:0:0:0:0:1]/x.whl", "https://[::1]/x.whl"),
+    ("https://[0:0:0:1:2:3:4:5]/x.whl", "https://[::1:2:3:4:5]/x.whl"),
+    ("https://[1:2:3:4:5:0:0:0]/x.whl", "https://[1:2:3:4:5::]/x.whl"),
+    ("https://[1:0:0:0:0:0:0:0]/x.whl", "https://[1::]/x.whl"),
+    ("https://[1:0:0:2:3:4:5:6]/x.whl", "https://[1::2:3:4:5:6]/x.whl"),
+    ("https://[1:0:0:2:3:0:0:4]/x.whl", "https://[1::2:3:0:0:4]/x.whl"),
+    ("https://[1:0:0:2:3:4:0:0]/x.whl", "https://[1::2:3:4:0:0]/x.whl"),
+    ("https://[1:0:0:2:0:0:0:3]/x.whl", "https://[1:0:0:2::3]/x.whl"),
+    ("https://[1:0:2:3:4:5:6:7]/x.whl", "https://[1:0:2:3:4:5:6:7]/x.whl"),
+    ("https://[::1:2:3:4:5:6:7]/x.whl", "https://[0:1:2:3:4:5:6:7]/x.whl"),
+    ("https://[1:2:3:4:5:6:7::]/x.whl", "https://[1:2:3:4:5:6:7:0]/x.whl"),
+    ("https://[1:2:3::4:5:6:7]/x.whl", "https://[1:2:3:0:4:5:6:7]/x.whl"),
+    ("https://[2001:0DB8::ABCD]/x.whl", "https://[2001:db8::abcd]/x.whl"),
+    ("HTTPS://[::FFFF:192.0.2.10]:443/x.whl", "https://[::ffff:c000:20a]/x.whl"),
+    ("https://[::ffff:192.0.2.10]:/x.whl", "https://[::ffff:c000:20a]/x.whl"),
+    ("https://[::ffff:192.0.2.10]:0443/x.whl", "https://[::ffff:c000:20a]/x.whl"),
+    ("https://[::ffff:192.0.2.10]:8443/x.whl", "https://[::ffff:c000:20a]:8443/x.whl"),
+    ("https://[::ffff:192.0.2.10]:08443/x.whl", "https://[::ffff:c000:20a]:8443/x.whl"),
+    ("https://[2001:DB8:0:0:0:0:0:1]:8443/x.whl", "https://[2001:db8::1]:8443/x.whl"),
+    ("https://[::ffff:192.0.2.10]/a/./b/../%78%2ewhl", "https://[::ffff:c000:20a]/a/x.whl"),
+    ("https://files.pythonhosted.org/x%2bcpu.whl?q=%7e%2f", "https://files.pythonhosted.org/x%2Bcpu.whl?q=~%2F"),
+    ("https://files.pythonhosted.org/x.whl?p=/a/../b", "https://files.pythonhosted.org/x.whl?p=/a/../b"),
+    ("https://192.0.2.10:443/x.whl", "https://192.0.2.10/x.whl"),
+]
+
+
+@pytest.mark.parametrize("pair", IPV6_COMPATIBILITY_IDENTITIES)
+def test_ipv6_compatibility_literals_preserve_address_and_raw_lock_key(
+    pair: tuple[str, str],
+) -> None:
+    raw, expected = pair
+    identity = planner_environment_lock.wheel_url_identity(raw)
+
+    assert identity == expected
+    assert planner_environment_lock.wheel_url_identity(identity) == identity
+    assert planner_environment_lock.locked_wheels(_lock(wheels=_wheel(raw))) == {
+        raw: ("six", "1.17.0")}
+    assert planner_environment_lock.locked_wheel_owners(_lock(wheels=_wheel(raw))) == {
+        expected: ("six", "1.17.0")}
+    if "[" in raw:
+        original_address = raw.split("[", 1)[1].split("]", 1)[0]
+        identity_address = identity.split("[", 1)[1].split("]", 1)[0]
+        assert "." not in identity_address
+        assert ipaddress.IPv6Address(original_address).packed == (
+            ipaddress.IPv6Address(identity_address).packed)
+
+
+def test_ipv6_identity_does_not_use_stdlib_text_rendering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden(*args: object, **kwargs: object) -> str:
+        raise AssertionError("IPv6 identity must use the validated numeric address")
+
+    for helper in ("__str__", "_compress_hextets", "_explode_shorthand_ip_string"):
+        monkeypatch.setattr(ipaddress.IPv6Address, helper, forbidden)
+    for raw, expected in IPV6_COMPATIBILITY_IDENTITIES:
+        assert planner_environment_lock.wheel_url_identity(raw) == expected
+
+
+IPV6_MAPPED_EQUIVALENTS = [
+    "https://[::FFFF:192.0.2.10]/x.whl",
+    "https://[::ffff:192.0.2.10]/x.whl",
+    "https://[::ffff:c000:20a]/x.whl",
+    "https://[::FFFF:C000:020A]/x.whl",
+    "https://[0:0:0:0:0:ffff:c000:20a]/x.whl",
+    "https://[0000:0000:0000:0000:0000:ffff:c000:020a]/x.whl",
+    "https://[0:0:0:0:0:FFFF:192.0.2.10]/x.whl",
+    "https://[0000:0000:0000:0000:0000:ffff:192.0.2.10]/x.whl",
+]
+
+
+@pytest.mark.parametrize("pair", list(combinations(IPV6_MAPPED_EQUIVALENTS, 2)))
+@pytest.mark.parametrize("same_package", [False, True], ids=["two-packages", "same-package"])
+def test_every_mapped_alias_pair_has_only_one_wheel_owner(
+    pair: tuple[str, str], same_package: bool,
+) -> None:
+    first, second = pair
+    if same_package:
+        wheels = (f'wheels = [{{ url = "{first}", hash = "{HASH}" }}, '
+                  f'{{ url = "{second}", hash = "{HASH}" }}]')
+        lock = _lock(wheels=wheels)
+    else:
+        lock = _lock(wheels=_wheel(first), extra=(
+            "[[package]]\nname = 'other'\nversion = '1.0'\n"
+            "source = { registry = 'https://pypi.org/simple' }\n" + _wheel(second) + "\n"))
+
+    with pytest.raises(EnvironmentIncompatible) as caught:
+        planner_environment_lock.locked_wheels(lock)
+
+    assert str(caught.value) == "a wheel URL is locked for more than one package"
+
+
+WHEEL_URL_REJECTION_MESSAGES = [
+    ("", "locked wheel URL contains a character a URL cannot carry"),
+    ("https://files.pythonhosted.org/x y.whl",
+     "locked wheel URL contains a character a URL cannot carry"),
+    ("https://files.pythonhosted.org/café.whl",
+     "locked wheel URL contains a character a URL cannot carry"),
+    ("https://Keras.org/x.whl", "locked wheel URL contains a character a URL cannot carry"),
+    ("https://files.pythonhosted.org/a\\x.whl",
+     "locked wheel URL contains a character a URL cannot carry"),
+    ("https://files.pythonhosted.org/x%2.whl", "locked wheel URL has a malformed percent escape"),
+    ("https://files.pythonhosted.org/x.whl?v=%g1",
+     "locked wheel URL has a malformed percent escape"),
+    ("https://[fe80::1%eth0]/x.whl", "locked wheel URL has a malformed percent escape"),
+    ("http://files.pythonhosted.org/x.whl", "locked wheel URL is not an HTTPS URL"),
+    ("https:files.pythonhosted.org/x.whl", "locked wheel URL is not an HTTPS URL"),
+    ("https://files.pythonhosted.org/x.whl#sha256=abc", "locked wheel URL is not an HTTPS URL"),
+    ("https://files.pythonhosted.org/x.whl#", "locked wheel URL is not an HTTPS URL"),
+    ("https:///x.whl", "locked wheel URL authority is invalid"),
+    ("https://:443/x.whl", "locked wheel URL authority is invalid"),
+    ("https://::1/x.whl", "locked wheel URL authority is invalid"),
+    ("https://[::1/x.whl", "locked wheel URL authority is invalid"),
+    ("https://[fe80::1%25eth0]/x.whl", "locked wheel URL authority is invalid"),
+    ("https://[v1.x]/x.whl", "locked wheel URL authority is invalid"),
+    ("https://[::g]/x.whl", "locked wheel URL authority is invalid"),
+    ("https://[not-an-ip]/x.whl", "locked wheel URL authority is invalid"),
+    ("https://user:secret@files.pythonhosted.org/x.whl", "locked wheel URL authority is invalid"),
+    ("https://user@[::1]/x.whl", "locked wheel URL authority is invalid"),
+    ("https://files.pythonhosted.org:https/x.whl", "locked wheel URL authority is invalid"),
+    ("https://[::1]:abc/x.whl", "locked wheel URL authority is invalid"),
+    ("https://[::ffff:192.0.2.256]/x.whl", "locked wheel URL IPv6 address is invalid"),
+    ("https://[::ffff:01.2.3.4]/x.whl", "locked wheel URL IPv6 address is invalid"),
+    ("https://[12345::]/x.whl", "locked wheel URL IPv6 address is invalid"),
+    ("https://[1::2::3]/x.whl", "locked wheel URL IPv6 address is invalid"),
+    ("https://[1:2:3:4:5:6:7:8:9]/x.whl", "locked wheel URL IPv6 address is invalid"),
+    ("https://[192.0.2.10]/x.whl", "locked wheel URL IPv6 address is invalid"),
+    ("https://[0000:0000:0000:0000:0000:ffff:255.255.255.2555]/x.whl",
+     "locked wheel URL IPv6 address is invalid"),
+    ("https://[0000:0000:0000:0000:0000:0000:0000:0000:0000:0000]/x.whl",
+     "locked wheel URL IPv6 address is invalid"),
+    ("https://[1::2::3]:0/x.whl", "locked wheel URL IPv6 address is invalid"),
+    ("https://01.2.3.4/x.whl", "locked wheel URL has an ambiguous numeric host"),
+    ("https://1.2.3/x.whl", "locked wheel URL has an ambiguous numeric host"),
+    ("https://0x7f.0.0.1/x.whl", "locked wheel URL has an ambiguous numeric host"),
+    ("https://16909060/x.whl", "locked wheel URL has an ambiguous numeric host"),
+    ("https://example.0x/x.whl", "locked wheel URL has an ambiguous numeric host"),
+    ("https://user@192.0.2.10/x.whl", "locked wheel URL has an ambiguous numeric host"),
+    ("https://01.2.3.4:0/x.whl", "locked wheel URL has an ambiguous numeric host"),
+    ("https://user@files.pythonhosted.org/x.whl", "locked wheel URL hostname is invalid"),
+    ("https://@files.pythonhosted.org/x.whl", "locked wheel URL hostname is invalid"),
+    ("https://files_python.org/x.whl", "locked wheel URL hostname is invalid"),
+    ("https://files..pythonhosted.org/x.whl", "locked wheel URL hostname is invalid"),
+    ("https://-files.pythonhosted.org/x.whl", "locked wheel URL hostname is invalid"),
+    ("https://files.pythonhosted.org./x.whl", "locked wheel URL hostname is invalid"),
+    ("https://files%2Epythonhosted.org/x.whl", "locked wheel URL hostname is invalid"),
+    ("https://files.pythonhosted.org:0/x.whl", "locked wheel URL port is invalid"),
+    ("https://files.pythonhosted.org:65536/x.whl", "locked wheel URL port is invalid"),
+    ("https://files.pythonhosted.org:99999999999/x.whl", "locked wheel URL port is invalid"),
+    ("https://[::ffff:192.0.2.10]:0/x.whl", "locked wheel URL port is invalid"),
+    ("https://[::ffff:192.0.2.10]:65536/x.whl", "locked wheel URL port is invalid"),
+    ("https://files.pythonhosted.org/[x].whl", "locked wheel URL path or query is invalid"),
+    ("https://files.pythonhosted.org/x.whl?v=[1]", "locked wheel URL path or query is invalid"),
+    ("https://[::ffff:192.0.2.10]:0/[x].whl", "locked wheel URL port is invalid"),
+    ("https://files.pythonhosted.org", "locked wheel URL does not name a wheel"),
+    ("https://files.pythonhosted.org/x.tar.gz", "locked wheel URL does not name a wheel"),
+    ("https://files.pythonhosted.org/.whl", "locked wheel URL does not name a wheel"),
+    ("https://files.pythonhosted.org/x?file=x.whl", "locked wheel URL does not name a wheel"),
+    ("https://files.pythonhosted.org/x.whl%2F", "locked wheel URL does not name a wheel"),
+    ("https://files.pythonhosted.org/x.WHL", "locked wheel URL does not name a wheel"),
+    ("https://files.pythonhosted.org/x.whl/..", "locked wheel URL does not name a wheel"),
+]
+
+
+@pytest.mark.parametrize(("url", "message"), WHEEL_URL_REJECTION_MESSAGES)
+def test_wheel_url_rejection_message_and_first_failure_are_unchanged(
+    url: str, message: str,
+) -> None:
+    with pytest.raises(EnvironmentIncompatible) as caught:
+        planner_environment_lock.wheel_url_identity(url)
+
+    assert type(caught.value) is EnvironmentIncompatible
+    assert str(caught.value) == message
+
+
+COMPATIBILITY_DISTINCT_URLS = [
+    ("https://files.pythonhosted.org/x%2Bcpu.whl", "https://files.pythonhosted.org/x+cpu.whl"),
+    ("https://files.pythonhosted.org/a%2Fb.whl", "https://files.pythonhosted.org/a/b.whl"),
+    ("https://files.pythonhosted.org/x.whl", "https://files.pythonhosted.org/x.whl?"),
+    ("https://files.pythonhosted.org/x.whl?a=1&b=2", "https://files.pythonhosted.org/x.whl?b=2&a=1"),
+    ("https://files.pythonhosted.org/x.whl?a=1", "https://files.pythonhosted.org/x.whl?A=1"),
+    ("https://files.pythonhosted.org/x.whl", "https://files.pythonhosted.org/X.whl"),
+    ("https://files.pythonhosted.org/x.whl", "https://files.pythonhosted.org//x.whl"),
+    ("https://[::ffff:c000:20a]/x.whl", "https://[::ffff:c000:20a]:8443/x.whl"),
+    ("https://192.0.2.10/x.whl", "https://[::ffff:192.0.2.10]/x.whl"),
+    ("https://[::ffff:192.0.2.10]/x.whl", "https://[::192.0.2.10]/x.whl"),
+    ("https://[::ffff:192.0.2.10]/x.whl", "https://[::ffff:0:192.0.2.10]/x.whl"),
+    ("https://[::ffff:192.0.2.10]/x.whl", "https://[::ffff:192.0.2.11]/x.whl"),
+]
+
+
+@pytest.mark.parametrize("pair", COMPATIBILITY_DISTINCT_URLS)
+def test_compatibility_distinct_urls_keep_separate_raw_owners(pair: tuple[str, str]) -> None:
+    first, second = pair
+    assert planner_environment_lock.wheel_url_identity(first) != (
+        planner_environment_lock.wheel_url_identity(second))
+    lock = _lock(wheels=_wheel(first), extra=(
+        "[[package]]\nname = 'other'\nversion = '1.0'\n"
+        "source = { registry = 'https://pypi.org/simple' }\n" + _wheel(second) + "\n"))
+
+    assert planner_environment_lock.locked_wheels(lock) == {
+        first: ("six", "1.17.0"), second: ("other", "1.0")}
+
+
+@pytest.mark.parametrize(("wheels", "message"), [
+    ("wheels = [{ url = 1, hash = 'bad' }]", "locked wheel URL or hash is not canonical"),
+    ("wheels = [{ url = 'http://example.org/x.whl', hash = 'bad' }]",
+     "locked wheel URL is not an HTTPS URL"),
+    (f"wheels = [{{ url = '{URL}', hash = '{HASH}' }}, {{ url = '{URL}', hash = 'bad' }}]",
+     "locked wheel hash is not canonical"),
+])
+def test_locked_wheel_url_hash_and_duplicate_checks_keep_their_order(
+    wheels: str, message: str,
+) -> None:
+    with pytest.raises(EnvironmentIncompatible) as caught:
+        planner_environment_lock.locked_wheels(_lock(wheels=wheels))
+
+    assert str(caught.value) == message
+
 
 
 OVERSIZED_PORT_LOCK = _lock(wheels=_wheel(f"https://files.pythonhosted.org:{'9' * 5000}/x.whl"))

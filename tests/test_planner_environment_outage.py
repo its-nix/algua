@@ -205,6 +205,22 @@ NORMALIZED_REPORTS = {
     "lowercase-reserved-escape": (ESCAPED.replace("%2B", "%2b"), ESCAPED),
     "dot-segment": (WHEEL.replace("/packages/b7/", "/packages/./b7/"), WHEEL),
     "dot-dot-segment": (WHEEL.replace("/packages/b7/", "/packages/x/../b7/"), WHEEL),
+    # Synthetic substitutions of the recorded report, not captured IPv6 network evidence.
+    "mapped-mixed-hex": (
+        "https://[::FFFF:192.0.2.10]/packages/six-1.17.0-py2.py3-none-any.whl",
+        "https://[::ffff:c000:20a]/packages/six-1.17.0-py2.py3-none-any.whl"),
+    "mapped-expanded-mixed": (
+        "https://[0:0:0:0:0:ffff:c000:20a]/packages/six-1.17.0-py2.py3-none-any.whl",
+        "https://[::ffff:192.0.2.10]/packages/six-1.17.0-py2.py3-none-any.whl"),
+    "mapped-default-port": (
+        "https://[::ffff:192.0.2.10]:443/packages/six-1.17.0-py2.py3-none-any.whl",
+        "https://[::ffff:c000:20a]/packages/six-1.17.0-py2.py3-none-any.whl"),
+    "compatible-dotted-hex": (
+        "https://[::192.0.2.10]/packages/six-1.17.0-py2.py3-none-any.whl",
+        "https://[::c000:20a]/packages/six-1.17.0-py2.py3-none-any.whl"),
+    "translated-dotted-hex": (
+        "https://[::ffff:0:192.0.2.10]/packages/six-1.17.0-py2.py3-none-any.whl",
+        "https://[::ffff:0:c000:20a]/packages/six-1.17.0-py2.py3-none-any.whl"),
 }
 
 
@@ -245,6 +261,31 @@ def test_locked_wheel_owners_are_keyed_by_canonical_identity() -> None:
     aliased = WHEEL.replace("files.", "FILES.").replace(".org/", ".org:443/")
     assert planner_environment_lock.locked_wheel_owners(_single_wheel_lock(aliased)) == {
         WHEEL: ("six", "1.17.0")}
+
+
+MAPPED_WHEEL = "https://[::ffff:192.0.2.10]/packages/six-1.17.0-py2.py3-none-any.whl"
+MAPPED_ALIAS = "https://[::ffff:c000:20a]/packages/six-1.17.0-py2.py3-none-any.whl"
+MAPPED_REPORT = RECORDED_CONNECTION_REFUSED.replace(WHEEL, MAPPED_ALIAS)
+MAPPED_OUTAGE_REFUSALS = {
+    "unlocked-address": MAPPED_REPORT.replace("c000:20a", "c000:20b"),
+    "plain-ipv4": MAPPED_REPORT.replace("[::ffff:c000:20a]", "192.0.2.10"),
+    "malformed-address": MAPPED_REPORT.replace("[::ffff:c000:20a]", "[::ffff:192.0.2.256]"),
+    "scoped-address": MAPPED_REPORT.replace("[::ffff:c000:20a]", "[fe80::1%25eth0]"),
+    "wrong-distribution": MAPPED_REPORT.replace("six==1.17.0", "other==1.0"),
+    "different-cause-spelling": MAPPED_REPORT.replace(f"({MAPPED_ALIAS})", f"({MAPPED_WHEEL})"),
+    "hash-mismatch": ("  × Failed to download `six==1.17.0`\n"
+                      f"  {LAST} Hash mismatch for `six==1.17.0`\n"),
+    "final-timeout": MAPPED_REPORT.replace("Connection refused (os error 111)",
+                                           "operation timed out"),
+}
+
+
+@pytest.mark.parametrize("report", MAPPED_OUTAGE_REFUSALS.values(),
+                         ids=MAPPED_OUTAGE_REFUSALS.keys())
+def test_mapped_alias_ownership_does_not_broaden_outage_retry(report: str) -> None:
+    owners = locked_wheel_owners(_single_wheel_lock(MAPPED_WHEEL))
+
+    assert is_locked_wheel_outage(b"", report.encode(), owners) is False
 
 
 MALFORMED_REPORTED_URLS = {
