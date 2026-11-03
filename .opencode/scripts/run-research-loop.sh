@@ -50,6 +50,7 @@
 # Usage:
 #   .opencode/scripts/run-research-loop.sh [--hypotheses N] [--timeout DUR] [--category SLUG] [--dry-run]
 #   Optional --campaign FILE binds a cycle-start --menu-only snapshot and explicit chooser reply.
+#   --choose-campaign asks the constrained chooser once instead; the two options cannot mix.
 #
 set -euo pipefail
 ORIGINAL_ARGS=("$@")
@@ -86,6 +87,8 @@ CYCLE_ACTIVE=0
 CYCLE_PHASE=setup_failed
 CYCLE_RESULT=""
 CAMPAIGN=""
+CHOOSE_CAMPAIGN=0
+CYCLE_CAMPAIGN=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -98,11 +101,16 @@ while [[ $# -gt 0 ]]; do
     --file-mb)    FILE_MB="$2"; shift 2 ;;
     --max-cost)   MAX_COST="$2"; shift 2 ;;
     --campaign)   CAMPAIGN="$2"; shift 2 ;;
+    --choose-campaign) CHOOSE_CAMPAIGN=1; shift ;;
     --dry-run)    DRY_RUN=1; shift ;;
-    -h|--help)    sed -n '2,52p' "$0"; exit 0 ;;   # through the Usage: block
+    -h|--help)    sed -n '2,53p' "$0"; exit 0 ;;   # through the Usage: block
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+if [[ "${CHOOSE_CAMPAIGN:-0}" == 1 && -n "${CAMPAIGN:-}" ]]; then
+  echo "--choose-campaign and --campaign are mutually exclusive" >&2
+  exit 2
+fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 PYTHON="${REPO_ROOT}/.venv/bin/python"
@@ -184,7 +192,7 @@ append_digest() {
     "${rc}" "${timed_out}" "${wall_s}" "${n_strategy_files}" "${rate_limited}" \
     "${DIGEST_REPORT_PATH}" "${STRATEGY_MODULE_NAMES}" "${REPO_ROOT}" \
     "${AUTH_QUEUE}" "${AUTH_QUEUE_LOCK}" "${REPO_ROOT}" "${CLAIMED_JSON}" "${CYCLE_RESULT}" \
-    "${CAMPAIGN:-}" <<'PY' && digest_ok=1
+    "${CYCLE_CAMPAIGN:-}" <<'PY' && digest_ok=1
 import importlib.util
 import json
 import os
@@ -613,10 +621,32 @@ else
   if [[ -n "${MAX_COST}" ]]; then CLAIM_ARGS+=(--max-cost "${MAX_COST}"); fi
   if [[ -n "${CATEGORY}" ]]; then CLAIM_ARGS+=(--category "${CATEGORY}"); fi
   if [[ -n "${CAMPAIGN:-}" ]]; then CLAIM_ARGS+=(--campaign "${CAMPAIGN}"); fi
-  CLAIMED_JSON="$(ALGUA_DB_PATH="${AUTH_DB}" ALGUA_DATA_DIR="${AUTH_DATA_DIR}" "${AUTH_CLI[@]}" "${CLAIM_ARGS[@]}" \
-    | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["claimed"]))')" \
+  if [[ "${CHOOSE_CAMPAIGN:-0}" == 1 ]]; then
+    # Stable per-cycle private output: an existing directory refuses before another model call.
+    # The existing CLI owns freshness, context, resource admission and the fenced claim transaction.
+    CLAIM_ARGS+=(--choose --choice-dir "${AUTH_DATA_DIR}/research-cycles/${STAMP}.choice")
+  fi
+  CLAIM_START_JSON="$(ALGUA_DB_PATH="${AUTH_DB}" ALGUA_DATA_DIR="${AUTH_DATA_DIR}" "${AUTH_CLI[@]}" "${CLAIM_ARGS[@]}")" \
     || { echo "claim failed; refusing to run without claimed ideas" >&2
          rc=1; exit 1; }
+  CLAIMED_JSON="$(printf '%s' "${CLAIM_START_JSON}" | python3 -c '
+import json,sys
+payload = json.load(sys.stdin)
+if not isinstance(payload, dict) or not isinstance(payload.get("claimed"), list):
+    raise ValueError("invalid cycle-start claims")
+print(json.dumps(payload["claimed"]))')"
+  # Publication follows the controller's actual adoption, including an internally produced choice.
+  CYCLE_CAMPAIGN="$(printf '%s' "${CLAIM_START_JSON}" | python3 -c '
+import json,sys
+campaign = json.load(sys.stdin).get("campaign")
+if campaign is not None and not isinstance(campaign, dict):
+    raise ValueError("invalid cycle-start campaign")
+print("campaign" if campaign is not None else "")')"
+  unset CLAIM_START_JSON
+  if [[ ( "${CHOOSE_CAMPAIGN:-0}" == 1 || -n "${CAMPAIGN:-}" ) && -z "${CYCLE_CAMPAIGN}" ]]; then
+    echo "cycle-start did not adopt the requested campaign; refusing publication" >&2
+    rc=1; exit 1
+  fi
   N_CLAIMED="$(python3 -c 'import json,sys; print(len(json.loads(sys.argv[1])))' "${CLAIMED_JSON}")"
   # The prompt gets a PROJECTION: the claim TOKEN is the driver's authority credential — it is
   # what `research idea record-outcome` checks — so it must never be handed to the agent (whose
