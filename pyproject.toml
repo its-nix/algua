@@ -404,6 +404,7 @@ modules = [
     "algua.cli.portfolio_cmd",
     "algua.cli.registry_cmd",
     "algua.cli.research_cmd",
+    "algua.cli.research_memory_cmd",
     "algua.cli.strategy_cmd",
 ]
 
