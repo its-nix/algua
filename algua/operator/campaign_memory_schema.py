@@ -8,7 +8,12 @@ from datetime import datetime
 from typing import Any
 
 from algua.operator.research_memory_checkpoint import canonical, strict_json, validated_seed
-from algua.registry.store.run_public import WINDOW_METRICS, public_config
+from algua.operator.research_memory_inputs import (
+    context_input_limit,
+    public_memory_inputs,
+    validate_portfolio_bindings,
+)
+from algua.registry.store.run_public import WINDOW_METRICS
 from algua.tracking.research_archive import valid_run_id
 
 KINDS = {"backtest", "walk_forward", "sweep", "sweep_trial"}
@@ -92,7 +97,8 @@ def observation(value: Any, cycle_id: str, *, archived: bool) -> None:
                              if k == "seed" else isinstance(v, str))
                 for k, v in value["provenance"].items()))
     require(isinstance(value["inputs"], dict)
-            and canonical(public_config(value["inputs"])) == canonical(value["inputs"]))
+            and canonical(public_memory_inputs(value["kind"], value["inputs"]))
+            == canonical(value["inputs"]))
     metrics = IS_METRICS if value["kind"] == "backtest" else set(WINDOW_METRICS)
     require(exact(value["metrics"], metrics))
     require(all(v is None or type(v) in (int, float) and math.isfinite(v)
@@ -102,6 +108,10 @@ def observation(value: Any, cycle_id: str, *, archived: bool) -> None:
         {"mean_trial_sharpe"} if value["kind"] == "sweep" else set()))
     require(all(v is None or type(v) in (int, float) and math.isfinite(v) for v in extra.values()))
     model_refs(value["model_refs"], value["kind"])
+    validate_portfolio_bindings(value["kind"], value["inputs"],
+        strategy_name=value["strategy_name"], strategy_local_id=value.get("strategy_local_id"),
+        provenance=value["provenance"], metrics=value["metrics"], model_refs=value["model_refs"],
+        parent_refs=value["parent_refs"], extra_metrics=value["extra_metrics"])
 
 
 def _validate_payload(payload: Any, cycle_id: str) -> None:
@@ -204,7 +214,8 @@ def validate_snapshot(value: Any) -> dict:
                 raise MemoryContextError("worker_result_invalid")
             require(source[1] in cycles and row.get("archive_ref") == cycles[source[1]])
             observation(row, source[1], archived=False)
-            require(len(canonical(row["inputs"])) <= 4096)
+            require(len(canonical(row["inputs"]))
+                    <= context_input_limit(row["kind"], row["inputs"]))
             order.append((list(cycles).index(source[1]), int(source[2])))
         require(order == sorted(set(order)))
         coverage = value["coverage"]

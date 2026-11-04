@@ -22,6 +22,7 @@ from algua.operator.research_memory_checkpoint import (
     strict_json,
     validate_retained_payload,
 )
+from algua.operator.research_memory_inputs import context_input_limit
 from algua.tracking.bounded_local_read import ReadBudget
 from algua.tracking.research_archive import ArchiveReadError, LocalResearchArchive
 from algua.tracking.uri import sqlite_tracking_uri
@@ -56,7 +57,7 @@ class _Projection:
                 key=lambda ref: int(ref.rsplit(":", 1)[1]))})
         self.retained += len(payload["evaluations"])
         for row in sorted(payload["evaluations"], key=lambda row: row["source_run_id"]):
-            if len(canonical(row["inputs"])) > 4096:
+            if len(canonical(row["inputs"])) > context_input_limit(row["kind"], row["inputs"]):
                 self.omitted_inputs += 1
                 continue
             if not self.slots:

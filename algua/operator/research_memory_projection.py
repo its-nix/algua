@@ -11,11 +11,11 @@ from pathlib import Path
 from typing import Any
 
 from algua.operator.research_memory_checkpoint import strict_json
+from algua.operator.research_memory_inputs import public_memory_inputs, validate_portfolio_bindings
 from algua.registry.db.constants import METRIC_SCHEMA_VERSION, SCHEMA_VERSION
 from algua.registry.read_snapshot import registry_snapshot
 from algua.registry.store.run_public import (
     WINDOW_METRICS,
-    public_config,
     public_extra,
     public_number,
     public_rows,
@@ -182,7 +182,8 @@ def public_evaluations(
             if not isinstance(parsed["config_json"], dict):
                 raise ValueError("research memory config must be an object")
             config = parsed["config_json"]
-            if canonical_bytes(public_config(config)) != canonical_bytes(config):
+            if (canonical_bytes(public_memory_inputs(row["kind"], config))
+                    != canonical_bytes(config)):
                 raise ValueError("research memory input config shape is unsupported")
             parents = parsed["derived_from"]
             if (not isinstance(parents, list)
@@ -217,17 +218,23 @@ def public_evaluations(
             raise ValueError("research memory source lineage is malformed")
         ref = f"scratch:{cycle_id}:runs:{row['id']}"
         metrics = _IS_METRICS if row["kind"] == "backtest" else sorted(WINDOW_METRICS)
-        evaluations.append({
+        observation = {
             "source_ref": ref, "source_run_id": row["id"], "kind": row["kind"],
             "strategy_name": row["strategy_name"], "strategy_local_id": row["strategy_id"],
             "created_at": row["created_at"],
             "parent_refs": [f"scratch:{cycle_id}:runs:{parent}" for parent in parents],
             "provenance": {key: row[key] for key in _PROVENANCE},
             "model_refs": models[row["id"]],
-            "inputs": public_config(config),
+            "inputs": public_memory_inputs(row["kind"], config),
             "metrics": {key: public_number(row[key]) for key in metrics},
             "extra_metrics": extras.get(row["id"], {}),
-        })
+        }
+        validate_portfolio_bindings(row["kind"], observation["inputs"],
+            strategy_name=row["strategy_name"], strategy_local_id=row["strategy_id"],
+            provenance=observation["provenance"], metrics=observation["metrics"],
+            model_refs=observation["model_refs"], parent_refs=observation["parent_refs"],
+            extra_metrics=observation["extra_metrics"])
+        evaluations.append(observation)
         if row["kind"] == "sweep" and row["trials_truncated_at"] is not None:
             truncated.append({"source_ref": ref, "retained_limit": row["trials_truncated_at"]})
     return evaluations, {

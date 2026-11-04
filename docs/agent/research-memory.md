@@ -47,12 +47,31 @@ provenance. Supported model pins survive as references, without resolving or cop
 Sweep parents also retain only the public overflow statistic `mean_trial_sharpe`. Ordinary
 windowed research retains only the current public window vocabulary. Negative results survive.
 
-The config must round-trip exactly through the existing public config projection. Unsupported
-namespaces, including `portfolio_replay` in this baseline, refuse capture and cleanup rather
-than silently lose declared inputs. Adding support requires a reviewed public projection for
-the producer's actual schema. Malformed raw config, model references or lineage also refuse
+Ordinary config must round-trip exactly through the existing public config projection. Unsupported
+namespaces refuse capture and cleanup rather than silently lose declared inputs. Adding support
+requires a reviewed public projection for the producer's actual schema. Malformed raw config,
+including duplicate JSON keys at any nesting level, model references or lineage also refuse
 before a legacy reader can salvage them. Public params and grids remain opaque declared input
 namespaces; the archiver does not recursively strip or reinterpret them.
+
+The existing `backtest portfolio` producer has a separate closed public input admission. Only a
+complete `portfolio_replay` config with `portfolio-replay-result/v1`,
+`in_sample_research_replay` and `is_forward_test=false` is accepted. Its original manifest,
+general sleeve configs/identities, budgets, constraints, risk assumptions, source provenance,
+costs, limitations and measured or undefined metrics survive whole. Data-only checks bind the
+declared book/config digests and source metadata, then bind the outer backtest row's NULL local
+strategy ID, name, provenance and IS metrics. The record has no model components, parents or
+extra metrics. No engine, authored strategy, model or source artifact is loaded to validate it;
+these remain unverified worker declarations, with no qualification or trading authority.
+
+Windowed replay namespaces, incomplete/unknown result shapes, private metadata, result paths,
+gate/holdout additions and inconsistent record bindings refuse capture and cleanup. Source JSON
+still fits 64 KiB per field; a larger expanded replay config retains the worker even when its
+original manifest was small. A valid retained portfolio input above 16 KiB is omitted whole from
+campaign context, with explicit input-size coverage, while its complete archive remains intact.
+The namespace-specific allowance makes the existing 8,086-byte two-sleeve pilot record eligible
+by size inside the unchanged 24 KiB context. Earlier records and final whole-tail trimming still
+determine inclusion; no metric controls selection and no per-idea result attribution is inferred.
 
 No raw registry, MLflow or knowledge-vault blobs, claim credentials, gate rows, holdout metrics,
 private result diagnostics or unknown overflow values are archived. Inherited rows contribute
@@ -147,8 +166,10 @@ View bounds and deterministic omission are:
 
 - At most two artifacts, 16 MiB each and 32 MiB combined, with no recursive parent/archive reads.
 - At most two controller checkpoints, 256 KiB each and 512 KiB combined.
-- Whole input objects above 4 KiB omit the entire observation first; public inputs are never
-  stripped or truncated to fit.
+- Ordinary whole input objects above 4 KiB omit the entire observation first. Complete validated
+  `portfolio_replay` backtest inputs have a separate 16 KiB allowance. Both are checked after
+  full record validation; invalid large records refuse instead of becoming omissions. Public
+  inputs are never stripped or truncated to fit, and the complete context still fits 24 KiB.
 - Take the first 24 remaining observations, counting later ones as omitted for count. Remove
   whole tail observations until the complete context fits 24 KiB. Never backfill.
 - Recompute coverage after each trim: retained equals included plus omitted, and omitted equals
