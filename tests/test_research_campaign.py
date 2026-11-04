@@ -536,7 +536,8 @@ def test_campaign_publication_requires_selected_claim_and_matching_ledger_outcom
     import sys
     from pathlib import Path
 
-    from tests.test_research_run_digest import _APPEND_DIGEST_SRC, _ec
+    from tests._research_driver_source import function_python
+    from tests.test_research_run_digest import _ec
 
     cycle = ResearchCycle(pool, tmp_path / "cycles", "publication")
     campaign = choose(cycle.campaign_menu(**request()), 1)
@@ -573,7 +574,9 @@ def test_campaign_publication_requires_selected_claim_and_matching_ledger_outcom
             '1', '0', str(report), 'fixture_strategy', str(Path.cwd()), str(queue),
             str(tmp_path / 'queue.lock'), '', json.dumps(claimed),
             str(result_path) if case != "missing_result" else '', 'explicit-campaign.json']
-    run = subprocess.run([sys.executable, '-', *args], input=_APPEND_DIGEST_SRC,
+    driver = Path(__file__).resolve().parents[1] / '.opencode/scripts/run-research-loop.sh'
+    run = subprocess.run([sys.executable, '-', *args],
+                         input=function_python(driver.read_text(), "append_digest"),
                          capture_output=True, text=True, cwd=Path.cwd())
     assert run.returncode == 0, run.stderr
     items = json.loads(queue.read_text())["items"] if queue.exists() else {}

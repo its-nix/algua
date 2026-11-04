@@ -2,19 +2,20 @@
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from tests._research_driver_source import function_python
+
 DRIVER = Path(__file__).resolve().parents[1] / ".opencode/scripts/run-research-loop.sh"
 
 
 def _legacy_outcomes(tmp_path, monkeypatch, rows, *, worker_exit="0", fail_write=False):
     """Execute the actual driver's outcome code with a trusted CLI response fixture."""
-    sources = re.findall(r"<<'PY'[^\n]*\n(.*?)\n^PY$", DRIVER.read_text(), re.S | re.M)
+    source = function_python(DRIVER.read_text(), "record_outcomes")
     report = tmp_path / "report.md"
     report.write_text("```json\n" + json.dumps(
         {"hypotheses": [{"title": "Fixture", **r} for r in rows]}) + "\n```\n")
@@ -30,7 +31,7 @@ def _legacy_outcomes(tmp_path, monkeypatch, rows, *, worker_exit="0", fail_write
                                     str(tmp_path), "completed"])
     namespace = {"__name__": "__main__"}
     try:
-        exec(compile(sources[1], str(DRIVER), "exec"), namespace)
+        exec(compile(source, str(DRIVER), "exec"), namespace)
     except SystemExit as exc:
         return exc.code, calls
     return 0, calls
