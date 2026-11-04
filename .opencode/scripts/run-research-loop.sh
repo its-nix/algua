@@ -51,6 +51,7 @@
 #   .opencode/scripts/run-research-loop.sh [--hypotheses N] [--timeout DUR] [--category SLUG] [--dry-run]
 #   Optional --campaign FILE binds a cycle-start --menu-only snapshot and explicit chooser reply.
 #   --choose-campaign asks the constrained chooser once instead; the two options cannot mix.
+#   --public-memory-context adds bounded unverified history only with an explicit campaign mode.
 #
 set -euo pipefail
 ORIGINAL_ARGS=("$@")
@@ -88,6 +89,7 @@ CYCLE_PHASE=setup_failed
 CYCLE_RESULT=""
 CAMPAIGN=""
 CHOOSE_CAMPAIGN=0
+PUBLIC_MEMORY_CONTEXT=0
 CYCLE_CAMPAIGN=""
 
 while [[ $# -gt 0 ]]; do
@@ -102,13 +104,18 @@ while [[ $# -gt 0 ]]; do
     --max-cost)   MAX_COST="$2"; shift 2 ;;
     --campaign)   CAMPAIGN="$2"; shift 2 ;;
     --choose-campaign) CHOOSE_CAMPAIGN=1; shift ;;
+    --public-memory-context) PUBLIC_MEMORY_CONTEXT=1; shift ;;
     --dry-run)    DRY_RUN=1; shift ;;
-    -h|--help)    sed -n '2,53p' "$0"; exit 0 ;;   # through the Usage: block
+    -h|--help)    sed -n '2,54p' "$0"; exit 0 ;;   # through the Usage: block
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 if [[ "${CHOOSE_CAMPAIGN:-0}" == 1 && -n "${CAMPAIGN:-}" ]]; then
   echo "--choose-campaign and --campaign are mutually exclusive" >&2
+  exit 2
+fi
+if [[ "${PUBLIC_MEMORY_CONTEXT:-0}" == 1 && "${CHOOSE_CAMPAIGN:-0}" != 1 && -z "${CAMPAIGN:-}" ]]; then
+  echo "--public-memory-context requires --choose-campaign or --campaign" >&2
   exit 2
 fi
 
@@ -685,7 +692,17 @@ else
     # The existing CLI owns freshness, context, resource admission and the fenced claim transaction.
     CLAIM_ARGS+=(--choose --choice-dir "${AUTH_DATA_DIR}/research-cycles/${STAMP}.choice")
   fi
-  CLAIM_START_JSON="$(ALGUA_DB_PATH="${AUTH_DB}" ALGUA_DATA_DIR="${AUTH_DATA_DIR}" "${AUTH_CLI[@]}" "${CLAIM_ARGS[@]}")" \
+  if [[ "${PUBLIC_MEMORY_CONTEXT:-0}" == 1 ]]; then
+    CLAIM_ARGS+=(--public-memory-context)
+  fi
+  CLAIM_START_JSON="$(
+    if [[ "${PUBLIC_MEMORY_CONTEXT:-0}" == 1 ]]; then
+      cd "${REPO_ROOT}"
+      export ALGUA_TRACKING_BACKEND="${AUTH_TRACKING_BACKEND}"
+      export ALGUA_MLFLOW_TRACKING_URI="${AUTH_TRACKING_URI}"
+    fi
+    ALGUA_DB_PATH="${AUTH_DB}" ALGUA_DATA_DIR="${AUTH_DATA_DIR}" "${AUTH_CLI[@]}" "${CLAIM_ARGS[@]}"
+  )" \
     || { echo "claim failed; refusing to run without claimed ideas" >&2
          rc=1; exit 1; }
   CLAIMED_JSON="$(printf '%s' "${CLAIM_START_JSON}" | python3 -c '

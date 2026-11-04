@@ -514,14 +514,14 @@ def test_cycle_cli_subdirectory_retains_required_source_identity(cycle, tmp_path
 def test_missing_required_source_identity_refuses_before_claim(cycle, tmp_path, monkeypatch):
     from typer.testing import CliRunner
 
-    from algua.cli import idea_ops_cmd
     from algua.cli.main import app
+    from algua.operator import research_context
 
     monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "fixture.db"))
     monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path))
     # Simulate a required source unavailable to the identity reader, without altering the tree.
-    original = idea_ops_cmd.file_hash
-    monkeypatch.setattr(idea_ops_cmd, "file_hash",
+    original = research_context.file_hash
+    monkeypatch.setattr(research_context, "file_hash",
                         lambda p: None if p.name == "uv.lock" else original(p))
     result = CliRunner().invoke(app, ["research", "idea", "cycle-start", "--run", "missing-source",
                                      "--limit", "1"])

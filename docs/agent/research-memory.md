@@ -22,7 +22,7 @@ the existing trusted cleanup callers require a successful fresh `cleanup-check` 
    `capture(worker_root, worker_exit=actual_exit, source_commit=actual_commit)`. The bounded
    snapshot verifies the inherited run prefix before excluding its IDs. A registry reset,
    deletion, mutation or reused ID refuses capture rather than masquerading as zero experiments.
-3. Capture publishes canonical JSON, downloads the actual MLflow artifact, verifies its SHA and
+3. Capture publishes canonical JSON, reads the actual MLflow artifact, verifies its SHA and
    content, and only then appends an immutable receipt. A retry after publication but before the
    receipt recovers the same MLflow run; a different payload for the cycle refuses replacement.
 4. Pass `receipt['reference']` through the existing cycle finish `evidence_ref`. This supplies
@@ -106,6 +106,89 @@ layouts must resolve exactly to the cycle's expected modern or legacy worktree p
 
 Acceptance evidence uses synthetic fixture databases with actual SQLite/WAL snapshots, the
 actual run recorder (including capped sweep children), and actual local MLflow publication and
-download. It covers negative results, inherited exclusion, reset/reused IDs, privacy sentinels,
+readback. It covers negative results, inherited exclusion, reset/reused IDs, privacy sentinels,
 publication/metadata crashes, retry identity, corrupt/missing/changed artifacts and source,
 unsupported schemas/inputs and resource bounds. No fixture result is market evidence.
+
+## Optional campaign context
+
+`research idea cycle-start --public-memory-context` adds a bounded view of retained public
+evaluations to the existing hashed `request.context.public_research_memory`. It is default-off
+and requires `--menu-only`, `--campaign FILE` or `--choose --choice-dir PATH`. Manual menu capture
+and admission must both opt in. The research driver forwards this switch only alongside
+`--campaign FILE` or `--choose-campaign`; dry runs perform no archive/model/claim operations.
+The normal schedule, runtime seam, model choices and author prompt are unchanged.
+
+```bash
+uv run algua research idea cycle-start --run ID --limit 3 --menu-only --public-memory-context
+uv run algua research idea cycle-start --run ID --limit 3 --campaign FILE --public-memory-context
+uv run algua research idea cycle-start --run ID --limit 3 --choose --choice-dir PATH --public-memory-context
+.opencode/scripts/run-research-loop.sh --choose-campaign --public-memory-context
+```
+
+The `campaign-public-memory/v1` object contains receipt references, existing attempt IDs,
+lossless bounded public observations and explicit coverage. It is always `UNVERIFIED_WORKER`,
+`authority=none`, `association=cycle_only`. Each observation preserves its real scratch source
+reference, kind, strategy name, parents, declared model references, provenance, whole supported
+inputs and existing public metrics. No model bytes are resolved. Costs, data limitations and
+negative values survive when recorded. Missing information and unrecorded variant failures
+remain unknown. A cycle's attempt list does not identify which idea produced each evaluation;
+never infer per-family negative alpha or alter gate/search/FDR counts from this view.
+
+The adapter resolves terminal attempt rows from the union of the offered choices' existing
+`prior_evidence_ids`. It inspects the first 64 by descending actual attempt ID, deduplicates cycles
+and selects at most two canonical memory receipts in that order. Conflicting archive references
+for a cycle refuse. Legacy absent/non-memory references are explicit unavailable coverage;
+selected missing, corrupt or incompatible evidence refuses the operation. Selection never uses
+the sign or value of a metric. Within each selected cycle, records use ascending source run ID.
+
+View bounds and deterministic omission are:
+
+- At most two artifacts, 16 MiB each and 32 MiB combined, with no recursive parent/archive reads.
+- At most two controller checkpoints, 256 KiB each and 512 KiB combined.
+- Whole input objects above 4 KiB omit the entire observation first; public inputs are never
+  stripped or truncated to fit.
+- Take the first 24 remaining observations, counting later ones as omitted for count. Remove
+  whole tail observations until the complete context fits 24 KiB. Never backfill.
+- Recompute coverage after each trim: retained equals included plus omitted, and omitted equals
+  the disjoint input-size, count and context-size omissions. Sweep truncation markers accompany
+  included sweeps only; other markers are counted as omitted.
+- Fixed request/wire ceilings are 64 KiB and 25 KiB, with 4 KiB of private stderr diagnostics.
+  The chooser's existing 96 KiB complete-prompt and 32 KiB reply limits still apply.
+
+The parent captures feedback and closes its SQLite transaction before launching the fixed trusted
+reader. It then checks feedback again. Enabled chooser execution has exactly one pre-choice
+read batch and one post-choice revalidation batch; each has a separate 20-second work/result
+acceptance deadline including startup, metadata queries, reads, validation and projection. These
+are two required phases, up to 40 seconds of accepted memory work, with no retry/reset after a
+failed phase. The parent checks its own absolute monotonic clock immediately after the existing
+contained runner returns and again after wire/schema validation. A late result is refused even
+when the runner reports `timed_out=false`. On failure there is no fallback, replacement chooser
+call or claim. Complete process-group teardown/reaping remains mandatory and can exceed the
+deadline under kernel scheduling or uninterruptible I/O; this is not a universal return-by-20s
+guarantee or a strategy sandbox.
+
+Artifact and checkpoint reads preflight a nonblocking, no-follow regular-file descriptor before
+materializing content. They read capped chunks up to the captured size, verify file/path change
+stamps and reject oversized, changed, symlink, special-file or unsupported locations. There is
+no MLflow whole-file download/copy or cap-plus-one body read. The selected store, experiment,
+run, receipt tags, SHA, envelope, original seed and controller context are verified. Lookup
+creates no missing store, experiment or run; publication remains a separate producer operation.
+
+MLflow metadata lookup uses a private DB/WAL snapshot to avoid source-side SQLite SHM writes,
+with a 128 MiB source-size preflight ceiling per lookup and a five-second SQL query deadline.
+Those are distinct from strict artifact/checkpoint read-byte limits: concurrent database growth
+can increase copy I/O before the change check refuses. The outer batch deadline includes that
+work. No claim is made that all filesystem/database/kernel I/O fits the 32 MiB artifact budget.
+
+After choosing, the selected receipts and deterministic context must match the captured snapshot
+before the existing controller/CAS admits claims. The exact five-field choice grammar, offered
+`prior_evidence_ids`, ranking, resource limits and authority counts are unchanged. Setup and
+manual recovery carry only the original immutable memory snapshot from the correctly bound
+checkpoint while independently recomputing every base source/data field. Setup does not fetch a
+newer archive. An already started chooser refuses before another archive/model call.
+
+Domain refusals retain the standard JSON envelope, exit 1, `code=invalid_input`,
+`retryable=false`, and `error=public_memory_context:<reason>`. This opt-in context demonstrates
+retained-memory plumbing; fixture choices do not prove causal autonomous learning, 100 recorded
+experiments, ten unattended cycles, paper readiness or profitable alpha.
