@@ -52,6 +52,7 @@
 #   Optional --campaign FILE binds a cycle-start --menu-only snapshot and explicit chooser reply.
 #   --choose-campaign asks the constrained chooser once instead; the two options cannot mix.
 #   --public-memory-context adds bounded unverified history only with an explicit campaign mode.
+#   --research-public-memory-context also forwards that admitted snapshot into the primary prompt.
 #
 set -euo pipefail
 ORIGINAL_ARGS=("$@")
@@ -90,6 +91,8 @@ CYCLE_RESULT=""
 CAMPAIGN=""
 CHOOSE_CAMPAIGN=0
 PUBLIC_MEMORY_CONTEXT=0
+RESEARCH_PUBLIC_MEMORY_CONTEXT=0
+RESEARCH_PUBLIC_MEMORY_JSON=""
 CYCLE_CAMPAIGN=""
 
 while [[ $# -gt 0 ]]; do
@@ -105,13 +108,18 @@ while [[ $# -gt 0 ]]; do
     --campaign)   CAMPAIGN="$2"; shift 2 ;;
     --choose-campaign) CHOOSE_CAMPAIGN=1; shift ;;
     --public-memory-context) PUBLIC_MEMORY_CONTEXT=1; shift ;;
+    --research-public-memory-context) RESEARCH_PUBLIC_MEMORY_CONTEXT=1; shift ;;
     --dry-run)    DRY_RUN=1; shift ;;
-    -h|--help)    sed -n '2,54p' "$0"; exit 0 ;;   # through the Usage: block
+    -h|--help)    sed -n '2,55p' "$0"; exit 0 ;;   # through the Usage: block
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 if [[ "${CHOOSE_CAMPAIGN:-0}" == 1 && -n "${CAMPAIGN:-}" ]]; then
   echo "--choose-campaign and --campaign are mutually exclusive" >&2
+  exit 2
+fi
+if [[ "${RESEARCH_PUBLIC_MEMORY_CONTEXT:-0}" == 1 && ( "${PUBLIC_MEMORY_CONTEXT:-0}" != 1 || ( "${CHOOSE_CAMPAIGN:-0}" != 1 && -z "${CAMPAIGN:-}" ) ) ]]; then
+  echo "--research-public-memory-context requires --public-memory-context and --choose-campaign or --campaign" >&2
   exit 2
 fi
 if [[ "${PUBLIC_MEMORY_CONTEXT:-0}" == 1 && "${CHOOSE_CAMPAIGN:-0}" != 1 && -z "${CAMPAIGN:-}" ]]; then
@@ -707,10 +715,41 @@ else
          rc=1; exit 1; }
   CLAIMED_JSON="$(printf '%s' "${CLAIM_START_JSON}" | python3 -c '
 import json,sys
-payload = json.load(sys.stdin)
-if not isinstance(payload, dict) or not isinstance(payload.get("claimed"), list):
-    raise ValueError("invalid cycle-start claims")
-print(json.dumps(payload["claimed"]))')"
+forward = sys.argv[1] == "1"
+try:
+    raw = sys.stdin.buffer.read(1024 * 1024 + 1) if forward else sys.stdin.read()
+    if forward and len(raw) > 1024 * 1024:
+        raise ValueError("oversized cycle-start response")
+    payload = json.loads(raw)
+    if not isinstance(payload, dict) or not isinstance(payload.get("claimed"), list):
+        raise ValueError("invalid cycle-start claims")
+    print(json.dumps(payload["claimed"]))
+except (ValueError, RecursionError):
+    if not forward:
+        raise
+    print("research prompt memory admission refused: invalid_response", file=sys.stderr)
+    raise SystemExit(1) from None
+' "${RESEARCH_PUBLIC_MEMORY_CONTEXT:-0}")"
+  # Forward only the already-admitted public snapshot. This is pure projection: no new archive
+  # batch, chooser, settings lookup or authority write. The existing EXIT trap reconciles claims
+  # by cycle ID if the response/binding/privacy check refuses before scratch or worker creation.
+  if [[ "${RESEARCH_PUBLIC_MEMORY_CONTEXT:-0}" == 1 && "${CLAIMED_JSON}" != "[]" ]]; then
+    RESEARCH_PUBLIC_MEMORY_JSON="$(printf '%s' "${CLAIM_START_JSON}" | "${PYTHON}" -c '
+import sys
+from algua.operator.research_memory_checkpoint import canonical
+from algua.operator.research_prompt_memory import decode_admitted_memory
+try:
+    wrapper = decode_admitted_memory(sys.stdin.buffer.read(1024 * 1024 + 1),
+                                    cycle_id=sys.argv[1], database=sys.argv[2])
+except ValueError as exc:
+    print(str(exc), file=sys.stderr)
+    raise SystemExit(1) from None
+sys.stdout.buffer.write(canonical(wrapper))
+' "${STAMP}" "${AUTH_DB}")" || {
+      echo "research prompt memory admission refused; aborting setup" >&2
+      rc=1; exit 1
+    }
+  fi
   # Publication follows the controller's actual adoption, including an internally produced choice.
   CYCLE_CAMPAIGN="$(printf '%s' "${CLAIM_START_JSON}" | python3 -c '
 import json,sys
@@ -894,6 +933,25 @@ that seeds future runs' do-not-retest context, and enqueues every valid "merge_b
 automated authoritative merge-back drainer.
 EOF
 
+# Default-off preserves the existing GOAL bytes and runs no forwarding helper. The enabled
+# complete prompt (including the single newline written below) must fit before scratch setup.
+if [[ "${RESEARCH_PUBLIC_MEMORY_CONTEXT:-0}" == 1 && "${DRY_RUN}" -eq 0 ]]; then
+  GOAL="$(printf '%s' "${GOAL}" | "${PYTHON}" -c '
+import sys
+from algua.operator.research_memory_checkpoint import strict_json
+from algua.operator.research_prompt_memory import render_research_goal
+try:
+    goal = render_research_goal(sys.stdin.buffer.read().decode("utf-8"), strict_json(sys.argv[1]))
+except ValueError as exc:
+    print(str(exc), file=sys.stderr)
+    raise SystemExit(1) from None
+sys.stdout.buffer.write(goal.encode("utf-8"))
+' "${RESEARCH_PUBLIC_MEMORY_JSON:-}")" || {
+    echo "research prompt memory rendering refused; aborting setup" >&2
+    rc=1; exit 1
+  }
+fi
+
 # The runtime, the sandbox posture and the model choice all live behind ONE seam
 # (.opencode/scripts/run_agent.sh) so this driver never names a vendor or a model. The seam
 # re-imposes a kernel write wall with bwrap (verified: a write to any path outside the worktree
@@ -916,6 +974,9 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
   echo "claimed ideas: ${N_CLAIMED}"
   echo "category: ${CATEGORY:-any}"
   echo "anti-dup titles injected: ${ANTI_DUP_TITLES}"
+  if [[ "${RESEARCH_PUBLIC_MEMORY_CONTEXT:-0}" == 1 ]]; then
+    echo "would forward the admitted public memory snapshot into the primary research prompt"
+  fi
   echo "would append run digest to: ${AUTH_DIGEST}"
   echo "sandboxed explore-isolated wiring:"
   echo "  AUTH_DB (driver reads to seed scratch; NOT agent-writable): ${AUTH_DB}"

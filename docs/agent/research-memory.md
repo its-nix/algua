@@ -117,7 +117,8 @@ evaluations to the existing hashed `request.context.public_research_memory`. It 
 and requires `--menu-only`, `--campaign FILE` or `--choose --choice-dir PATH`. Manual menu capture
 and admission must both opt in. The research driver forwards this switch only alongside
 `--campaign FILE` or `--choose-campaign`; dry runs perform no archive/model/claim operations.
-The normal schedule, runtime seam, model choices and author prompt are unchanged.
+The normal schedule, runtime seam and model choices are unchanged. This flag alone does not
+forward memory into the primary research prompt.
 
 ```bash
 uv run algua research idea cycle-start --run ID --limit 3 --menu-only --public-memory-context
@@ -192,3 +193,42 @@ Domain refusals retain the standard JSON envelope, exit 1, `code=invalid_input`,
 `retryable=false`, and `error=public_memory_context:<reason>`. This opt-in context demonstrates
 retained-memory plumbing; fixture choices do not prove causal autonomous learning, 100 recorded
 experiments, ten unattended cycles, paper readiness or profitable alpha.
+
+## Optional primary research prompt
+
+The driver has a separate default-off `--research-public-memory-context` flag. It requires both
+`--public-memory-context` and an explicit `--choose-campaign` or `--campaign FILE`; it enables
+neither prerequisite implicitly. For example:
+
+```bash
+.opencode/scripts/run-research-loop.sh --choose-campaign --public-memory-context --research-public-memory-context
+```
+
+For a running admission with nonempty new claims, the driver forwards only the already-admitted
+`request.context.public_research_memory`. A pure helper checks the successful running response,
+cycle/database/menu bindings, the complete existing selection and exact distinct claimed IDs.
+It never reads the archive again. The canonical `research-public-memory/v1` wrapper contains
+exactly `schema_version`, `research_cycle_id`, `menu_id`, `snapshot_sha256` and `snapshot`.
+The snapshot remains unchanged; the digest covers its canonical UTF-8 JSON. These bindings are
+neither a signature nor evidence that a model received or used the data.
+
+The raw admission input is capped at 1 MiB before strict forwarding JSON parsing; the snapshot
+and complete wrapper are capped at 24 KiB and 25 KiB respectively. The enabled complete GOAL is
+capped at 96 KiB UTF-8, including the single final newline written to the prompt file. Excess or
+invalid input refuses setup before scratch creation or worker launch. Nothing is truncated,
+silently omitted, reselected or requeried. Existing cycle reconciliation handles those claims;
+no worker result or economic verdict is invented. Current claim credentials are never forwarded:
+an exact credential collision inside an opaque public value refuses the whole operation.
+
+The old GOAL remains its verbatim prefix. One explicitly untrusted data block labels the snapshot
+`UNVERIFIED_WORKER`, `authority=none`, `cycle_only`, including truthful unavailable coverage.
+It supplies no qualification, trial/FDR count, per-idea evaluation attribution or permission to
+replace the claimed hypothesis. The primary instruction asks existing author/interpret tasks to
+receive the same wrapper unchanged when relevant. Actual author task receipt and use require
+separate real session evidence; fixture prompt tests prove only the deterministic primary input.
+
+With the flag off, the GOAL bytes are unchanged and neither forwarding helper runs. Dry runs do
+not claim, query archives, write a prompt or launch research. Empty/restarted cycles keep their
+existing behavior. The original worker pipeline exit, trailer grammar, gates, resources,
+retention and publication paths are unchanged. This opt-in adds no third memory read batch,
+agent tool, model setting or scheduled service.
