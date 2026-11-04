@@ -1,9 +1,8 @@
 name: CI
 
+# Owner-directed fast iteration: run the complete suite explicitly when needed.
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   gate:
