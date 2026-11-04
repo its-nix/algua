@@ -212,7 +212,7 @@ if worker not in (root / '.runs' / stamp, root.parent / ('algua-research-' + sta
     raise ValueError('research cleanup path does not match its cycle')
 PY
   if ! memory_cli cleanup-check --run "${stamp}" --worker-root "${wt}" >/dev/null; then
-    echo "retaining ${wt}: public experiment archive/source is unverified." >&2
+    echo "retaining ${wt}: cleanup refused; models or unverified public evidence may remain." >&2
     return 1
   fi
   if ! git -C "${REPO_ROOT}" worktree remove --force "${wt}" 2>/dev/null; then

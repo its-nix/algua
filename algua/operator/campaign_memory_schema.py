@@ -13,6 +13,7 @@ from algua.operator.research_memory_inputs import (
     public_memory_inputs,
     validate_portfolio_bindings,
 )
+from algua.operator.research_memory_model_refs import public_model_refs
 from algua.registry.store.run_public import WINDOW_METRICS
 from algua.tracking.research_archive import valid_run_id
 
@@ -60,16 +61,10 @@ def exact(value: Any, keys: set[str]) -> bool:
 
 
 def model_refs(value: Any, kind: str) -> None:
-    require(isinstance(value, list) and len(value) <= 16 and (kind == "backtest" or not value))
-    for ref in value:
-        require(exact(ref, {"name", "version", "digest", "training_as_of", "provenance_digest"}))
-        require(isinstance(ref["name"], str) and re.fullmatch(
-            r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", ref["name"]))
-        require(type(ref["version"]) is int and ref["version"] >= 1)
-        require(all(isinstance(ref[k], str) and re.fullmatch(r"[0-9a-f]{64}", ref[k])
-                    for k in ("digest", "provenance_digest")))
-        require(isinstance(ref["training_as_of"], str) and len(ref["training_as_of"]) <= 128)
-        require(datetime.fromisoformat(ref["training_as_of"]).tzinfo is not None)
+    try:
+        public_model_refs(value, kind=kind)
+    except ValueError as exc:
+        raise MemoryContextError("artifact_payload_invalid") from exc
 
 
 def observation(value: Any, cycle_id: str, *, archived: bool) -> None:
