@@ -208,6 +208,26 @@ def test_stale_session_cannot_be_hidden_by_fresh_marker_write(tmp_path, monkeypa
     assert json.loads(result.stdout)["loops"]["paper"] == "stale"
 
 
+@pytest.mark.parametrize("rc_key", ["rc", "last_rc"])
+@pytest.mark.parametrize("rc,session,expected", [
+    (1, "2026-01-02", "failing"), (1, "2026-10-30", "failing"),
+    (0, "2026-01-02", "stale"), (0, "2026-10-30", "ok"),
+])
+def test_paper_failure_precedence_preserves_cause_and_readonly_contract(
+        tmp_path, monkeypatch, rc_key, rc, session, expected):
+    _seed(tmp_path, monkeypatch, [_run(hypotheses=[{"outcome": "holdout_negative"}])])
+    (tmp_path / "operator_sessions.json").write_text(json.dumps({"paper": {
+        rc_key: rc, "session": session, "recorded_at": NOW.isoformat()}}))
+    before = _tree(tmp_path)
+    result = _invoke()
+    payload = json.loads(result.stdout)
+    assert payload["loops"] == {"research": "ok", "paper": expected, "mergeback": "idle"}
+    assert result.exit_code == int(expected != "ok")
+    assert payload["ok"] is (expected == "ok")
+    assert payload["incidents"] == [] and payload["evidence_mode"] == "FIXTURE"
+    assert _tree(tmp_path) == before
+
+
 @pytest.mark.parametrize("name", [
     "research-runs.jsonl", "operator_sessions.json", "mergeback-queue.json",
 ])
