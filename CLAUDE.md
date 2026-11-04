@@ -210,7 +210,15 @@ For an agent, BOTH the `backtested -> candidate` edge (research promote) AND the
 run that mints an identity-matched, single-use gate token; the raw `registry transition` refuses
 both edges for every actor (#682).
 
-## Quality gates before committing
+## Fast delivery and proportional checks
+
+Owner direction (2026-11-04): iterate with focused regression/smoke checks. Do not require the
+full test suite, CI completion, repeated independent reviews or formal readiness reports for every
+small change. Run broader integration checks when the scope warrants them or the owner asks.
+Automatic CI/CD workflows are disabled; the full CI workflow is available manually when re-enabled.
+Preserve live authorization, execution lag, data integrity and other product safety controls.
+
+Available full check, when needed:
 `uv run pytest -q && uv run ruff check . && uv run mypy algua && uv run lint-imports`
 
 Two of those enforce structure, not style, and are worth knowing before you fight them:

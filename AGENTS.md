@@ -23,8 +23,11 @@ uv run lint-imports      # architectural import boundaries (must stay "0 broken"
 uv run algua doctor      # environment readiness self-check (JSON)
 ```
 
-**The full gate must stay green after every change:** `pytest`, `ruff`, `mypy`, `lint-imports`.
-Do not weaken a contract, delete a test, or `# type: ignore` your way to green — fix the root cause.
+**Fast delivery policy (owner direction, 2026-11-04):** use focused regression or smoke checks
+for the behavior changed. Do not run the full suite or wait for CI on every small change. Full
+validation is available for broad integration changes or an explicit request. Report what actually
+ran. Preserve useful tests and fix real failures; do not add process, reports or new harnesses merely
+to demonstrate compliance. Trading authorization and data/execution invariants below still apply.
 
 ---
 
@@ -171,8 +174,8 @@ here only so they are not re-reported as open:
 - **`transition` signature vs. coercion.** RESOLVED — the transition edge now lives in
   `algua/registry/transitions.py::transition_strategy`, annotated `to: Stage | str, actor: Actor | str`,
   so the signature no longer lies about its coercion.
-- **No CI yet.** RESOLVED — `.github/workflows/ci.yml` runs the full gate
-  (`pytest + ruff + mypy + lint-imports`) on every push and pull request.
+- **No CI yet.** RESOLVED — the full CI workflow exists. Owner direction now keeps it manual,
+  with automatic repository workflows disabled during fast iteration.
 
 Finding *new* real issues beyond this list is exactly your job.
 
@@ -183,9 +186,9 @@ Finding *new* real issues beyond this list is exactly your job.
 1. **Read** the spec + `CLAUDE.md` + `operating.md`, then the module(s) in question.
 2. **Classify** each finding: Critical / Important / Minor, and whether it's in-scope (implemented behavior)
    or deferred/safety-invariant (flag-only).
-3. **Fix in scope, test-first.** Write or update a failing test that captures the bug, then fix it.
+3. **Fix in scope.** Use a focused regression when it adds useful confidence; implement the smallest correct change.
    Match existing style (small focused modules, typed, JSON-emitting CLI, parameterized SQL).
-4. **Keep the gate green** (`pytest && ruff check . && mypy algua && lint-imports`) before committing.
+4. **Validate proportionally.** Run the relevant focused checks; a full-suite run or green CI is not a prerequisite for every commit.
 5. **Commit granularly** with conventional messages (`fix:`, `chore:`, `test:`, `docs:`), one logical
    change per commit. Work on a branch, not directly on `main`, if opening a PR.
 6. **For anything touching §3 invariants or §4 deferred scope: do not change code — write up the
@@ -198,4 +201,4 @@ Finding *new* real issues beyond this list is exactly your job.
 When done, summarize:
 - Findings by severity, each with `file:line` and a one-line recommendation.
 - What you fixed (with the commit), what you flagged (and why you didn't fix it).
-- Confirmation that `pytest`, `ruff`, `mypy`, and `lint-imports` are all green.
+- Which focused checks actually ran, their results, and whether broader validation was intentionally omitted.
