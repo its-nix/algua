@@ -8,7 +8,8 @@ description: How to author a new algua strategy module — the CONFIG + signal +
 A strategy is a **single Python module** at `algua/strategies/<family>/<name>.py` (created via
 `uv run algua strategy new <name> --family <slug>`) that exposes two names: `CONFIG` and
 `signal`. The loader imports it by bare name (`load_strategy("<name>")`), so the filename
-stem **is** the strategy name and must match `CONFIG.name`. Family slugs may contain hyphens
+stem **is** the strategy name and must match `CONFIG.name`. The implemented `context_v1`
+alternative is described below. Family slugs may contain hyphens
 (`mean-reversion`), which map to underscores on disk (`mean_reversion/`). Each family directory
 must keep an **empty, side-effect-free `__init__.py`** — a family `__init__` must never import its
 member strategies, because the loader relies on that for the single-import contract.
@@ -257,6 +258,24 @@ closed** on a `needs_fundamentals` strategy — paper, live, and (critically) `w
 trading- and research-lane wiring is a #132 follow-up). Construction composes exactly the same — the
 third arg only feeds the score.
 
+## Multimodal research: `context_v1`
+
+For an idea requiring the implemented shared bars/news/model context, scaffold once with the same
+`strategy new` command, then replace its legacy callback with `STRATEGY_INTERFACE = "context_v1"`
+and exactly one pure `score(context)` callback. Remove the scaffold's `signal`; do not add
+`signal_panel` or `target_weights`. The callback returns scores, and existing construction/risk
+policies still own weights. Declare required inputs in `CONFIG`; missing inputs must refuse.
+Read `docs/acceptance/task2-score-backtest.md` for the supported canonical research path and its
+limits. Context strategies are not supported by paper/live/frozen execution; model-backed
+walk-forward and sweep remain refused. Report those limitations rather than changing interfaces
+or dropping the model to obtain a passing result.
+
+Use an exact existing `ModelRef` supplied for the experiment. For the offline linear producer,
+`docs/agent/model-training.md` documents the frozen profile and pure scorer; inference must not
+train, fetch data or resolve mutable registry state. Keep model warmup, training cutoff and actual
+snapshot limitations. If the caller has not supplied an available pinned model or required
+sidecar, report the missing input instead of inventing it.
+
 ## Discipline
 
 - **Additions only.** Create a NEW file under `algua/strategies/<family>/` via
@@ -265,6 +284,6 @@ third arg only feeds the score.
   additions-only — a new policy in `construction.py`, never an edit to an existing one.
 - Include a module-level `GENERATED_BY = "agent"` (after the imports) so machine-authored
   strategies are identifiable. Do not place it before `from __future__ import annotations`.
-- After authoring, verify it loads and runs: `uv run algua backtest run <name> --demo` should emit
-  metrics JSON, not an error. (A `needs_fundamentals` strategy needs a snapshot to run — verify it
-  with `uv run algua backtest run <name> --demo --fundamentals-snapshot <id>` instead.)
+- After authoring, verify it loads and runs with the caller's exact bars snapshot, interval and
+  required sidecars. Use `--demo` only when the experiment is explicitly synthetic. A missing
+  required input is a reported limitation, never permission to switch datasets.
