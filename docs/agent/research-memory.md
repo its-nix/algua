@@ -44,6 +44,10 @@ Only post-seed `backtest`, `walk_forward`, `sweep` and `sweep_trial` rows are pr
 a cycle-scoped source reference, original local run ID, lineage, strategy name, run time,
 declared input config, public metrics and existing code/config/dependency/data/snapshot/seed
 provenance. Supported model pins survive as references, without resolving or copying model bytes.
+Pins retain the producer's 16/16-hex digests or the existing v1 legacy 64/64 form, never mixed widths.
+Valid training cutoffs retain their original bare-date, naive or aware spelling; legacy aware ISO
+spellings remain accepted. This preserves metadata compatibility, not proof of model use or PIT
+qualification. Archive/receipt/source SHA256 fields remain full 64-hex values.
 Sweep parents also retain only the public overflow statistic `mean_trial_sharpe`. Ordinary
 windowed research retains only the current public window vocabulary. Negative results survive.
 

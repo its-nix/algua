@@ -3,15 +3,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from algua.operator.research_memory_checkpoint import strict_json
 from algua.operator.research_memory_inputs import public_memory_inputs, validate_portfolio_bindings
+from algua.operator.research_memory_model_refs import public_model_refs
 from algua.registry.db.constants import METRIC_SCHEMA_VERSION, SCHEMA_VERSION
 from algua.registry.read_snapshot import registry_snapshot
 from algua.registry.store.run_public import (
@@ -128,24 +127,7 @@ def seed_evidence(worker_root: Path, limits: MemoryLimits) -> dict[str, Any]:
 
 
 def _model_refs(value: Any, kind: str) -> list[dict[str, Any]]:
-    keys = {"name", "version", "digest", "training_as_of", "provenance_digest"}
-    if not isinstance(value, list) or len(value) > 16:
-        raise ValueError("research memory model references are malformed")
-    if kind != "backtest" and value:
-        raise ValueError("model-backed windowed research is unsupported")
-    for ref in value:
-        if (not isinstance(ref, dict) or set(ref) != keys
-                or not isinstance(ref["name"], str)
-                or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", ref["name"]) is None
-                or type(ref["version"]) is not int or ref["version"] < 1
-                or any(not isinstance(ref[key], str)
-                       or re.fullmatch(r"[0-9a-f]{64}", ref[key]) is None
-                       for key in ("digest", "provenance_digest"))
-                or not isinstance(ref["training_as_of"], str)
-                or len(ref["training_as_of"]) > 128
-                or datetime.fromisoformat(ref["training_as_of"]).tzinfo is None):
-            raise ValueError("research memory model reference is malformed")
-    return value
+    return public_model_refs(value, kind=kind)
 
 
 def public_evaluations(
