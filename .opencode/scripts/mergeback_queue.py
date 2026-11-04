@@ -802,6 +802,27 @@ def compute_run_branch_name(stamp: str, candidates: list[str]) -> str:
     return base
 
 
+def _memory_verified(root: Path, worktree: Path, stamp: str) -> bool:
+    """Use the trusted main CLI/config, with a bounded wait; never trust a worker .env."""
+    root = root.resolve()
+    if worktree.resolve() not in (root / ".runs" / stamp,
+                                   root.parent / f"algua-research-{stamp}"):
+        return False
+    try:
+        result = subprocess.run(
+            [str(root / ".venv/bin/algua"), "research", "memory", "cleanup-check",
+             "--run", stamp, "--worker-root", str(worktree)],
+            cwd=root, capture_output=True, text=True, timeout=30)
+        payload = json.loads(result.stdout)
+        return (result.returncode == 0 and payload.get("ok") is True
+                and payload.get("research_cycle_id") == stamp
+                and payload.get("cleanup_allowed") is True)
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        print(f"WARNING: research memory verification failed; retaining {worktree}: {exc}",
+              file=sys.stderr)
+        return False
+
+
 def cleanup_branch(queue_path: Path, lock_path: Path, *, branch: str, repo_root: Path) -> dict:
     """Best-effort reclaim of one research branch's worktree once its queue items are ALL terminal.
 
@@ -815,22 +836,20 @@ def cleanup_branch(queue_path: Path, lock_path: Path, *, branch: str, repo_root:
     garbage branch can never resolve to a path outside the two expected locations.
 
     NEVER raises (the drainer must not fail on cleanup): every failure lands in the returned dict
-    (and loudly on stderr) instead. The removal itself runs OUTSIDE the queue lock, so a concurrent
-    re-enqueue on the same branch CAN race the check — a fully-terminal branch can gain a fresh
-    ``pending`` item again via the operational resurrection recipe (drop the terminal item, enqueue
-    it afresh). That race is benign for a different reason: no downstream consumer ever needs the
-    research worktree. ``paper merge-back`` consumes the BRANCH (refs survive worktree removal) and
-    the hermetic quality gate (#552) builds its own throwaway worktree, so a racy removal loses
-    only human browsability — never a merge-back input. Not worth holding the queue lock across a
-    multi-second ``rm -rf`` for."""
+    instead. The existing queue lock covers terminal check, actual archive/source verification
+    and removal. Verification is bounded to 30 seconds per check; errors/timeouts retain the
+    worktree and never rewrite queue economic results. Each destructive fallback revalidates.
+    """
     result: dict = {"branch": branch, "removed": False, "log_archived": False}
+    handle = None
     try:
         m = _RUN_BRANCH_RE.match(branch or "")
         if m is None:
             result["skipped"] = "not_a_research_run_branch"
             return result
         stamp = m.group(1)
-        data = read_locked(Path(queue_path), Path(lock_path))
+        handle = _acquire_lock(Path(lock_path))
+        data = _read(Path(queue_path))
         non_terminal = sorted(
             key for key, item in data["items"].items()
             if isinstance(item, dict) and item.get("branch") == branch
@@ -839,7 +858,7 @@ def cleanup_branch(queue_path: Path, lock_path: Path, *, branch: str, repo_root:
             result["skipped"] = "non_terminal_items"
             result["non_terminal"] = non_terminal
             return result
-        root = Path(repo_root)
+        root = Path(repo_root).resolve()
         worktree = next(
             (p for p in (root / ".runs" / stamp, root.parent / f"algua-research-{stamp}")
              if p.is_dir()),
@@ -860,12 +879,18 @@ def cleanup_branch(queue_path: Path, lock_path: Path, *, branch: str, repo_root:
             except OSError as exc:
                 print(f"WARNING: cleanup-branch could not archive {log_src}: {exc}",
                       file=sys.stderr)
+        if not _memory_verified(root, worktree, stamp):
+            result["skipped"] = "research_memory_unverified"
+            return result
         proc = subprocess.run(
             ["git", "-C", str(root), "worktree", "remove", "--force", str(worktree)],
             capture_output=True, text=True)
         if proc.returncode != 0:
             # Not a registered worktree (already pruned from git's list), or git refused — fall
             # back to a plain recursive delete, then let git forget any dangling registration.
+            if not _memory_verified(root, worktree, stamp):
+                result["skipped"] = "research_memory_unverified"
+                return result
             shutil.rmtree(worktree, ignore_errors=True)
             subprocess.run(["git", "-C", str(root), "worktree", "prune"],
                            capture_output=True, text=True)
@@ -877,6 +902,9 @@ def cleanup_branch(queue_path: Path, lock_path: Path, *, branch: str, repo_root:
     except Exception as exc:  # noqa: BLE001 - best-effort by contract: loud, never fatal
         result["error"] = str(exc)
         print(f"WARNING: cleanup-branch failed for {branch!r}: {exc}", file=sys.stderr)
+    finally:
+        if handle is not None:
+            _release_lock(handle)
     return result
 
 

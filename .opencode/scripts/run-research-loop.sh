@@ -153,6 +153,18 @@ WORKTREE="${RUNS_DIR}/${STAMP}"
 # writable to the agent. Resolve it BEFORE we point the agent's ALGUA_DB_PATH at scratch.
 AUTH_DB="${ALGUA_DB_PATH:-${REPO_ROOT}/data/algua.db}"
 AUTH_DATA_DIR="${ALGUA_DATA_DIR:-${REPO_ROOT}/data}"
+# Resolve routing from the trusted main CWD before exporting any scratch settings.
+AUTH_DB="$(cd "${REPO_ROOT}" && "${PYTHON}" -c \
+  'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "${AUTH_DB}")"
+AUTH_DATA_DIR="$(cd "${REPO_ROOT}" && "${PYTHON}" -c \
+  'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "${AUTH_DATA_DIR}")"
+AUTH_TRACKING_JSON="$(cd "${REPO_ROOT}" && "${PYTHON}" -c \
+  'import json; from algua.config.settings import get_settings; s=get_settings(); print(json.dumps([s.tracking_backend,s.mlflow_tracking_uri]))')"
+AUTH_TRACKING_BACKEND="$(printf '%s' "${AUTH_TRACKING_JSON}" | "${PYTHON}" -c \
+  'import json,sys; print(json.load(sys.stdin)[0])')"
+AUTH_TRACKING_URI="$(printf '%s' "${AUTH_TRACKING_JSON}" | "${PYTHON}" -c \
+  'import json,sys; print(json.load(sys.stdin)[1])')"
+unset AUTH_TRACKING_JSON
 # The durable per-run feedback digest (factory slice 1) — appended AUTHORITY-SIDE, next to the real
 # DB, resolved BEFORE the scratch repointing below so it survives worktree pruning. One JSON line
 # per run (see the append site near the end of this script for the schema).
@@ -166,6 +178,52 @@ AUTH_QUEUE="${ALGUA_MERGEBACK_QUEUE_PATH:-${AUTH_DATA_DIR}/mergeback-queue.json}
 AUTH_QUEUE_LOCK="${ALGUA_MERGEBACK_QUEUE_LOCK_PATH:-${AUTH_DATA_DIR}/mergeback-queue.lock}"
 QUEUE_MOD="${REPO_ROOT}/.opencode/scripts/mergeback_queue.py"
 
+memory_cli() {
+  ( cd "${REPO_ROOT}" && ALGUA_DB_PATH="${AUTH_DB}" ALGUA_DATA_DIR="${AUTH_DATA_DIR}" \
+      ALGUA_TRACKING_BACKEND="${AUTH_TRACKING_BACKEND}" \
+      ALGUA_MLFLOW_TRACKING_URI="${AUTH_TRACKING_URI}" \
+      "${AUTH_CLI[@]}" research memory "$@" )
+}
+
+remove_retained_worktree() {
+  local wt="$1" stamp="$2"
+  # Match only the two research layouts, resolving aliases before any destructive command.
+  [[ "${stamp}" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$ ]] || return 1
+  "${PYTHON}" - "${REPO_ROOT}" "${wt}" "${stamp}" <<'PY' || return 1
+import sys
+from pathlib import Path
+root, worker, stamp = Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve(), sys.argv[3]
+if worker not in (root / '.runs' / stamp, root.parent / ('algua-research-' + stamp)):
+    raise ValueError('research cleanup path does not match its cycle')
+PY
+  if ! memory_cli cleanup-check --run "${stamp}" --worker-root "${wt}" >/dev/null; then
+    echo "retaining ${wt}: public experiment archive/source is unverified." >&2
+    return 1
+  fi
+  if ! git -C "${REPO_ROOT}" worktree remove --force "${wt}" 2>/dev/null; then
+    # Git may have failed after time passed: the recursive fallback needs fresh verification.
+    memory_cli cleanup-check --run "${stamp}" --worker-root "${wt}" >/dev/null || return 1
+    rm -rf "${wt}"
+  fi
+}
+
+capture_research_memory() {
+  local source_commit capture_json
+  [[ -n "${WORKER_EXIT:-}" ]] || return 1
+  source_commit="$(git -C "${WORKTREE}" rev-parse HEAD)" || return 1
+  capture_json="$(memory_cli capture --run "${STAMP}" --worker-root "${WORKTREE}" \
+    --worker-exit "${WORKER_EXIT}" --source-commit "${source_commit}")" || return 1
+  CYCLE_EVIDENCE="$(printf '%s' "${capture_json}" | "${PYTHON}" -c '
+import json,sys
+value=json.load(sys.stdin)
+if value.get("ok") is not True or not isinstance(value.get("receipt"),dict):
+    raise ValueError("missing verified research memory receipt")
+reference=value["receipt"].get("reference")
+if not isinstance(reference,str) or not reference:
+    raise ValueError("missing research memory reference")
+print(reference)')" || return 1
+}
+
 # Durable feedback digest (factory slice 1): ONE JSON line per FIRING — not just per completed
 # run. Defined EARLY (STAMP/CATEGORY are already known; the branch may still be null) with safe
 # defaults so the lock-skip, empty-pool and setup-failure exits can record themselves too. The row's
@@ -178,6 +236,7 @@ DIGEST_BRANCH=""        # set once the run branch actually exists (null in the d
 DIGEST_REPORT_PATH=""   # set once a completed run may have written kb/research-runs/<stamp>.md
 STRATEGY_MODULE_NAMES=""  # comma-joined module names this run's own commit added (cross-check set)
 rc=""                   # agent exit code (or the setup-failure exit code); null until known
+WORKER_EXIT=""          # actual worker exit, never overwritten by postprocessing failures
 timed_out=0
 wall_s=""
 n_strategy_files=""
@@ -464,7 +523,7 @@ record_outcomes() {
   local report="$1" phase="$2" outcomes_ok=0
   if [[ "${CYCLE_ACTIVE:-0}" -eq 1 ]]; then
     local finish_args=(research idea cycle-finish --run "${STAMP}" --phase "${phase}"
-                       --worker-exit "${rc:-1}")
+                       --worker-exit "${WORKER_EXIT:-${rc:-1}}")
     if [[ -n "${report}" ]]; then finish_args+=(--report "${report}"); fi
     if [[ -n "${CYCLE_EVIDENCE:-}" ]]; then finish_args+=(--evidence-ref "${CYCLE_EVIDENCE}"); fi
     ALGUA_DB_PATH="${AUTH_DB}" ALGUA_DATA_DIR="${AUTH_DATA_DIR}" \
@@ -577,7 +636,7 @@ cleanup_setup() {
   local ec=$?
   trap - EXIT
   if [[ "${CYCLE_PHASE}" == setup_failed && -n "${WORKTREE:-}" ]]; then
-    git -C "${REPO_ROOT}" worktree remove --force "${WORKTREE}" 2>/dev/null || true
+    remove_retained_worktree "${WORKTREE}" "${STAMP}" || true
   fi
   rc="${ec}"
   record_outcomes "" "${CYCLE_PHASE}" || ec=1
@@ -883,7 +942,7 @@ while IFS= read -r stale; do
   stale_stamp="$(basename "${stale}")"; stale_stamp="${stale_stamp#algua-research-}"
   stale_branch="$(git -C "${stale}" branch --show-current 2>/dev/null || true)"
   archive_run_log "${stale}" "${stale_branch:-research-run/${stale_stamp}}"
-  git -C "${REPO_ROOT}" worktree remove --force "${stale}" 2>/dev/null || rm -rf "${stale}"
+  remove_retained_worktree "${stale}" "${stale_stamp}" || true
 done < <(
   find "${RUNS_DIR}" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -mtime "+${RETENTION_DAYS}" 2>/dev/null
   find "${REPO_ROOT}/.." -maxdepth 1 -type d -name 'algua-research-*' -mtime "+${RETENTION_DAYS}" 2>/dev/null
@@ -940,6 +999,9 @@ ALGUA_DB_PATH="${AUTH_DB}" ALGUA_DATA_DIR="${AUTH_DATA_DIR}" \
   "${AUTH_CLI[@]}" research idea cycle-check --run "${STAMP}" --scratch-data "${SCRATCH}/data" \
     --worker-root "${WORKTREE}"
 
+# Checkpoint the ACTUAL backup, after scrub and context verification, before any worker can run.
+memory_cli seed --run "${STAMP}" --worker-root "${WORKTREE}"
+
 # A fresh worktree has no .venv; algua installs editable -> the worktree. Build the env up front
 # (outside the agent run) so `uv run` doesn't cold-sync mid-agent. Uses the in-worktree UV_CACHE_DIR.
 echo "Pre-warming the worktree environment (uv sync, timeout ${SYNC_TIMEOUT})..."
@@ -961,6 +1023,7 @@ set +e
 printf '%s\n' "${GOAL}" > "${PROMPT_FILE}"
 "${AGENT_CMD[@]}" </dev/null 2>&1 | tee "${RUN_LOG}"
 rc="${PIPESTATUS[0]}"
+WORKER_EXIT="${rc}"
 set -e
 wall_s=$(( $(date +%s) - run_start ))
 if [[ "${rc}" -ne 0 ]]; then
@@ -1020,7 +1083,15 @@ fi
 # missing/unparseable/non-conforming => hypotheses [], preview_gate null, trailer_parse_error true.
 echo "Appending run digest to ${AUTH_DIGEST}..."
 DIGEST_REPORT_PATH="${WORKTREE}/kb/research-runs/${STAMP}.md"
-CYCLE_EVIDENCE="$(git -C "${WORKTREE}" rev-parse HEAD):kb/research-runs/${STAMP}.md"
+if ! capture_research_memory; then
+  echo "public experiment retention failed; retaining scratch and failing this firing." >&2
+  CYCLE_PHASE=driver_failed
+  [[ "${rc}" -ne 0 ]] || rc=1
+  record_outcomes "" driver_failed || true
+  trap - EXIT
+  append_digest driver_failed
+  exit "${rc}"
+fi
 record_outcomes "${DIGEST_REPORT_PATH}" completed || { [[ "${rc}" -ne 0 ]] || rc=1; }
 trap - EXIT
 append_digest completed
@@ -1072,8 +1143,7 @@ if [[ "${N_ENQUEUED:-}" == "0" ]]; then
     "${WORKTREE}/"*)
       echo "cwd is inside ${WORKTREE}; leaving removal to the retention pruner." >&2 ;;
     *)
-      git -C "${REPO_ROOT}" worktree remove --force "${WORKTREE}" 2>/dev/null \
-        || rm -rf "${WORKTREE}" ;;
+      remove_retained_worktree "${WORKTREE}" "${STAMP}" || true ;;
   esac
 elif [[ "${N_ENQUEUED:-}" =~ ^[1-9][0-9]*$ ]]; then
   echo "kept worktree ${WORKTREE} (${N_ENQUEUED} enqueued candidate(s) on ${FINAL_BRANCH});"
