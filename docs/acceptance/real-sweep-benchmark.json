@@ -1,0 +1,248 @@
+{
+  "record_type": "real-sweep-engineering-acceptance-summary",
+  "executed_on_utc": "2026-11-04",
+  "independent_audit": {
+    "status": "PASS",
+    "checks_passed": 3638,
+    "checks_failed": 0,
+    "receipt_sha256": "22c0f6a5ef059624438563a19444bc5ac8c879c8cf198a2244df5eb146301ba2",
+    "auditor_sha256": "8573a4878f70770bf2f2b7d07ac6bc1cfe2bbfec9d3ad3531f37f7dc8e3794bd",
+    "SQL_access": "finalized private copies only",
+    "scratch_after_prune": "raw SQL export, public CLI rows and retained archive crosschecked; original scratch DB removed"
+  },
+  "original_collector": {
+    "status": "FAIL",
+    "exit_code": 1,
+    "exception": "KeyError: 'totals'",
+    "failure_phase": "final summary after successful numerical commands, archive capture, prune and archive readback",
+    "collector_sha256": "2d5d809bdf1cf4d3252273b2d8823f3a0ad322b03234aa9e24a53c1387493e6d",
+    "original_final_pass_receipt_exists": false,
+    "numerical_reruns": 0
+  },
+  "source": {
+    "published_base": "1c965f607e8a676c731a3acb7224f73acff0db56",
+    "private_fixture_head": "49e536b3b5be3f6d679787fed6e92b38a8b1ca0f",
+    "full_source_sha256": "99e7f49ede0176dcf04a40a58f23fca70daee74b31b603165a824d0eee9fb20d",
+    "image_id": "sha256:dae80a5e27680ff9be7f1701af92715211a7a8a3d4ba87a878b410246720d234",
+    "overlay_changes": [
+      "CONFIG.name",
+      "CONFIG.universe"
+    ],
+    "inherited_unindexed_frozen_report": ".superpowers/sdd/task-11-report.md",
+    "final_index_semantics": "stage-zero modes/paths/blobs and recomputed tree match frozen source; raw index byte equality not asserted"
+  },
+  "dataset": {
+    "snapshot_id": "61a2bda1e636d017",
+    "logical_payload_sha256": "e63c513cf2b5820d0ef468de7c22e8ab53552a07c1f81a1b625c7849ac1dc550",
+    "symbols": 150,
+    "sessions": 501,
+    "bars": 75150,
+    "period": {
+      "start_inclusive": "2024-11-01T00:00:00+00:00",
+      "end_exclusive": "2026-11-03T00:00:00+00:00"
+    },
+    "data_tier": "pilot_real_proxy",
+    "universe_selection": "sorted first150 names from current SP400 constituents; non-PIT survivorship-biased proxy",
+    "limitations": [
+      "adjusted_close_vendor_revisable",
+      "corporate_actions_unverified",
+      "delisted_names_absent",
+      "event_timing_unavailable",
+      "historical_market_cap_unavailable",
+      "point_in_time_universe_unavailable",
+      "survivorship_biased_selection"
+    ]
+  },
+  "computation": {
+    "commands": 4,
+    "unique_configurations": 100,
+    "existing_mechanisms": 4,
+    "newly_authored_hypotheses": 0,
+    "independent_alpha_count": "NOT_ESTABLISHED",
+    "windows": 3,
+    "holdout_fraction": 0.2,
+    "rank_by": "mean_sharpe",
+    "seed": null,
+    "fees": 0.0005,
+    "fees_unit": "fraction_of_trade_notional_per_side",
+    "slippage": 0.0005,
+    "slippage_unit": "adverse_fill_price_fraction_per_side",
+    "private_holdout": "computed internally; not inspected, exported, archived or used for ranking",
+    "numeric_command_seconds_sum": 112.50861980207264,
+    "collector_wall_seconds": 151.49286783393472,
+    "local_data_source": "StoreBackedProvider",
+    "local_provider_method_calls": "UNKNOWN; not instrumented",
+    "grids": [
+      {
+        "strategy": "benchmark150_xs_momentum",
+        "original_path": "algua/strategies/momentum/cross_sectional_momentum.py",
+        "original_sha256": "b7c8d7786940d6e8f304d8be4e5087593340ec62a9f5c3469d9f0c63d7cc60d3",
+        "variant_path": "algua/strategies/momentum/benchmark150_xs_momentum.py",
+        "variant_sha256": "beda5de6c819debd69d0fe0d97afee9711756a63be86a0f55e8967d700ba1567",
+        "parameter_flags": [
+          "lookback=10,20,30,45,60",
+          "construction.top_k=3,5,10,15,20"
+        ],
+        "trial_configurations": 25,
+        "sorted_config_hashes_sha256": "f7c73f1972b2290abc37d46e03a24bbc928982ab7f3c8ccbbdaf30a381dea9d6",
+        "public_stdout_sha256": "1536c11f76d0d122c413bb56bd7fdd66356b8c6e070110020f8eb624f288cb0a",
+        "recorded_runtime_code_hash": "49e536b3b5be3f6d679787fed6e92b38a8b1ca0f-dirty-4505fef03f91836a",
+        "dependency_hash": "119aa0e1db7fdc3bbb43ca3d2d3bc4a88de5adbbc78e6676086dc623d21d3001",
+        "exit_code": 0,
+        "command_seconds": 16.282573631964624,
+        "mean_window_sharpe_negative": 4,
+        "mean_window_sharpe_zero": 0,
+        "mean_window_sharpe_positive": 21
+      },
+      {
+        "strategy": "benchmark150_peer_rebound",
+        "original_path": "algua/strategies/mean_reversion/peer_median_oversold_rebound.py",
+        "original_sha256": "9b4aec841406b1330e72b7f3dc67154d80a56f67e2f8766f8578c40decb647d9",
+        "variant_path": "algua/strategies/mean_reversion/benchmark150_peer_rebound.py",
+        "variant_sha256": "2ad7cf8c6b611fa5a5ddb622bdad2ea2cd1a76568505a350dcdec677169dcad4",
+        "parameter_flags": [
+          "vol_lookback=10,15,20,25,30",
+          "spike_z=1.0,1.5,2.0,2.5,3.0"
+        ],
+        "trial_configurations": 25,
+        "sorted_config_hashes_sha256": "7da2fb29358b9b37f857df0664bf391afe4d8a9127c7fd29ff4e0ca30505ab13",
+        "public_stdout_sha256": "c7b8a767672f718888ba80710136f7770529ac75d8ca43ed78d42284693653aa",
+        "recorded_runtime_code_hash": "49e536b3b5be3f6d679787fed6e92b38a8b1ca0f-dirty-1c1a24115484a168",
+        "dependency_hash": "119aa0e1db7fdc3bbb43ca3d2d3bc4a88de5adbbc78e6676086dc623d21d3001",
+        "exit_code": 0,
+        "command_seconds": 40.49515156110283,
+        "mean_window_sharpe_negative": 20,
+        "mean_window_sharpe_zero": 0,
+        "mean_window_sharpe_positive": 5
+      },
+      {
+        "strategy": "benchmark150_residual_lowvol",
+        "original_path": "algua/strategies/low_volatility/market_residual_low_volatility.py",
+        "original_sha256": "2174bcf64ab28f2a21bec05aadf5c2c61a36d11d13417d0cc5da6dd7d1586fce",
+        "variant_path": "algua/strategies/low_volatility/benchmark150_residual_lowvol.py",
+        "variant_sha256": "3d363f6316b70cb243d6e425068a734d88f8f2f84577d153082d81b20d20e57f",
+        "parameter_flags": [
+          "lookback=10,20,30,45,60",
+          "construction.top_k=3,5,10,15,20"
+        ],
+        "trial_configurations": 25,
+        "sorted_config_hashes_sha256": "1bb3fa00f994bad59951f8f8a8a5062afde516fe51d1e36101417bb83dc25224",
+        "public_stdout_sha256": "0cc5c421dce4a89664bdb8489ad74ee0a5e4dcd6deb0f03ab2190486dfbf674c",
+        "recorded_runtime_code_hash": "49e536b3b5be3f6d679787fed6e92b38a8b1ca0f-dirty-afaf4a34c6a45aa1",
+        "dependency_hash": "119aa0e1db7fdc3bbb43ca3d2d3bc4a88de5adbbc78e6676086dc623d21d3001",
+        "exit_code": 0,
+        "command_seconds": 26.768597471062094,
+        "mean_window_sharpe_negative": 16,
+        "mean_window_sharpe_zero": 0,
+        "mean_window_sharpe_positive": 9
+      },
+      {
+        "strategy": "benchmark150_ulcer_quality",
+        "original_path": "algua/strategies/quality/ulcer_quiet_momentum_quality.py",
+        "original_sha256": "18ab3081937ae208e1ee0e182325546841b1136e2826fdc388d8d41b6d6a3cb8",
+        "variant_path": "algua/strategies/quality/benchmark150_ulcer_quality.py",
+        "variant_sha256": "8ad0cd61fa7723d9c4b2a27752292fce21005bcf945005d1d7eb9913f7c16b7c",
+        "parameter_flags": [
+          "lookback=20,30,40,50,60",
+          "ulcer_weight=0.25,0.5,1.0,1.5,2.0",
+          "momentum_lookback=20",
+          "skip=5"
+        ],
+        "trial_configurations": 25,
+        "sorted_config_hashes_sha256": "bcb26cb4a62114b398825ab12aaf48c007e4b7283c9a0a5c40dbf3755ec76853",
+        "public_stdout_sha256": "f3c9c23b4cf1b8f34f8ffd105110ee74581e1467d0bcebf0b93df9e197a6b078",
+        "recorded_runtime_code_hash": "49e536b3b5be3f6d679787fed6e92b38a8b1ca0f-dirty-e577f0347d140e6c",
+        "dependency_hash": "119aa0e1db7fdc3bbb43ca3d2d3bc4a88de5adbbc78e6676086dc623d21d3001",
+        "exit_code": 0,
+        "command_seconds": 28.962297137943096,
+        "mean_window_sharpe_negative": 6,
+        "mean_window_sharpe_zero": 0,
+        "mean_window_sharpe_positive": 19
+      }
+    ]
+  },
+  "retention": {
+    "sweep_parents": 4,
+    "sweep_trials": 100,
+    "archive_evaluations": 104,
+    "archive_bytes": 337807,
+    "archive_sha256": "409202f58e016047f00cf8dc05d82ad7daf1db37d59f78227e138168b01a79fe",
+    "parent_references": "exact, cycle-scoped; sparse child provenance requires parent",
+    "retained_metrics": "public three-window stability aggregates; not every raw per-window record",
+    "truncated_sweeps": [],
+    "before_after_public_show_byte_equal": true,
+    "worker_and_scratch_removed_after_verified_cleanup": true,
+    "authority": "none",
+    "evidence_mode": "UNVERIFIED_WORKER",
+    "evaluated_worktree_verified": false,
+    "model_bytes_preserved": false,
+    "unrecorded_variant_failures": "UNKNOWN",
+    "prompt_observations_delivered": 0
+  },
+  "authority": {
+    "zero_table_counts": {
+      "runs": 0,
+      "run_metrics": 0,
+      "search_trials": 0,
+      "holdout_evaluations": 0,
+      "holdout_returns": 0,
+      "gate_evaluations": 0,
+      "forward_gate_evaluations": 0,
+      "families": 0,
+      "family_members": 0,
+      "family_parents": 0,
+      "family_events": 0,
+      "backtest_returns": 0,
+      "strategies": 0,
+      "stage_transitions": 0,
+      "approvals": 0,
+      "strategy_allocations": 0,
+      "paper_orders": 0,
+      "live_orders": 0,
+      "tick_snapshots": 0,
+      "live_authorizations": 0,
+      "strategy_deployments": 0,
+      "deployment_artifacts": 0
+    },
+    "engineering_attempt": {
+      "count": 1,
+      "outcome": "run_error",
+      "reason": "setup_failed:1"
+    },
+    "economic_verdict": "NONE",
+    "scratch_breadth_before_removal": 100,
+    "authority_breadth": 0
+  },
+  "runtime": {
+    "cpu_limit": 2,
+    "memory_limit_bytes": 4294967296,
+    "pid_limit": 256,
+    "tmpfs_bytes": 1073741824,
+    "network": "none",
+    "non_root": true,
+    "capabilities": "all dropped",
+    "no_new_privileges": true,
+    "read_only": [
+      "image root",
+      "pilot mount",
+      "collector inputs"
+    ],
+    "writable_hash_verified": [
+      "owned main checkout",
+      "worker"
+    ],
+    "command_timeout_seconds": 1800,
+    "case_timeout_seconds": 7200,
+    "output_budget": "2GiB sampled soft stop; not a hard filesystem quota"
+  },
+  "not_demonstrated": [
+    "100 independent hypotheses or alphas",
+    "OpenCode model or author/chooser calls",
+    "ten unattended research cycles",
+    "causal cumulative learning",
+    "economic qualification",
+    "forward evidence",
+    "paper deployment",
+    "live readiness"
+  ]
+}
