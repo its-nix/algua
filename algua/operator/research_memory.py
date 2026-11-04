@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from algua.operator.research_cycle import ResearchCycle
+from algua.operator.research_memory_checkpoint import (
+    memory_state,
+    validate_retained_payload,
+    validated_seed,
+)
 from algua.operator.research_memory_projection import (
     MemoryLimits as MemoryLimits,
 )
@@ -39,11 +44,7 @@ class ResearchMemory:
         self.limits = limits or MemoryLimits()
 
     def _state(self) -> dict[str, Any]:
-        metadata = self.cycle._metadata()
-        state = metadata.get("research_memory", {})
-        if not isinstance(state, dict) or set(state) - {"seed", "receipt"}:
-            raise ValueError("research memory metadata is malformed")
-        return state
+        return memory_state(self.cycle._metadata())
 
     def _append(self, key: str, value: dict[str, Any]) -> None:
         metadata = self.cycle._metadata()
@@ -58,20 +59,7 @@ class ResearchMemory:
         write_bytes_durable(canonical_bytes(metadata), self.cycle.path)
 
     def _seed(self, worker_root: Path | None = None) -> dict[str, Any]:
-        seed = self._state().get("seed")
-        keys = {"worker_root", "runs_max_id", "inherited_run_count", "registry_digest",
-                "inherited_runs_digest", "schema_version"}
-        if (not isinstance(seed, dict) or set(seed) != keys
-                or not isinstance(seed["worker_root"], str)
-                or any(type(seed[key]) is not int or seed[key] < 0
-                       for key in ("runs_max_id", "inherited_run_count", "schema_version"))
-                or any(not isinstance(seed[key], str)
-                       or re.fullmatch(r"[0-9a-f]{64}", seed[key]) is None
-                       for key in ("registry_digest", "inherited_runs_digest"))):
-            raise ValueError("research memory requires its original seed checkpoint")
-        if worker_root is not None and seed["worker_root"] != str(worker_root.resolve()):
-            raise ValueError("research memory seed belongs to another worker")
-        return seed
+        return validated_seed(self._state().get("seed"), worker_root)
 
     def seed(self, worker_root: Path) -> dict[str, Any]:
         """Record the actual copied run watermark once; retries never advance it."""
@@ -132,12 +120,8 @@ class ResearchMemory:
         if not isinstance(receipt, dict):
             raise ValueError("research memory has no verified archive receipt")
         payload = self.archive.read(receipt)
-        seed = {key: value for key, value in self._seed().items() if key != "worker_root"}
-        if (payload["research_cycle_id"] != self.cycle.cycle_id or payload["seed"] != seed
-                or payload["controller_context_digest"] != _digest(
-                    self.cycle._metadata()["request"]["context"])):
-            raise ValueError("research memory archive does not match the controller checkpoint")
-        return payload
+        return validate_retained_payload(payload, metadata=self.cycle._metadata(),
+                                         cycle_id=self.cycle.cycle_id)
 
     def cleanup_allowed(self, worker_root: Path) -> bool:
         """Re-read archive bytes and compare current public source before removal."""
