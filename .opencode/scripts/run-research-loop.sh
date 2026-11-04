@@ -883,10 +883,12 @@ Hold the research discipline (it makes your preview trustworthy):
   - TRUST THE GATE; never pass a relaxation flag (human-only; they fail closed on your path).
 
 Work the claimed ideas above (up to ${N_HYPOTHESES}) — do NOT invent your own hypothesis. For each:
-take the idea's hypothesis/falsification as given, delegate
-authoring to the 'author' subagent, then drive it via 'uv run algua ...' (registry add; registry
-transition --to backtested; backtest walk-forward; backtest sweep; research promote --universe <name>
---snapshot <id> --start D --end D). Delegate results to the 'interpret' subagent for a promote/discard
+take the idea's hypothesis/falsification as given and delegate scaffolding and authoring once to
+the 'author' subagent. 'strategy new' already registers the initial scratch idea. Then drive it
+via 'uv run algua ...' (backtest run --register; backtest walk-forward; backtest sweep;
+research promote --universe <name> --snapshot <id> --start D --end D), preserving the same declared
+data inputs throughout. A raw registry transition is not a substitute for the evaluated backtest.
+Delegate results to the 'interpret' subagent for a promote/discard
 call. Never go past 'candidate'; never put a strategy live. Author strategy files under
 algua/strategies/<family>/ in this worktree; you do NOT need to 'git commit' — the launcher commits
 your files afterward. Write your run report to kb/research-runs/${STAMP}.md (relative to this

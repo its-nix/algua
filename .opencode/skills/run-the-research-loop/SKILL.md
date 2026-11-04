@@ -22,6 +22,15 @@ evidence of a previous search. Complete structured experiment memory remains roa
 You do not pick the belief. The driver claims ideas from the pool before your run and names them
 in your goal; your job is to test them honestly and report what happened.
 
+## Evaluation inputs
+
+Keep the run's declared data context throughout author smoke, backtest, walk-forward, sweep and
+gate. In the examples below, `<data-options>` means the exact `--snapshot <id> --start D --end D`
+and required sidecar options supplied for this experiment. Use `--demo` only for an explicitly
+synthetic experiment, and report it as synthetic. Never fall back to demo when real inputs are
+missing. If the selected interface cannot run a required evaluation, record `run_error` with the
+actual refusal; do not replace the hypothesis, strip a required model or relax a gate.
+
 ## The loop (repeat for each claimed idea, then stop)
 
 For each claimed idea:
@@ -33,21 +42,23 @@ For each claimed idea:
    honesty, designing for generalization), plus `kb/strategies/_index.md` and
    `kb/strategies/_families.md` for what the relevant family already learned. Pick a unique
    strategy name; skip names already in `uv run algua registry list`.
-2. **Author.** Scaffold with `uv run algua strategy new <name> --family <slug> --derived-from
-   <parent>` (creates the module *and* the KB doc + family hub). Delegate to the `author`
-   subagent (it follows `author-a-strategy`) to write `algua/strategies/<family>/<name>.py`,
+2. **Author.** Delegate to the `author` subagent (it follows `author-a-strategy`) to scaffold once
+   with `uv run algua strategy new <name> --family <slug>` (plus `--derived-from <parent>` only
+   when there is an actual parent), then write `algua/strategies/<family>/<name>.py`.
+   Pass the hypothesis and exact evaluation inputs. Do not create the same scaffold beforehand.
+   `strategy new` already registers the scratch idea and creates the KB doc + family hub;
    then fill in the doc's `## Hypothesis` and `## Derivation` prose. Confirm it loads:
-   `uv run algua backtest run <name> --demo`.
-3. **Backtest + register.** `uv run algua backtest run <name> --demo --register` (advances `idea →
+   `uv run algua backtest run <name> <data-options>`.
+3. **Backtest + register.** `uv run algua backtest run <name> <data-options> --register` (advances `idea →
    backtested`).
-4. **Out-of-sample evidence.** `uv run algua backtest walk-forward <name> --demo` (K windows +
-   stability; the holdout is withheld until `research promote`). Optionally `uv run algua backtest sweep <name> --demo --param KEY=v1,v2,...`
+4. **Out-of-sample evidence.** `uv run algua backtest walk-forward <name> <data-options>` (K windows +
+   stability; the holdout is withheld until `research promote`). Optionally `uv run algua backtest sweep <name> <data-options> --param KEY=v1,v2,...`
    to scan parameters — but remember every combo you search raises the bar the holdout must clear
    (see `interpret-results` on search breadth).
 5. **Interpret.** Delegate the results JSON to the `interpret` subagent for a promote/discard
    recommendation with reasoning, and assess the idea's own `falsification` statement against the
    walk-forward evidence -> `falsification_assessment` (`refuted` | `survived` | `untested`).
-6. **Gate.** Run `uv run algua research promote <name> --demo` (record the combos you searched with
+6. **Gate.** Run `uv run algua research promote <name> <data-options>` (record the combos you searched with
    `--n-combos K`). The gate advances `backtested → candidate` **only on pass**; on a fail it
    reports why and leaves the stage unchanged. Trust the gate — do not lower thresholds to force a pass.
 7. **Record.** Sync the synced fact blocks: `uv run algua strategy doc <name>`. Then write
