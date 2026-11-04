@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from algua.operator.research_memory_checkpoint import strict_json
 from algua.registry.db.constants import METRIC_SCHEMA_VERSION, SCHEMA_VERSION
 from algua.registry.read_snapshot import registry_snapshot
 from algua.registry.store.run_public import (
@@ -177,7 +178,7 @@ def public_evaluations(
                 total_bytes += len(raw.encode())
                 if total_bytes > limits.max_archive_bytes:
                     raise ValueError("research memory inputs exceed the archive byte bound")
-                parsed[key] = json.loads(raw)
+                parsed[key] = strict_json(raw)
             if not isinstance(parsed["config_json"], dict):
                 raise ValueError("research memory config must be an object")
             config = parsed["config_json"]
