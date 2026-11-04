@@ -24,6 +24,7 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     idea_ops_cmd,
     inspirations_cmd,
     live_cmd,
+    model_cmd,
     negative_cmd,
     operator_cmd,
     ops_cmd,
@@ -62,6 +63,7 @@ research_cmd.research_app.add_typer(research_memory_cmd.memory_app, name="memory
 data_cmd.data_app.add_typer(data_refresh_cmd.refresh_app)
 backtest_cmd.backtest_app.add_typer(portfolio_cmd.portfolio_app)
 app.add_typer(deployment_cmd.deployment_app, name="deployment")
+app.add_typer(model_cmd.model_app, name="model")
 
 __all__ = ["app", "main"]
 
