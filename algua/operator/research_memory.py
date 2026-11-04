@@ -20,6 +20,7 @@ from algua.operator.research_memory_projection import (
     public_evaluations,
     seed_evidence,
 )
+from algua.operator.research_memory_retention import model_store_retention_reason
 from algua.primitives.atomic_io import write_bytes_durable
 from algua.tracking.research_archive import LocalResearchArchive
 
@@ -123,13 +124,21 @@ class ResearchMemory:
         return validate_retained_payload(payload, metadata=self.cycle._metadata(),
                                          cycle_id=self.cycle.cycle_id)
 
-    def cleanup_allowed(self, worker_root: Path) -> bool:
-        """Re-read archive bytes and compare current public source before removal."""
+    def cleanup_retention_reason(self, worker_root: Path) -> str | None:
+        """Verify public evidence, then retain model-bearing or uncertain workers."""
         try:
             with self.cycle._locked():
                 payload = self.read()
                 current = self._payload(worker_root, worker_exit=payload["worker_exit"],
                                         source_commit=payload["source_commit"])
-                return payload == current
+                if payload != current:
+                    return "evidence_unverified"
+                if any(row["model_refs"] for row in current["evaluations"]):
+                    return "model_references"
+                return model_store_retention_reason(worker_root)
         except Exception:  # noqa: BLE001 — cleanup must retain the worktree on every uncertainty
-            return False
+            return "evidence_unverified"
+
+    def cleanup_allowed(self, worker_root: Path) -> bool:
+        """Keep the boolean cleanup API; model bytes are not yet durably retained."""
+        return self.cleanup_retention_reason(worker_root) is None

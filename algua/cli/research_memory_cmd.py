@@ -73,9 +73,11 @@ def cleanup_check(
     run: str = typer.Option(..., "--run"),
     worker_root: Path = typer.Option(..., "--worker-root"),
 ) -> None:
-    """Exit zero only after verifying the archive and fresh source; never remove the worker."""
+    """Verify cleanup admission; retain models or uncertainty and never remove the worker."""
     with _memory(run) as memory:
-        verified = memory.cleanup_allowed(worker_root)
-    if not verified:
+        reason = memory.cleanup_retention_reason(worker_root)
+    if reason == "evidence_unverified":
         raise ValueError("research memory is unverified; retain the worker worktree")
+    if reason is not None:
+        raise ValueError(f"research memory cleanup refused: {reason}; retain the worker worktree")
     emit(ok({"research_cycle_id": run, "cleanup_allowed": True}))

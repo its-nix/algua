@@ -93,6 +93,34 @@ SQLite query deadline. Exceeding a bound retains all scratch; the archive never 
 its input to admit deletion. The snapshot copies DB and committed WAL without opening SQLite
 on the source, refuses a changing source or rollback journal, and never migrates worker data.
 
+## Temporary model-worker retention
+
+Until durable model artifact retention exists, verified public evidence alone cannot admit
+cleanup of a model-bearing worker. This approved temporary policy retains the whole worker
+when its verified current public evaluations contain any `model_refs`, whether or not an
+external copy is claimed. Capture, show and bounded context/prompt reference projection still
+work; `coverage.model_bytes_preserved` remains false. Retention does not copy, resolve,
+deserialize or publish model bytes, or make them available to the next scratch worker.
+
+The known default store is `<worker>/.funnel-scratch/data/models` in both modern and legacy
+research layouts. Metadata-only `lstat` inspection treats every leaf object as presence,
+including an empty directory, file, special file and symlink/dangling symlink. From the existing
+seed's canonical worker root, scratch/data ancestors must be real stable directories. A
+symlink ancestor, missing/non-directory ancestor, changed metadata or failed inspection retains
+the worker. The guard never traverses store contents or classifies arbitrary unregistered bytes
+elsewhere. Inherited rows keep their existing checkpoint-only representation; no extra source
+registry scan or export is introduced.
+
+`cleanup-check` reports fixed `model_references`, `model_store_present` or
+`model_store_unverified` refusal reasons in its JSON error. Existing evidence failures retain
+their unverified-worktree error. All refusals exit nonzero and remove nothing; ordinary verified
+model-free workers with an absent known store keep the existing successful cleanup contract.
+The central rule covers driver, mtime, setup and queue cleanup, including fresh fallback checks.
+Queue's compatible `research_memory_unverified` skip means cleanup admission was denied; it
+does not assert that every refusal is archive corruption. No worker exit, attempt outcome,
+terminal queue result, search/gate count or lifecycle state is rewritten for intentional model
+retention. Disk retention is deliberate; this adds no prune override or artifact-transport claim.
+
 ## Driver and cleanup entry points
 
 These are semantic anchors in the existing driver; line numbers move with root changes.
@@ -121,8 +149,8 @@ uv run algua research memory show --run ID
 uv run algua research memory cleanup-check --run ID --worker-root PATH
 ```
 
-`cleanup-check` exits zero only after actual archive/source verification; unverified evidence
-emits JSON with `ok: false`, a retain-worktree error and nonzero exit. The driver invokes these
+`cleanup-check` exits zero only after actual archive/source verification and model-retention
+admission; refusals emit JSON with `ok: false`, a retain-worktree error and nonzero exit. The driver invokes these
 commands from the main CWD with authority DB/data/tracking values captured before scratch
 exports; worker environment and `.env` files never supply their routing. Both supported cleanup
 layouts must resolve exactly to the cycle's expected modern or legacy worktree path.

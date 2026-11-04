@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import copy
 import json
-import shutil
 import subprocess
 import sys
 from dataclasses import asdict
@@ -48,7 +47,7 @@ def test_width_and_time_admission_are_independently_compatible(validator, width,
 
 
 @pytest.mark.parametrize("cutoff", ["2020-01-01", "2020-01-01T12:34:56"])
-def test_real_registered_pin_survives_prune_contained_context_and_primary_prompt(
+def test_real_registered_pin_retains_worker_and_survives_context_and_primary_prompt(
     cli_memory, monkeypatch, capsys, cutoff,
 ):
     authority, cycle, worker, source, tracking = cli_memory
@@ -90,8 +89,12 @@ def test_real_registered_pin_survives_prune_contained_context_and_primary_prompt
     assert retained["coverage"]["model_bytes_preserved"] is False
     assert retained["coverage"]["evaluated_worktree_verified"] is False
     assert retained["evidence_mode"] == "UNVERIFIED_WORKER" and retained["authority"] == "none"
-    assert memory.cleanup_allowed(worker)
-    shutil.rmtree(worker)
+    assert not memory.cleanup_allowed(worker)
+    assert worker.exists()
+    assert (
+        (worker / "opaque-model-store/engineering-model-fixture/v1/artifact.bin").read_bytes()
+        == b"ENGINEERING_FIXTURE_NOT_A_TRAINED_MODEL"
+    )
     with pytest.raises(SystemExit) as stopped:
         main(["research", "memory", "show", "--run", cycle.cycle_id])
     shown = json.loads(capsys.readouterr().out)
