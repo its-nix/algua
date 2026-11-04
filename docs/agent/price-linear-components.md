@@ -1,9 +1,8 @@
 # Pure observed-price linear components
 
-These are common numerical components for a future offline producer. They do not deliver the
-offline historical fit → registry pin → canonical real-data evaluation flow. Producer source
-availability/cutoff policy, CLI composition, model registration, strategy binding and canonical
-real-data evidence remain separate work awaiting the human policy decision. Neither module
+These are common numerical components used by the separate [offline proxy producer](model-training.md).
+They do not alone establish the offline fit → pin → canonical real-data evaluation flow or its
+acceptance evidence. The producer defines its explicitly approved proxy cutoff separately. Neither module
 emits `training_as_of`, consults a clock, reads a store, resolves a model or changes trading state.
 
 `algua.features.price_linear.return_features` calculates one- and five-observed-bar adjusted-close

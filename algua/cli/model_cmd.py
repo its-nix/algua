@@ -16,7 +16,7 @@ from algua.cli.app import emit
 from algua.cli.errors import json_errors
 from algua.contracts.model_types import ModelVersion, normalize_as_of
 
-model_app = typer.Typer(help="Local declared model artifacts; no training or qualification",
+model_app = typer.Typer(help="Local model artifacts and labelled historical-proxy linear fitting",
                         no_args_is_help=False)
 _METADATA_BYTES = 1024 * 1024
 _ARTIFACT_BYTES = 64 * 1024 * 1024
@@ -100,7 +100,7 @@ def _public(version: ModelVersion) -> dict[str, Any]:
 def require_command(ctx: typer.Context) -> None:
     # Leave UsageError to the existing main() parser handler, rather than the body decorator.
     if ctx.invoked_subcommand is None:
-        raise typer.BadParameter("model requires register, show or list")
+        raise typer.BadParameter("model requires register, show, list or train-linear")
 
 
 @model_app.command("register")
@@ -125,3 +125,15 @@ def show_model(name: str, version: int = typer.Option(..., "--version", min=1)) 
 def list_models(name: str) -> None:
     """Verify all manifested versions of NAME, ascending; missing names return an empty list."""
     emit(ok({"versions": [_public(v) for v in models.list_versions(name)]}))
+
+
+@model_app.command("train-linear")
+@json_errors
+def train_linear_model(name: str, request: Path = typer.Option(..., "--request")) -> None:
+    """Fit/pin one fixed-vintage historical PROXY; source availability remains UNKNOWN."""
+    from algua.cli._model_train_request import REQUEST_BYTES, parse_request
+    from algua.cli._model_training import train_linear
+
+    parsed = parse_request(_read_input(request, REQUEST_BYTES, "training request"))
+    version, summary = train_linear(name, parsed)
+    emit(ok(_public(version) | summary))

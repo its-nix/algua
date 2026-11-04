@@ -12,6 +12,9 @@ The commands use the configured `<data_dir>/models` store. They do not train, de
 the artifact, resolve a strategy, mirror to MLflow, contact a remote service or advance a lifecycle.
 Existing author-agent restrictions on registry writes remain in force.
 
+The separate [offline proxy producer](model-training.md) adds `model train-linear`; the prepared
+artifact commands above retain their declared-metadata behavior.
+
 `training.json` is UTF-8 JSON with exactly these six required keys:
 
 ```json
