@@ -131,8 +131,10 @@ def load_all_factors() -> dict[str, FactorSpec]:
     bind, leaving the prior registry intact — no half-populated global is ever observable). Skips
     ``_``-prefixed modules. Accepts a stamped function ONLY at its defining module
     (``fn.__module__ == module.__name__``) so a re-export does not double-register. Idempotent:
-    re-scans the import-cached modules each call. Fails closed on a duplicate ``name``."""
+    refreshes finder caches for new modules and re-scans existing import-cached modules each call.
+    Fails closed on a duplicate ``name``."""
     global _REGISTRY, _loaded
+    importlib.invalidate_caches()
     fresh: dict[str, FactorSpec] = {}
     for mod_info in pkgutil.iter_modules(_features_pkg.__path__):
         if mod_info.name.startswith("_"):

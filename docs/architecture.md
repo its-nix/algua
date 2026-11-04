@@ -190,6 +190,18 @@ adapters/declarations rather than permanent mutually exclusive strategy APIs.
   score rules. Tests cover combined inputs, future masks, defensive copies, first-fill timing,
   captured-source drift and input reuse across windows/combinations.
 
+Prepared local model bytes also have a thin [artifact CLI](agent/model-artifacts.md):
+`model register`, explicit-version `model show` and per-name `model list` call the existing
+filesystem model registry. Six closed declared training fields accompany opaque bytes; outputs
+expose the exact pin and minimal public metadata. This supplies local registration/inspection,
+not training, deserialization, PIT qualification, MLflow publication or cross-cycle model transport.
+
+The separate [offline linear producer](agent/model-training.md) composes verified local snapshots,
+the pure pooled fitter and existing immutable registration at the CLI. Its approved fixed-vintage
+historical-proxy cutoff is the last complete target session's XNYS close; source and fit clocks
+remain separate and historical availability stays UNKNOWN. A pure context helper applies the
+exact pin through the unchanged canonical loader/backtest. It grants no qualification or trading authority.
+
 **Still partial:** legacy strategies retain their exclusive signal branches and a transitional
 `LegacyStrategyAdapter`. Remove them only after every supported strategy has score/weight/decision
 and identity parity on pinned inputs. General modality registration, filings/alternative inputs

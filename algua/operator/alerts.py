@@ -37,6 +37,8 @@ def research_fault(record: dict) -> str | None:
     outcome = record.get("outcome")
     if outcome in ("setup_failed", "claim_failed"):
         return outcome
+    if outcome == "driver_failed":
+        return "worker_failed"
     if type(record.get("exit_code")) is int:
         return "worker_failed" if record["exit_code"] != 0 else None
     return None

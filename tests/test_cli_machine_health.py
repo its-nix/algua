@@ -332,6 +332,34 @@ def test_explicit_failure_outcome_with_zero_exit_never_healthy(tmp_path, monkeyp
     assert json.loads(result.stdout)["loops"]["research"] == "failing"
 
 
+@pytest.mark.parametrize("exit_code", [0, None, "missing"])
+def test_explicit_driver_failure_preserves_incident_without_failed_exit(
+    tmp_path, monkeypatch, exit_code,
+):
+    records = [_run(minutes, outcome="driver_failed", exit_code=exit_code,
+                    prompt="private-driver-prompt", error="private-driver-error")
+               for minutes in (60, 0)]
+    if exit_code == "missing":
+        for record in records:
+            record.pop("exit_code")
+    _seed(tmp_path, monkeypatch, records)
+    before = _tree(tmp_path)
+
+    result = _invoke()
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["loops"]["research"] == "failing"
+    assert len(payload["incidents"]) == 1
+    incident = payload["incidents"][0]
+    assert incident["cause"] == "worker_failed"
+    assert incident["reproduction"] == {"method": "distinct_cycles", "observations": 2}
+    assert incident["status"] == "open"
+    assert incident["recovery"] == "unverified"
+    assert "private-driver" not in result.stdout
+    assert _tree(tmp_path) == before
+
+
 def test_pool_empty_driver_error_is_systemic_not_negative_economics(tmp_path, monkeypatch):
     _seed(tmp_path, monkeypatch, [_run(60, outcome="pool_empty", exit_code=1),
                                   _run(outcome="pool_empty", exit_code=1)])

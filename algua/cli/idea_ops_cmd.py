@@ -2,7 +2,6 @@
 authority; the research/leap/forage drivers and the merge-back drainer do."""
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
@@ -15,11 +14,16 @@ from algua.cli.idea_json import idea_json
 from algua.config.settings import get_settings
 from algua.contracts.idea import AttemptOutcome
 from algua.operator.campaign_choice import choose_campaign
+from algua.operator.campaign_memory_admission import (
+    checkpoint_context,
+    prepare_memory_context,
+    revalidate_memory_context,
+)
+from algua.operator.research_context import cycle_context as _cycle_context
 from algua.operator.research_cycle import (
     CycleLimits,
     ResearchCycle,
     duration_seconds,
-    file_hash,
 )
 from algua.registry.db import connect, migrate, registry_conn
 from algua.registry.idea_attempts import IdeaAttemptsRepository
@@ -61,36 +65,6 @@ idea_ops_app = typer.Typer(
 )
 
 
-def _cycle_context(data_dir: Path, *, root: Path | None = None) -> dict:
-    root = root.resolve() if root is not None else Path(__file__).resolve().parents[2]
-    required = {
-        "dependency_hash": "uv.lock",
-        "project_sha256": "pyproject.toml",
-        "runtime_seam_sha256": ".opencode/scripts/run_agent.sh",
-        "runtime_config_sha256": ".opencode/opencode.json",
-        "controller_sha256": "algua/operator/research_cycle.py",
-        "supervisor_sha256": "algua/operator/research_cycle_worker.py",
-        "outcome_parser_sha256": "algua/operator/research_cycle_results.py",
-        "driver_sha256": ".opencode/scripts/run-research-loop.sh",
-    }
-    sources = {key: file_hash(root / path) for key, path in required.items()}
-    if any(value is None for value in sources.values()):
-        raise ValueError("missing required cycle source identity")
-    # Pin checkout Python/runtime content independently of Git refs and the caller's cwd.
-    paths = sorted({*required.values(), *(
-        str(path.relative_to(root)) for directory in ("algua", ".opencode")
-        for path in (root / directory).rglob("*") if path.is_file()
-        and "__pycache__" not in path.parts
-        and path.suffix in {".py", ".sh", ".md", ".json", ".txt"})})
-    manifest = {path: file_hash(root / path) for path in paths}
-    if any(value is None for value in manifest.values()):
-        raise ValueError("missing cycle baseline source")
-    baseline = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
-    return {"data_dir": str(data_dir.resolve()),
-            "data_manifest_sha256": file_hash(data_dir / "manifest.jsonl"),
-            "source_baseline_sha256": baseline, **sources}
-
-
 @idea_ops_app.command("cycle-start")
 @json_errors
 def cycle_start(
@@ -107,10 +81,16 @@ def cycle_start(
     campaign: Path | None = typer.Option(None, "--campaign", help="Menu and explicit choices JSON"),
     choose: bool = typer.Option(False, "--choose", help="Opt in to an output-only menu chooser"),
     choice_dir: Path | None = typer.Option(None, "--choice-dir", help="Private chooser artifacts"),
+    public_memory_context: bool = typer.Option(
+        False, "--public-memory-context", help="Include bounded unverified prior public evidence"),
 ) -> None:
     """Start/recover one bounded driver cycle under the driver's existing flock."""
     if choose and (menu_only or campaign is not None) or (choose != (choice_dir is not None)):
         raise ValueError("--choose requires --choice-dir and excludes --menu-only/--campaign")
+    if public_memory_context and not (menu_only or campaign is not None or choose):
+        raise ValueError("public_memory_context:activation_invalid")
+    if menu_only and campaign is not None:
+        raise ValueError("--menu-only cannot accept --campaign")
     s = get_settings()
     limits = CycleLimits(limit, duration_seconds(timeout), workers, cpu_seconds,
                          memory_mb, file_mb, max_cost)
@@ -118,17 +98,30 @@ def cycle_start(
                 ttl_minutes=s.idea_claim_ttl_minutes, preview_hold_hours=s.idea_preview_hold_hours)
     with registry_conn() as conn:
         cycle = ResearchCycle(conn, s.data_dir / "research-cycles", run)
+        captured_menu = None
+        if public_memory_context:
+            args["context"], captured_menu = prepare_memory_context(
+                cycle, request=args, manual=campaign is not None, choose=choose,
+                tracking_uri=s.mlflow_tracking_uri, tracking_backend=s.tracking_backend,
+                choice_directory=choice_dir)
         if menu_only:
-            if campaign is not None:
-                raise ValueError("--menu-only cannot accept --campaign")
-            return emit(ok({"menu": cycle.campaign_menu(**args)}))
+            return emit(ok({"menu": captured_menu if captured_menu is not None
+                            else cycle.campaign_menu(**args)}))
         adoption = {} if campaign is None else {"campaign": json.loads(campaign.read_text())}
         if campaign is not None and not isinstance(adoption["campaign"], dict):
             raise ValueError("--campaign requires a menu and selection JSON object")
         if choose:
             adoption = {"campaign": choose_campaign(
-                cycle, menu=cycle.campaign_menu(**args), directory=choice_dir, **args)}
+                cycle, menu=captured_menu if captured_menu is not None
+                else cycle.campaign_menu(**args), directory=choice_dir, **args)}
+            if public_memory_context:
+                assert captured_menu is not None
+                repeated = revalidate_memory_context(
+                    cycle, captured_menu, tracking_uri=s.mlflow_tracking_uri,
+                    tracking_backend=s.tracking_backend)
             args["context"] = _cycle_context(s.data_dir)
+            if public_memory_context:
+                args["context"]["public_research_memory"] = repeated
         claimed, result = cycle.start(**args, **adoption)
         result["claimed"] = [idea_json(i, IdeaRepository(conn)) for i in claimed]
         emit(result)
@@ -147,9 +140,9 @@ def cycle_check(run: str = typer.Option(..., "--run"),
         raise ValueError("actual worker checkout --worker-root is required")
     with registry_conn() as conn:
         cycle = ResearchCycle(conn, s.data_dir / "research-cycles", run)
-        cycle.verify_context(context=_cycle_context(s.data_dir), scratch_data=scratch_data)
-        cycle.verify_context(context=_cycle_context(s.data_dir, root=worker_root),
-                             scratch_data=scratch_data)
+        for root in (None, worker_root):
+            context = checkpoint_context(cycle, _cycle_context(s.data_dir, root=root))
+            cycle.verify_context(context=context, scratch_data=scratch_data)
     emit(ok({"research_cycle_id": run, "context_verified": True}))
 
 

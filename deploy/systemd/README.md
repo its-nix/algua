@@ -121,7 +121,8 @@ nothing), and that code never writes the link. Any frozen deployment's tick woul
 by `tick_snapshots_frozen_link` **after that tenant's orders are sent**, aborting `run-all`. Legacy
 and working-tree ticks are unaffected.
 
-So before any rollback, do one of:
+Before a rollback, keep the paper and merge-back services stopped and verify that the target
+release supports the deployed database schema. For frozen deployments, choose a supported path:
 
 - **Retire every frozen deployment.** `algua registry transition <name> --to retired` retires the
   strategy's active deployment. It first drains the strategy's resting paper orders, so it needs
@@ -135,9 +136,13 @@ So before any rollback, do one of:
   WHERE x.source_kind = 'frozen' AND d.retired_at IS NULL;
   ```
 
-- **Drop the trigger:** `DROP TRIGGER tick_snapshots_frozen_link;` on the registry database.
-  Frozen ticks written without it carry no link and never count as forward evidence. Redeploying
-  Story 1.3d code recreates the trigger (its `migrate()` is idempotent).
+- **Keep the lane stopped and repair forward.** If schema-compatible rollback cannot be
+  established, retain the database, frozen artifacts and invocation evidence, then deploy a
+  reviewed compatible release before resuming operation.
+
+Retirement alone does not establish compatibility with every schema change. Preserve the
+`tick_snapshots_frozen_link` trigger and the other integrity guards throughout recovery; disabling
+them is not a rollback procedure.
 
 ## Why the wrapper, not just the timer
 

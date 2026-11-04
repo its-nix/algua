@@ -24,13 +24,16 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     idea_ops_cmd,
     inspirations_cmd,
     live_cmd,
+    model_cmd,
     negative_cmd,
     operator_cmd,
     ops_cmd,
     paper_cmd,
+    portfolio_cmd,
     registry_cmd,
     research_batch_cmd,
     research_cmd,
+    research_memory_cmd,
     runs_cmd,
     strategy_cmd,
 )
@@ -53,11 +56,14 @@ idea_cmd.idea_app.add_typer(idea_ops_cmd.idea_ops_app)
 research_cmd.research_app.add_typer(negative_cmd.log_app, name="log")
 research_cmd.research_app.add_typer(inspirations_cmd.inspirations_app, name="inspirations")
 research_cmd.research_app.add_typer(research_batch_cmd.run_all_app, name="run-all")
+research_cmd.research_app.add_typer(research_memory_cmd.memory_app, name="memory")
 # data_refresh_cmd.refresh_app carries only `refresh-bars`; merged flat (no `name=`) onto
 # data_app so `algua data refresh-bars ...` is unchanged while data_refresh_cmd never imports
 # data_cmd (#556 review finding 2).
 data_cmd.data_app.add_typer(data_refresh_cmd.refresh_app)
+backtest_cmd.backtest_app.add_typer(portfolio_cmd.portfolio_app)
 app.add_typer(deployment_cmd.deployment_app, name="deployment")
+app.add_typer(model_cmd.model_app, name="model")
 
 __all__ = ["app", "main"]
 

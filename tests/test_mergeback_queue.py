@@ -856,12 +856,26 @@ def _add_run_worktree(repo: Path, branch: str, worktree: Path, *, log: bool = Tr
         (worktree / "research-loop.log").write_text("agent transcript\n", encoding="utf-8")
 
 
-def test_cleanup_branch_all_terminal_removes_worktree_and_archives_log(paths, tmp_path):
+@pytest.fixture
+def retained_cleanup(monkeypatch, tmp_path):
+    from tests.test_research_memory_driver import prepare_memory
+
+    repo = tmp_path / "repo"
+    monkeypatch.setenv("ALGUA_DB_PATH", str(repo / "data/algua.db"))
+    monkeypatch.setenv("ALGUA_DATA_DIR", str(repo / "data"))
+    monkeypatch.setenv("ALGUA_TRACKING_BACKEND", "mlflow-sqlite")
+    monkeypatch.setenv("ALGUA_MLFLOW_TRACKING_URI", f"sqlite:///{repo / 'tracking.db'}")
+    return prepare_memory
+
+
+def test_cleanup_branch_all_terminal_removes_worktree_and_archives_log(
+        paths, tmp_path, retained_cleanup):
     queue_path, lock_path = paths
     repo = _init_cleanup_repo(tmp_path)
     branch = f"research-run/{_STAMP}--strat_a"  # the candidate suffix is stripped for the path
     worktree = repo / ".runs" / _STAMP
     _add_run_worktree(repo, branch, worktree)
+    retained_cleanup(repo, worktree)
 
     mergeback_queue.enqueue(queue_path, lock_path, **_item(branch=branch))
     mergeback_queue.record_attempt(
@@ -882,12 +896,14 @@ def test_cleanup_branch_all_terminal_removes_worktree_and_archives_log(paths, tm
     assert branch in branches
 
 
-def test_cleanup_branch_noop_while_a_sibling_item_is_non_terminal(paths, tmp_path):
+def test_cleanup_branch_noop_while_a_sibling_item_is_non_terminal(
+        paths, tmp_path, retained_cleanup):
     queue_path, lock_path = paths
     repo = _init_cleanup_repo(tmp_path)
     branch = f"research-run/{_STAMP}--strat_a+strat_b"
     worktree = repo / ".runs" / _STAMP
     _add_run_worktree(repo, branch, worktree)
+    retained_cleanup(repo, worktree)
 
     for strategy in ("strat_a", "strat_b"):
         mergeback_queue.enqueue(queue_path, lock_path, **_item(strategy=strategy, branch=branch))
@@ -946,13 +962,14 @@ def test_cleanup_branch_missing_worktree_is_a_clean_noop(paths, tmp_path):
     }
 
 
-def test_cleanup_branch_falls_back_to_the_legacy_location(paths, tmp_path):
+def test_cleanup_branch_falls_back_to_the_legacy_location(paths, tmp_path, retained_cleanup):
     # Transition support: a pre-#555 run's worktree lives at <repo_root>/../algua-research-<stamp>.
     queue_path, lock_path = paths
     repo = _init_cleanup_repo(tmp_path)
     branch = f"research-run/{_STAMP}"
     legacy = tmp_path / f"algua-research-{_STAMP}"
     _add_run_worktree(repo, branch, legacy)
+    retained_cleanup(repo, legacy)
 
     mergeback_queue.enqueue(queue_path, lock_path, **_item(branch=branch))
     mergeback_queue.record_attempt(
@@ -967,7 +984,7 @@ def test_cleanup_branch_falls_back_to_the_legacy_location(paths, tmp_path):
     assert (repo / ".runs" / "logs" / f"research-run_{_STAMP}.log").is_file()
 
 
-def test_cleanup_branch_rm_rf_fallback_for_an_unregistered_dir(paths, tmp_path):
+def test_cleanup_branch_rm_rf_fallback_for_an_unregistered_dir(paths, tmp_path, retained_cleanup):
     # A dir at the expected path that git does NOT know as a worktree (already pruned from git's
     # list, dir left behind): `git worktree remove` fails, the rm -rf fallback reclaims it.
     queue_path, lock_path = paths
@@ -976,6 +993,7 @@ def test_cleanup_branch_rm_rf_fallback_for_an_unregistered_dir(paths, tmp_path):
     orphan = repo / ".runs" / _STAMP
     orphan.mkdir(parents=True)
     (orphan / "research-loop.log").write_text("orphan transcript\n", encoding="utf-8")
+    retained_cleanup(repo, orphan)
 
     result = mergeback_queue.cleanup_branch(
         queue_path, lock_path, branch=branch, repo_root=repo)  # empty queue: nothing non-terminal

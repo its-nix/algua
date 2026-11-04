@@ -2,19 +2,20 @@
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from tests._research_driver_source import function_python
+
 DRIVER = Path(__file__).resolve().parents[1] / ".opencode/scripts/run-research-loop.sh"
 
 
 def _legacy_outcomes(tmp_path, monkeypatch, rows, *, worker_exit="0", fail_write=False):
     """Execute the actual driver's outcome code with a trusted CLI response fixture."""
-    sources = re.findall(r"<<'PY'[^\n]*\n(.*?)\n^PY$", DRIVER.read_text(), re.S | re.M)
+    source = function_python(DRIVER.read_text(), "record_outcomes")
     report = tmp_path / "report.md"
     report.write_text("```json\n" + json.dumps(
         {"hypotheses": [{"title": "Fixture", **r} for r in rows]}) + "\n```\n")
@@ -30,7 +31,7 @@ def _legacy_outcomes(tmp_path, monkeypatch, rows, *, worker_exit="0", fail_write
                                     str(tmp_path), "completed"])
     namespace = {"__name__": "__main__"}
     try:
-        exec(compile(sources[1], str(DRIVER), "exec"), namespace)
+        exec(compile(source, str(DRIVER), "exec"), namespace)
     except SystemExit as exc:
         return exc.code, calls
     return 0, calls
@@ -513,14 +514,14 @@ def test_cycle_cli_subdirectory_retains_required_source_identity(cycle, tmp_path
 def test_missing_required_source_identity_refuses_before_claim(cycle, tmp_path, monkeypatch):
     from typer.testing import CliRunner
 
-    from algua.cli import idea_ops_cmd
     from algua.cli.main import app
+    from algua.operator import research_context
 
     monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "fixture.db"))
     monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path))
     # Simulate a required source unavailable to the identity reader, without altering the tree.
-    original = idea_ops_cmd.file_hash
-    monkeypatch.setattr(idea_ops_cmd, "file_hash",
+    original = research_context.file_hash
+    monkeypatch.setattr(research_context, "file_hash",
                         lambda p: None if p.name == "uv.lock" else original(p))
     result = CliRunner().invoke(app, ["research", "idea", "cycle-start", "--run", "missing-source",
                                      "--limit", "1"])

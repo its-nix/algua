@@ -205,6 +205,32 @@ source_modules = [
 forbidden_modules = ["algua.features.scaling_fit"]
 
 [[tool.importlinter.contracts]]
+# Offline numerical fitting may use only the pure contracts/features/primitives leaves.
+name = "training is a pure numerical leaf"
+type = "forbidden"
+source_modules = ["algua.training"]
+forbidden_modules = [
+    "algua.audit", "algua.backtest", "algua.calendar", "algua.cli", "algua.config",
+    "algua.data", "algua.evaluation", "algua.execution", "algua.knowledge", "algua.live",
+    "algua.models", "algua.observability", "algua.operator", "algua.portfolio",
+    "algua.provenance", "algua.registry", "algua.research", "algua.risk", "algua.strategies",
+    "algua.tracking",
+]
+
+[[tool.importlinter.contracts]]
+# A future explicit offline CLI may compose a fit; serving/research/authority leaves may not.
+name = "offline training is unreachable from serving and authority layers"
+type = "forbidden"
+source_modules = [
+    "algua.audit", "algua.backtest", "algua.calendar", "algua.config", "algua.contracts",
+    "algua.data", "algua.evaluation", "algua.execution", "algua.features", "algua.knowledge",
+    "algua.live", "algua.models", "algua.observability", "algua.operator", "algua.portfolio",
+    "algua.primitives", "algua.provenance", "algua.registry", "algua.research", "algua.risk",
+    "algua.strategies", "algua.tracking",
+]
+forbidden_modules = ["algua.training"]
+
+[[tool.importlinter.contracts]]
 name = "portfolio construction layer is pure (no algua imports beyond contracts + features)"
 type = "forbidden"
 source_modules = ["algua.portfolio"]
@@ -398,11 +424,14 @@ modules = [
     "algua.cli.idea_ops_cmd",
     "algua.cli.inspirations_cmd",
     "algua.cli.live_cmd",
+    "algua.cli.model_cmd",
     "algua.cli.negative_cmd",
     "algua.cli.operator_cmd",
     "algua.cli.paper_cmd",
+    "algua.cli.portfolio_cmd",
     "algua.cli.registry_cmd",
     "algua.cli.research_cmd",
+    "algua.cli.research_memory_cmd",
     "algua.cli.strategy_cmd",
 ]
 
