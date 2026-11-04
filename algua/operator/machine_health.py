@@ -110,7 +110,7 @@ def machine_health(
     else:
         try:
             if (session < now and calendar.sessions_between_instants(session, now)
-                    > PAPER_STALE_AFTER_SESSIONS):
+                    > PAPER_STALE_AFTER_SESSIONS and loops["paper"] != "failing"):
                 loops["paper"] = "stale"
         except Exception:  # noqa: BLE001 — unavailable calendar evidence is never healthy
             loops["paper"] = "unknown"
