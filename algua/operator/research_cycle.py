@@ -113,6 +113,33 @@ class ResearchCycle:
             self.conn.execute("BEGIN")
             return menu_from_history(campaign_scorecard(self.conn), self._request(**kwargs))
 
+    def recover_before_choice(self, *, choice_directory: Path, **request: Any) -> None:
+        """Reconcile older owned work before a fresh mutating chooser captures feedback.
+
+        The existing driver flock remains required. Read-only/manual menus never call this;
+        start() retains the same recovery backstop and unchanged claim transaction.
+        """
+        json.dumps(self._request(**request), allow_nan=False)
+        with self._locked():
+            if (self.path.exists() or self.path.is_symlink() or self.rows()
+                    or choice_directory.exists() or choice_directory.is_symlink()):
+                raise ValueError("chooser cycle already started; reconcile without another call")
+            self._recover_prior_cycles()
+
+    def _recover_prior_cycles(self) -> None:
+        # Called only while the shared directory lock is held. A driver killed after claim
+        # commit is recovered from the SAME rows; only this controller's contexts are adopted.
+        pending = self.conn.execute(
+            "SELECT DISTINCT run_stamp FROM idea_attempts WHERE outcome IS NULL").fetchall()
+        for row in pending:
+            if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,95}", row[0]) is None:
+                continue  # unrelated legacy run stamps are not ours to adopt
+            prior = ResearchCycle(self.conn, self.directory, row[0])
+            if prior.path.exists():
+                recovered = prior._finish(phase="controller_restart", worker_exit=1)
+                if recovered["unfinished_count"] or recovered["write_errors"]:
+                    raise RuntimeError("prior cycle recovery unfinished; refusing new claims")
+
     def start(self, *, limits: CycleLimits, context: dict[str, Any], ttl_minutes: int,
               category: str | None = None, preview_hold_hours: int = 72,
               campaign: dict | None = None) -> tuple[list[Idea], dict[str, Any]]:
@@ -134,18 +161,7 @@ class ResearchCycle:
                 return [], self._finish(phase="controller_restart", worker_exit=1)
             if self.rows():
                 raise ValueError("cycle ID already has attempts without this controller's context")
-            # A driver killed after claim commit but before stdout was received is recovered
-            # from the SAME attempt rows. Only cycles with this helper's context are adopted.
-            pending = self.conn.execute(
-                "SELECT DISTINCT run_stamp FROM idea_attempts WHERE outcome IS NULL").fetchall()
-            for row in pending:
-                if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,95}", row[0]) is None:
-                    continue  # unrelated legacy run stamps are not ours to adopt
-                prior = ResearchCycle(self.conn, self.directory, row[0])
-                if prior.path.exists():
-                    recovered = prior._finish(phase="controller_restart", worker_exit=1)
-                    if recovered["unfinished_count"] or recovered["write_errors"]:
-                        raise RuntimeError("prior cycle recovery unfinished; refusing new claims")
+            self._recover_prior_cycles()
             now = time.time()
             metadata = {"request": request, "created_at": now,
                         "deadline": now + limits.max_wall_seconds}
