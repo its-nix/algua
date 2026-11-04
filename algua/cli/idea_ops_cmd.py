@@ -98,6 +98,9 @@ def cycle_start(
                 ttl_minutes=s.idea_claim_ttl_minutes, preview_hold_hours=s.idea_preview_hold_hours)
     with registry_conn() as conn:
         cycle = ResearchCycle(conn, s.data_dir / "research-cycles", run)
+        if choose:
+            assert choice_dir is not None
+            cycle.recover_before_choice(choice_directory=choice_dir, **args)
         captured_menu = None
         if public_memory_context:
             args["context"], captured_menu = prepare_memory_context(
