@@ -112,6 +112,8 @@ _SUCCESS_STATUSES = frozenset({"promoted_allocated", "promoted_queued", "already
 _TERMINAL_FAILURE_STATUSES = frozenset({"diff_policy_rejected", "promote_failed"})
 # The one retryable-with-a-cap status.
 _RETRYABLE_STATUS = "gate_failed"
+_ADMISSION_PENDING = frozenset({"awaiting_pr_admission", "owner_recovery_required",
+                                "reviewed_revert_pending"})
 # The reservation status `select_and_reserve` atomically stamps onto a selected item.
 _RESERVED_STATUS = "in_progress"
 # Every status a queue item can rest in once its lifecycle is OVER — success or non-retryable
@@ -669,6 +671,10 @@ def classify_attempt(
     if payload is not None and payload.get("ran") is False and payload.get("reason") == "locked":
         return {"action": "lock_contention", "status": None, "attempts": attempts,
                 "transient_failures": transient_failures}
+    if (payload is not None and payload.get("ok") is True
+            and payload.get("status") in _ADMISSION_PENDING):
+        return {"action": "awaiting_admission", "status": payload["status"],
+                "attempts": attempts, "transient_failures": transient_failures}
     if payload is None or payload.get("ok") is not True or "status" not in payload:
         # Either genuinely unparseable, or an ok:false envelope (a fail-closed exception out of
         # `paper merge-back` — moved remote, stage drift — or a `lock-run`-level setup failure
@@ -731,6 +737,11 @@ def record_attempt(
             transient_failures=item.get("transient_failures", 0),
             max_transient_failures=max_transient_failures)
         item["transient_failures"] = verdict["transient_failures"]
+        if verdict["action"] == "awaiting_admission":
+            item["status"] = item.pop("pre_reservation_status", "pending")
+            item.pop("reserved_at", None)
+            item["last_result"] = payload
+            return data, {"action": verdict["action"], "key": key, "item": dict(item)}
         if verdict["action"] in ("lock_contention", "transient_failure"):
             if item.get("status") == _RESERVED_STATUS:
                 item["status"] = item.pop("pre_reservation_status", "pending")

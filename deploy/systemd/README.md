@@ -121,6 +121,111 @@ permission. This is a paper-only supervisor release entry, distinct from a strat
 manifest. The account/path/unit contract below must be reviewed and installed by the owner before
 use; adding this script does not activate it or establish production acceptance.
 
+### Draft unprivileged application builder
+
+`deploy/scripts/build-paper-release.py` prepares an **untrusted** artifact, never an approval:
+
+```sh
+python deploy/scripts/build-paper-release.py --repository /trusted/source --commit <exact-40-hex-commit> \
+  --output /owned/application --descriptor /owned/application-spec.json
+```
+
+Run Python 3.12 as a nonroot user in a disposable build environment with `uv` available. The
+descriptor is a sidecar outside the application, using the existing `target`/`previous` shape
+documented below. The new application profile fetches only the selected commit, uses a clean `main` sparse
+checkout omitting only the seven enumerated non-runtime `.claude/skills` aliases, installs with
+`uv sync --locked --no-editable`, and inventories the materialized runtime after copying interpreter
+links. Fresh Git export and a replacement build environment do not copy local untracked `.env`,
+credentials, runtime databases or caches. Build hooks execute only as the unprivileged builder.
+
+`application-runtime.json` records the builder, interpreter and external standard-library source
+identity. This is **not** the protected frozen-planner environment profile or a self-contained OS/
+stdlib closure. Executable wheel startup shims remain locked/inventory-bound code, not statically
+certified safe. The consumer does not verify external base-runtime state; the owner must separately
+adopt a compatible trusted base and root-controlled artifact. No ownership repair, authority DB
+migration, signing, selection, activation or compatibility approval is performed by the builder.
+
+### Draft opt-in Actions producer (owner review required)
+
+`paper-application-artifact.yml` adds only `workflow_dispatch`, restricted to `main`. After owner
+review, dispatch it explicitly with a full source SHA; it never runs on push, PR or a schedule.
+The candidate must be an ancestor of fetched `main`. The recipe comes separately from the
+[workflow's own commit](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts),
+not candidate source. Read-only checkout credentials and runner tokens stay outside the disposable
+nonroot build container, which receives only sanitized source, read-only builder/uv and output space.
+
+The producer uploads a tar archive, the unchanged consumer descriptor, provenance and checksums.
+It ignores build-produced `.git` before traversal and reconstructs clean sparse metadata from the
+verified input, with hooks disabled and fsmonitor false. Runtime file bytes remain inventory-bound;
+archive modes preserve executability without granting ownership or approval. The tar retains these
+modes through [artifact upload](https://github.com/actions/upload-artifact#permission-loss).
+Owner adoption, compatible approved Python/OS base, release compatibility and activation remain
+separate prerequisites. Linux CI output alone proves no VPS compatibility. This dependent draft
+does not enable deployment, signing, secrets, automatic runs or any persistent-host execution.
+
+### Draft conditional artifact adoption (separate owner decision)
+
+`deploy/scripts/adopt-paper-artifact.py` downloads and materializes files only after an explicit
+root-controlled approval request. Install the reviewed entry, its sibling `paper_archive.py` and
+trusted `algua` helpers under root-controlled parents, separately from the candidate artifact:
+
+```sh
+/root-controlled/python3 -I -S /root-controlled/operator/deploy/scripts/adopt-paper-artifact.py \
+  /root-controlled/artifact-approval.json
+```
+
+The helper is compiled directly from checked source bytes; adjacent bytecode caches are ignored.
+The bounded original approval bytes are parsed and hashed once, so a later request-file rewrite
+cannot attribute an earlier adoption to the replacement request.
+
+An optional final numeric argument identifies an already-open credential file descriptor for
+private GitHub access. The entry does not discover credentials or run `gh`; credential values and
+signed storage URLs must remain private. Authorization is sent only to the fixed
+`api.github.com/repos/its-nix/algua` API, never to the HTTPS storage redirect. No workflow is started.
+
+The closed JSON request contains exactly these fields:
+
+```json
+{
+  "schema": "algua-paper-adoption/v1",
+  "approval_ref": "owner-reviewed-exact-artifact-decision",
+  "repository_id": 123, "run_id": 234, "run_attempt": 1, "artifact_id": 345,
+  "artifact_sha256": "<64 lowercase hex>", "recipe_commit": "<40 lowercase hex>",
+  "source_commit": "<40 lowercase hex>", "application_digest": "<64 lowercase hex>",
+  "provenance_sha256": "<64 lowercase hex>", "destination": "/root-controlled/fresh-bundle",
+  "base": {
+    "approval_ref": "separately-reviewed-compatible-base-decision",
+    "ci_image": "<exact approved producer image reference>",
+    "python_path": "/approved/base/python3.12", "python_sha256": "<64 lowercase hex>",
+    "stdlib_path": "/approved/base/lib/python3.12", "stdlib_py_digest": "<64 lowercase hex>",
+    "os_release_sha256": "<64 lowercase hex>", "machine": "x86_64", "libc": "glibc 2.39"
+  }
+}
+```
+
+These are owner-supplied identities, not permissions inferred from artifact ownership. Exact run,
+attempt, successful manual main workflow, recipe/source, immutable service artifact digest and
+provenance must agree. The installed base must already be root-controlled and match the approved
+binary, standard-library Python sources, OS, architecture and libc observations. Every stdlib
+entry, including native extensions and caches, must be root-controlled. These checks verify
+declared identities without executing the base or artifact. It is not a native-library closure or
+a portability proof. The observed VPS research Python `/usr` 3.12.3 differs from CI 3.12.12 Bookworm;
+no compatible approved base has been proved, and separate `/usr/local` bases were not inspected.
+
+The standalone Linux entry bounds the storage connection/transfer to 2 GiB and a scoped 300-second
+wall timer, with progress reads and deadline checks. Each HTTP request has a 30-second socket timeout.
+Extraction accepts only the four producer sidecars and regular tar files/directories, with no
+duplicate/traversal/link/special entries, at most 100,000 tar members, 512 MiB per file and 4 GiB
+total file payload. Checksums, the complete runtime inventory and approved reconstructed Git
+metadata digest are checked as data; no artifact Git, Python, hooks or strategy code runs.
+A private sibling stage is atomically published without replacement as one fresh bundle containing
+`release/`, `release-spec.json`, original `provenance.json` and `adoption.json`. Existing destinations
+and racing writers are preserved; failure removes only the private stage. The descriptor retains
+the existing consumer shape/digest and binds its path to `release/` in that bundle. Adoption does
+not approve release compatibility, mint an approval, migrate a DB, sign, activate or change units.
+The separately reviewed release request below remains necessary. Only synthetic disposable adoption
+is tested; real Actions delivery, compatible-base adoption and paper activation remain unproved.
+
 Required installation:
 
 - Run the trusted, separately installed operator entry with a root-controlled Python 3.12 interpreter
@@ -524,3 +629,45 @@ gets **no `OPERATOR_JOBS` manifest entry** — `lock-run` is a parallel, purpose
 new job key. Zero lines of `run_session` (`algua/operator/session_runner.py`)/`session_gate`/the
 existing `run` command are touched by
 its existence.
+
+## Draft verified-PR admission (not activated)
+
+The Task7 bypass-removal increment makes `paper merge-back` refuse direct publication to
+`main`, including automatic revert pushes. It can adopt an **already merged** PR only after
+exact-head independent review, named check-run/app identities, a trusted integrated-tree
+attestation binding base/head/tree/check IDs, and explicit Task4 **authoritative strategy
+execution** attestation. Authoring sandbox success is insufficient. No production attestation
+or admission policy has been issued; Task4 remains unproved.
+
+`ALGUA_MERGEBACK_ADMISSION` selects a bounded, root-controlled descriptor, never a worker
+receipt. Its `merge-pr-admission/v1` fields are `repository`, `pull_request`, `head_sha`,
+`base_sha`, `reviewer_ids`, `required_checks`, `checked_tree` and `isolation` (plus `schema`).
+The attested execution baseline must have no subsequent changes outside the existing allowlist.
+Deployment also requires an immutable reviewed operator and trusted GitHub CLI/host; a root-owned
+JSON file alone establishes neither. The checked-tree attestation producer is not implemented.
+
+Missing evidence stays operationally pending without burning queue retry budgets. Old direct-main
+journals require owner recovery. A failed strict promotion remains in history with
+`reviewed_revert_pending`; no automatic rollback publication occurs. A trusted autonomous merger, artifact-producing CI and reviewed-revert completion remain gaps. Current
+repository CI remains manual, and this platform-delivery waiver never supplies strategy CI proof.
+All new safety/recovery behavior requires human review before merge or activation.
+
+### Draft publication phase (default off)
+
+`ALGUA_MERGEBACK_PUBLISH_PR=1` permits the existing merge-back entry/drainer to publish one
+allowlisted candidate to `its-nix/algua`, base `main`, on `algua-research/<full-head-SHA>`.
+Every unpublished commit must be linear and allowlisted, with a 128-commit cap; reverted protected
+edits refuse before publication. An empty-expected ref lease is create-only CAS, never permission
+to replace an existing ref. New PRs are drafts with a fixed body; worker text, claims and provider
+errors are not copied into them. No strategy is imported or executed by this phase.
+
+Strictly matched creation/reuse returns a non-authoritative `publication` observation in CLI JSON
+and queue `last_result`, without writing an admission journal or consuming retry budgets. Closed
+unmerged PRs, identity mismatches and races remain pending. Publication never supplies review,
+CI, checked-tree or Task4 proof; the separate admission requirements above remain mandatory.
+
+Remote refs/base can move after observations. This phase is not a base-CAS merger and assumes no
+strict server checks or merge queue. Trusted immutable operator/Git/GitHub CLI/host configuration
+and a separately scoped publication credential are deployment prerequisites; none is installed or
+issued here. The one additive protected CLI JSON field and these new workflow semantics require
+human review of this dependent draft before merge/activation; prior PR788 review does not cover it.
