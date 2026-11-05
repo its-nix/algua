@@ -1,6 +1,6 @@
 # Algua 2.0 — Task 10 acceptance record
 
-Evidence cut: **2026-11-05**, main [`9531289`](https://github.com/its-nix/algua/commit/9531289cebc466773d53c0d405fed344f67e5900).
+Evidence cut: **2026-11-05**, main [`c24fd02`](https://github.com/its-nix/algua/commit/c24fd02e78bf3164486722243c3345df6495111e).
 This records the owner's mission and design-bundle Task 10 items 1–7 against actual evidence.
 The owner reduced ten unattended cycles to **three**; every other requirement remains.
 **Overall status: PARTIAL, not accepted as the complete Algua 2.0 machine.**
@@ -33,8 +33,8 @@ production, browser, model or brokerage assessment.
 | Portfolio | PASS for bounded research replay; PARTIAL daily operation | One actual repeat of an existing **5-symbol / 2-sleeve / 501-session** configuration used canonical lag/costs, seed 0, explicit budgets/caps and unverified research risk assumptions. Net IS return **−10.2309%**, Sharpe **−0.3596**; whole inputs/11 limitations survived capture/prune/readback. Turnover cap was null; no SL/TP overlay was required. This is not a 150-symbol risk-adjusted book, qualified strategy set or scheduled daily paper rebalance. [Recorded proof](https://github.com/its-nix/algua/pull/745), [supported bounds](portfolio-replay-cli.md). |
 | Data | PASS for pilot; PARTIAL architecture/data quality | 150 current selected names, **75,150 rows / 501 sessions**, 2024-11-01 through 2026-11-02. No premium purchase. Genuine historical membership, delistings, event knowledge times and other modalities remain unavailable; historical source availability is UNKNOWN. |
 | Memory / learning | PARTIAL | Public lineage/negative results survive verified cleanup, including 104 benchmark records and the complete portfolio input. The earlier chooser explanation had one offered option and **zero numerical archive observations**; the later leap's **2 critic rejections / 0 imports / 0 critic errors** remain prior-history evidence. Deployed [#780](https://github.com/its-nix/algua/pull/780) now carries bounded recent cross-family numerical context: an isolated menu-only read returned **0 choices / 6 observations / 2 receipts**, including **2 negative IS** observations; **12 retained**, with **2 input-size + 4 context-size omissions**. It made no claim/model call; existing migration changed DB bytes. Neither this transport nor instruction-level primary/author/interpret forwarding proves subagent use, causal learning or economic improvement. Model archives retain refs, not bytes. [Memory contract](../agent/research-memory.md), [history limits](research-vps-cycles.md#operational-handoff-and-remaining-limits). |
-| Dashboard | PARTIAL / UNVERIFIED | Strategy-first home, lifecycle/family filters, stable-ID detail and removal of bottom four-tab navigation exist. Conditional metric ordering requires an explicit matching **COMPARABLE** cohort, sufficient metrics and fresh reads. Owner-approved [#739](https://github.com/its-nix/algua/pull/739) is merged; [#778](https://github.com/its-nix/algua/pull/778) adds retained research detail without registering worker strategies. Actual rendered dashboard/detail acceptance and production comparability remain **UNVERIFIED**. Reuse existing [#707 acceptance UI](https://github.com/its-nix/algua/pull/707). [Ordering implementation](../../web/frontend/src/components/StrategyBoard.tsx), [ordering tests](../../web/frontend/src/components/BoardOrdering.test.tsx). |
-| Operations / monitoring | PARTIAL | All three research/forage/leap timers remain enabled; the fourth empirical cycle was timer-launched. The later research firing `20261105-174703-e6b11958f24f` exited 0 with `pool_empty`, **0 attempts / 0 unfinished / 0 selected**, no write errors, and recent-protocol context with **6 observations / 2 receipts**. No worker/model ran; this healthy idle firing is excluded from **4/12/8**. Deployed [#776](https://github.com/its-nix/algua/pull/776) still distinguishes worker success from qualification refusal; historical incidents were not cleared. Research scheduling is not paper/live or full recovery acceptance. |
+| Dashboard | PARTIAL; scoped browser PASS | Owner-approved [#739](https://github.com/its-nix/algua/pull/739), retained research detail [#778](https://github.com/its-nix/algua/pull/778) and automated browser checks [#783](https://github.com/its-nix/algua/pull/783) are merged. Seven settled synthetic-fixture screenshots cover the stated layout/selection controls below. The actual VPS retained list/detail also passed exact archive readback and overflow checks at 390/1440 px after the scoped [#784 CSS fix](https://github.com/its-nix/algua/pull/784), without registering worker strategies. Production comparability, whole-source health and complete UI acceptance remain unproved. [Ordering implementation](../../web/frontend/src/components/StrategyBoard.tsx), [ordering tests](../../web/frontend/src/components/BoardOrdering.test.tsx). |
+| Operations / monitoring | PARTIAL | All three research/forage/leap timers remain enabled; the fourth empirical cycle was timer-launched. The later research firing `20261105-174703-e6b11958f24f` exited 0 with `pool_empty`, **0 attempts / 0 unfinished / 0 selected**, no write errors, and recent-protocol context with **6 observations / 2 receipts**. Separately, `20261105-183226-e6c8982cbac4` ended `setup_failed`, exit **1**, worker exit **null**, **0 attempts** and no primary worker or claims; generic `invalid_input` and an absent choice directory leave the cause **UNKNOWN**. Both operational firings are excluded from **4/12/8**. The obsolete reload-rearmed startup drop-in was backed up/removed without changing calendar/persistence; the failed service state remains, with no subsequent research-success claim. Deployed [#776](https://github.com/its-nix/algua/pull/776) still distinguishes execution from qualification; historical incidents were not cleared. Research scheduling is not paper/live or full recovery acceptance. |
 | Immutable paper release / recovery | PARTIAL implementation; UNKNOWN integrated proof | [`deployment prepare/verify`](../../algua/cli/deployment_cmd.py), gated frozen paper intake/runtime and the merged [#779 release wrapper](https://github.com/its-nix/algua/pull/779) exist; **23 focused wrapper fixtures** passed. The wrapper is **not installed or activated**. This operator-invoked wrapper does not build/install trusted artifacts or replace direct-main merge-back with verified-PR admission; those integrations and actual account/cohort/release/recovery evidence remain unproved. [Release/recovery instructions](../../deploy/systemd/README.md#schema-v48-story-13d-is-forward-only). |
 
 Separate portfolio engineering controls preserve the original cap-null proof above. Case 01
@@ -71,6 +71,13 @@ Original stopped/failed invocations are retained; no failure was rerun into a fa
 Private integration receipts are `2026-11-05/task8-browser-renewal/current-result.json`,
 `research-numerical-memory/{checks,root-review,vps-readback}.json`, and
 `portfolio-cap-risk-03/independent-audit.json`; source approval and runtime evidence remain distinct.
+`2026-11-05/web-localhost-deployment/receipt.json` records nine successful health/static/API
+checks, 73 exact production assets without fixtures, and seven actual retained **attempt refs**.
+The fourth archive's seven evaluations were verified (`9ce5b959…`); these are not seven cycles.
+Scoped real-UI receipts are `live-monitor-retained-qa-green/validation-summary.json` and
+`live-monitor-research-fetch-triage/summary.json`; the 73-file asset rollout needed no service restart.
+Timer removal and the unresolved setup failure are recorded separately in
+`research-bootstrap-removal/receipt.json` and `research-183226-diagnosis/conclusion.json`.
 
 ## Explicit unresolved inputs and review boundaries
 
@@ -78,10 +85,17 @@ Private integration receipts are `2026-11-05/task8-browser-renewal/current-resul
   remains open/draft. Its independent provider returned `content_policy_blocked` and the exact
   requested tool is unavailable; this is not an outstanding user-permission request. Source
   approval cannot establish that assessment, and this record does not retry it.
-- **UNVERIFIED:** merged [#739](https://github.com/its-nix/algua/pull/739) has owner source approval,
-  but the live-app CUA navigation failed with a `timeoutMs` TypeError and IAB was unavailable.
-  Six synthetic CLI commands exited 0 and both gates failed/refused; these are not rendered
-  browser acceptance. The composite source was unchanged during those checks.
+- **PASS for scoped automated browser checks; PARTIAL overall:** [#783](https://github.com/its-nix/algua/pull/783)
+  ran the existing Playwright command against a local production build with a truthful synthetic
+  fixture: board at 360/390/1440 px, detail and Research at 390/1440 px. Explicit cohort selection
+  reordered IDs 2/1; native Enter preserved ID 2. Only unknown-family toggling and empty retained
+  state were covered; no qualification or production claim follows. Root visually reviewed selected mobile and desktop screenshots.
+  Native CUA still has a technical `timeoutMs` TypeError/IAB limitation. Separate GET/HEAD-only
+  real-VPS UI readback listed seven attempt refs and matched the selected fourth-cycle metrics/provenance/
+  whole inputs/model refs unchanged before/after the CSS fix, with no page overflow at 390/1440 px.
+  The first 390 px capture had transient `Failed to fetch` for three other sources; its cause is
+  untraced. At 1440 px it recovered; one bounded diagnostic returned all seven APIs 200 with no
+  request/console/page errors (cold reads 10–33 seconds). This does not establish whole-source health.
 - **PARTIAL / UNKNOWN:** complete immutable paper supervisor release, smoke, failed-release and
   schema-compatible recovery integration, genuine scheduled paper ticks and the separate
   72-hour safe-operation exercise remain unproved or unimplemented in part.
