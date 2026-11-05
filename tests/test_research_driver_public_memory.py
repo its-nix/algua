@@ -6,8 +6,27 @@ import shlex
 import subprocess
 import sys
 
+import pytest
+
 from tests import test_research_driver_campaign_choice as driver
 from tests.test_research_driver_campaign_choice import driver_pool as driver_pool
+
+
+@pytest.mark.parametrize("args,expected", [
+    (["--choose-campaign"], "1 1"),
+    (["--campaign", "fixture.json"], "1 1"),
+    (["--choose-campaign", "--no-public-memory-context"], "0 0"),
+    ([], "0 0"),
+])
+def test_campaign_defaults_forward_memory_and_keep_explicit_optout(tmp_path, args, expected):
+    source = driver.DRIVER.read_text()
+    parser = source[source.index("while [[ $#"):source.index("\nREPO_ROOT=")]
+    command = driver._preamble(tmp_path, PUBLIC_MEMORY_CONTEXT="0",
+        RESEARCH_PUBLIC_MEMORY_CONTEXT="0") + "set -- " + shlex.join(args) + "\n" + parser
+    command += '\nprintf "%s %s" "$PUBLIC_MEMORY_CONTEXT" "$RESEARCH_PUBLIC_MEMORY_CONTEXT"'
+    result = subprocess.run(["bash", "-c", command], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == expected
 
 
 def _start(tmp_path, monkeypatch, *args):
@@ -27,7 +46,8 @@ def _start(tmp_path, monkeypatch, *args):
         "    None if pid == 1 else original_killpg(pid, sig))")
     monkeypatch.setattr(driver, "FIXTURE_CLI", fixture)
     return driver._driver_start(
-        tmp_path, *args, REPO_ROOT=str(driver.ROOT), PUBLIC_MEMORY_CONTEXT="0",
+        tmp_path, *args, without_memory=False, REPO_ROOT=str(driver.ROOT),
+        PYTHON=sys.executable, PUBLIC_MEMORY_CONTEXT="0",
         AUTH_TRACKING_BACKEND="mlflow-sqlite",
         AUTH_TRACKING_URI=f"sqlite:///{tmp_path / 'authority-tracking.db'}")
 
@@ -77,8 +97,28 @@ def test_dry_run_memory_campaign_performs_no_claim_archive_or_model_call(tmp_pat
 
 
 def test_legacy_driver_preserves_menu_without_memory_work(driver_pool, tmp_path, monkeypatch):
-    result = _start(tmp_path, monkeypatch, "--choose-campaign")
+    result = _start(tmp_path, monkeypatch, "--choose-campaign", "--no-public-memory-context")
     _, claimed = driver._started(result)
     assert [idea["id"] for idea in claimed] == [3]
     assert "public_research_memory" not in driver._calls(tmp_path)[0]["menu"]["request"]["context"]
     assert not (tmp_path / "authority-tracking.db").exists()
+
+
+def test_campaign_default_admits_and_decodes_memory_without_extra_flags(
+    driver_pool, tmp_path, monkeypatch,
+):
+    result = _start(tmp_path, monkeypatch, "--choose-campaign")
+    _, claimed = driver._started(result)
+    assert [idea["id"] for idea in claimed] == [3]
+    snapshot = driver._calls(tmp_path)[0]["menu"]["request"]["context"]["public_research_memory"]
+    assert snapshot["selection_protocol"] == "recent_completed_attempts_desc/v1"
+
+
+def test_empty_default_campaign_admits_without_chooser_or_prompt_decode(
+    driver_pool, tmp_path, monkeypatch,
+):
+    result = _start(tmp_path, monkeypatch, "--choose-campaign", "--category", "empty-category")
+    marker, claimed = driver._started(result)
+    assert marker == "campaign" and claimed == []
+    assert driver._calls(tmp_path) == []
+    assert driver_pool.execute("SELECT COUNT(*) FROM idea_attempts").fetchone()[0] == 0

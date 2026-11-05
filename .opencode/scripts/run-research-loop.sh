@@ -51,8 +51,8 @@
 #   .opencode/scripts/run-research-loop.sh [--hypotheses N] [--timeout DUR] [--category SLUG] [--dry-run]
 #   Optional --campaign FILE binds a cycle-start --menu-only snapshot and explicit chooser reply.
 #   --choose-campaign asks the constrained chooser once instead; the two options cannot mix.
-#   --public-memory-context adds bounded unverified history only with an explicit campaign mode.
-#   --research-public-memory-context also forwards that admitted snapshot into the primary prompt.
+#   Campaign modes include bounded public memory and primary forwarding by default.
+#   --no-public-memory-context disables both; ordinary noncampaign mode stays unchanged.
 #
 set -euo pipefail
 ORIGINAL_ARGS=("$@")
@@ -92,6 +92,7 @@ CAMPAIGN=""
 CHOOSE_CAMPAIGN=0
 PUBLIC_MEMORY_CONTEXT=0
 RESEARCH_PUBLIC_MEMORY_CONTEXT=0
+NO_PUBLIC_MEMORY_CONTEXT=0
 RESEARCH_PUBLIC_MEMORY_JSON=""
 CYCLE_CAMPAIGN=""
 RECOVER_WORKER_EXIT=""
@@ -110,6 +111,7 @@ while [[ $# -gt 0 ]]; do
     --choose-campaign) CHOOSE_CAMPAIGN=1; shift ;;
     --public-memory-context) PUBLIC_MEMORY_CONTEXT=1; shift ;;
     --research-public-memory-context) RESEARCH_PUBLIC_MEMORY_CONTEXT=1; shift ;;
+    --no-public-memory-context) NO_PUBLIC_MEMORY_CONTEXT=1; shift ;;
     --recover-timeout) RECOVER_WORKER_EXIT="$2"; shift 2 ;;
     --dry-run)    DRY_RUN=1; shift ;;
     -h|--help)    sed -n '2,55p' "$0"; exit 0 ;;   # through the Usage: block
@@ -119,6 +121,17 @@ done
 if [[ "${CHOOSE_CAMPAIGN:-0}" == 1 && -n "${CAMPAIGN:-}" ]]; then
   echo "--choose-campaign and --campaign are mutually exclusive" >&2
   exit 2
+fi
+if [[ "${NO_PUBLIC_MEMORY_CONTEXT:-0}" == 1 ]]; then
+  if [[ "${PUBLIC_MEMORY_CONTEXT:-0}" == 1 || "${RESEARCH_PUBLIC_MEMORY_CONTEXT:-0}" == 1 ]]; then
+    echo "--no-public-memory-context excludes explicit memory flags" >&2
+    exit 2
+  fi
+  PUBLIC_MEMORY_CONTEXT=0
+  RESEARCH_PUBLIC_MEMORY_CONTEXT=0
+elif [[ "${CHOOSE_CAMPAIGN:-0}" == 1 || -n "${CAMPAIGN:-}" ]]; then
+  PUBLIC_MEMORY_CONTEXT=1
+  RESEARCH_PUBLIC_MEMORY_CONTEXT=1
 fi
 if [[ "${RESEARCH_PUBLIC_MEMORY_CONTEXT:-0}" == 1 && ( "${PUBLIC_MEMORY_CONTEXT:-0}" != 1 || ( "${CHOOSE_CAMPAIGN:-0}" != 1 && -z "${CAMPAIGN:-}" ) ) ]]; then
   echo "--research-public-memory-context requires --public-memory-context and --choose-campaign or --campaign" >&2

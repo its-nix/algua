@@ -105,8 +105,10 @@ def _preamble(tmp_path, **changes):
         f'{k}={shlex.quote(v)}' for k, v in values.items()) + '\n'
 
 
-def _driver_start(tmp_path, *args, stamp='first', **changes):
-    """Run the actual argument and claim adapters, without worktree/scheduler operations."""
+def _driver_start(tmp_path, *args, stamp='first', without_memory=True, **changes):
+    """Legacy campaign cases explicitly opt out; public-memory cases exercise campaign defaults."""
+    if without_memory:
+        args = (*args, '--no-public-memory-context')
     driver = DRIVER.read_text()
     parser = driver[driver.index('while [[ $#'):driver.index('\nREPO_ROOT=')]
     claim = driver[driver.index('  CLAIM_ARGS=('):driver.index('  N_CLAIMED=')]

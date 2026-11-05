@@ -7,6 +7,8 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 from algua.operator.campaign_memory_schema import (
+    LEGACY_SELECTION_PROTOCOL,
+    SELECTION_PROTOCOLS,
     VIEW_FIELDS,
     MemoryContextError,
     exact,
@@ -80,7 +82,8 @@ class _Projection:
         self.truncations.extend(dict(m) for m in payload["coverage"]["truncated_sweeps"]
                                 if m["source_ref"] in included)
 
-    def finish(self, coverage: dict, cutoff: int, tracking_uri: str) -> dict:
+    def finish(self, coverage: dict, cutoff: int, tracking_uri: str,
+               selection_protocol: str = LEGACY_SELECTION_PROTOCOL) -> dict:
         counts = {**coverage, "selected_cycles": len(self.receipts),
             "retained_public_observations": self.retained,
             "omitted_for_input_bytes": self.omitted_inputs,
@@ -92,7 +95,7 @@ class _Projection:
             "scorecard_attempt_cutoff": cutoff,
             "archive_store_sha256": hashlib.sha256(
                 normalized_store(tracking_uri).encode()).hexdigest(),
-            "selection_protocol": "relevant_attempts_desc/v1", "receipts": self.receipts,
+            "selection_protocol": selection_protocol, "receipts": self.receipts,
             "observations": self.observations, "coverage": counts}
         while True:
             included = {r["source_ref"] for r in self.observations if r["kind"] == "sweep"}
@@ -110,12 +113,13 @@ class _Projection:
 
 
 def project_snapshot(items: Iterable[dict], *, coverage: dict, cutoff: int,
-                     tracking_uri: str) -> dict:
+                     tracking_uri: str, selection_protocol: str = LEGACY_SELECTION_PROTOCOL,
+                     ) -> dict:
     projection = _Projection()
     for item in items:
         projection.add(item)
         del item  # Release the previous full payload before advancing a producer to its next read.
-    return projection.finish(coverage, cutoff, tracking_uri)
+    return projection.finish(coverage, cutoff, tracking_uri, selection_protocol)
 
 
 def _verified_items(request: dict) -> Iterator[dict]:
@@ -149,8 +153,12 @@ def _verified_items(request: dict) -> Iterator[dict]:
 
 
 def read_batch(request: dict) -> dict:
-    require(exact(request, {"schema_version", "phase", "database", "cycle_directory",
-        "tracking_uri", "tracking_backend", "cutoff", "cycles", "coverage"}), "request_invalid")
+    fields = {"schema_version", "phase", "database", "cycle_directory", "tracking_uri",
+              "tracking_backend", "cutoff", "cycles", "coverage"}
+    require(exact(request, fields) or exact(request, fields | {"selection_protocol"}),
+            "request_invalid")
+    protocol = request.get("selection_protocol", LEGACY_SELECTION_PROTOCOL)
+    require(isinstance(protocol, str) and protocol in SELECTION_PROTOCOLS, "request_invalid")
     require(request["schema_version"] == "campaign-public-memory-request/v1"
             and request["phase"] in ("capture", "revalidate") and integer(request["cutoff"]),
             "request_invalid")
@@ -164,7 +172,7 @@ def read_batch(request: dict) -> dict:
                            "cycles_without_receipt"}) and all(integer(v) for v in coverage.values())
             and coverage["candidate_attempts_considered"] <= 64, "request_invalid")
     return project_snapshot(_verified_items(request), coverage=coverage, cutoff=request["cutoff"],
-                            tracking_uri=request["tracking_uri"])
+                            tracking_uri=request["tracking_uri"], selection_protocol=protocol)
 
 
 def main() -> None:
