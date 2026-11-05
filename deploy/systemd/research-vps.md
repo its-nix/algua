@@ -1,7 +1,8 @@
 # VPS research-only operations
 
-Status (2026-11-05): profile staged and verified; the three timers are **not enabled yet**.
-This is research scheduling, not full-goal, verified-PIT, paper or live acceptance.
+Status (2026-11-05): the three research timers are enabled. The startup timer fired at
+10:59 UTC and launched the worker as `algua`; that run's outcome remains separately recorded.
+Research scheduling does not establish full-goal, verified-PIT, paper or live acceptance.
 
 ## Installed profile
 
@@ -22,7 +23,8 @@ CPU 1200 seconds, one hypothesis and one worker. `MLFLOW_DISABLE_TELEMETRY=true`
 disables anonymous usage telemetry, not experiment tracking.
 
 Registry: `/home/algua/Projects/algua/data/algua.db`; knowledge: checkout `kb/`;
-tracking: checkout `mlruns`; pinned pilot data: `/home/algua/datasets/pilot-2026-11-03/data`.
+tracking: checkout `mlruns.db` and `mlruns.artifacts/` (configured prefix `mlruns`);
+pinned pilot data: `/home/algua/datasets/pilot-2026-11-03/data`.
 Preserve these stores, retained research branches and runtime archives during maintenance.
 
 ## Cadence
@@ -45,7 +47,7 @@ Use explicit unit names; never enable paper, live or merge-back drainer units as
 systemctl list-timers --all algua-research.timer algua-forage.timer algua-leap.timer
 systemctl status algua-research.service algua-forage.service algua-leap.service algua-research.slice --no-pager
 journalctl -u algua-research.service -u algua-forage.service -u algua-leap.service -n 80 --no-pager
-# Activate only after owner approval; currently staged, not enabled:
+# Enable only these research timers:
 systemctl enable --now algua-research.timer algua-forage.timer algua-leap.timer
 # One manual research firing (the unit still runs as algua):
 systemctl start algua-research.service
@@ -56,6 +58,9 @@ systemctl stop algua-research.service algua-forage.service algua-leap.service
 ```
 
 Keep journals and application logs private; do not dump environment or auth-file contents.
+After a checkpointed worker timeout/interruption, the supervisor kills/reaps its worker tree,
+then allows at most 120 seconds of trusted evidence capture and claim closure. It never resumes
+inference, accepts late success or rewrites terminal outcomes. Failed capture retains scratch.
 After an interruption, inspect the durable cycle result and claim state; use the existing
 fenced CLI for any needed reconciliation, never SQL resets or reopening refuted ideas.
 
