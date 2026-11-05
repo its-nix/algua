@@ -1,49 +1,8 @@
-"""Journal-driven merge-back cycle orchestration (#485, Task 4).
+"""Verified-PR merge-back entry and its retained strict promotion/intake saga.
 
-Turns a research cycle's strategy branch into an on-``main`` strategy without a human merging the
-branch, driven as a **saga across git and the registry** whose durable state is a per-strategy
-journal keyed on the immutable **branch-tip SHA** (NOT the branch name, NOT the lifecycle stage).
-
-``run_merge_back`` is a pure state machine over injected seams (``GitOps``, ``Journal``, and the
-registry callables), so every branch is unit-testable with a ``FakeGit``, a fake journal, and stubs.
-The hard correctness properties it encodes (each closing a specific GATE-2 finding):
-
-* **Branch-tip identity, not ancestry (finding #1).** ``git merge-base --is-ancestor`` is abandoned:
-  a *reverted* merge leaves the branch tip an ancestor of HEAD forever, so ancestry cannot tell
-  "present on main" from "merged then reverted". Whether THIS driver's merge is still live is read
-  from the journal (``merge_sha``) and then *verified*: second-parent match + ancestor of the
-  freshly-fetched ``origin/main`` + an **effective-presence content check** (the allowlisted blobs
-  byte-match ``origin/main`` right now) — before PROMOTE and again before INTAKE.
-* **Real remote CAS push (finding #2).** After a green gate the merge SHA is pushed to
-  ``refs/heads/main`` under a compare-and-swap (``push_cas``), so nothing the driver does stays
-  local and a concurrent remote mutation fails closed instead of being promoted over.
-* **Diff-policy gate before merging (finding #3).** The branch's change set is gated by
-  :func:`algua.operator.diff_policy.evaluate_diff` (allowlist + CODEOWNERS denylist + mode/rename
-  hardening) BEFORE any merge — the security boundary between an autonomous agent and the files that
-  enforce the paper->live wall.
-* **Stage-drift fail-closed (finding #4).** A ``candidate``/``paper`` stage that the journal does
-  NOT prove THIS attempt produced is treated as external drift and **fails closed** — never intaked.
-* **Token-bound promote attribution (finding #5).** Promotion success is read from the registry by
-  the per-attempt ``attempt_token`` stamped on the gate row, never from the ambient stage nor from
-  "did the call raise".
-* **One branch, several strategies (already-present path).** A research branch can carry SEVERAL
-  candidate strategies — the launcher names such a branch ``research-run/<stamp>--<s1>+<s2>`` and
-  the queue holds one item per strategy. The FIRST item merges the branch; every LATER sibling
-  finds its branch tip already an ancestor of ``origin/main``, where ``git merge --no-ff
-  --no-commit`` stages nothing and ``git commit --no-edit`` exits 1. Those attempts take an
-  explicit ``already_present`` path: nothing to diff-policy, gate, commit or push (the sibling's
-  attempt did all of it under the same gate), straight to PROMOTE — and **never a revert**, because
-  the merge commit belongs to a sibling that may already be live with allocated capital.
-* **Authoritative intake chokepoint (mergeback-authoritative-intake).** A factory survivor has NO
-  authoritative registry row (``stage_of`` -> None) and NO authoritative promote evidence; after
-  the gate-green merge is durably on ``main`` and immediately before promote, the injected
-  ``ensure_backtested`` registers it (one-tx create + CAS to ``backtested``) and
-  ``produce_evidence`` reproduces the evidence recipe authoritatively. A missing registry row that
-  the journal says was promoted/allocated fails closed (:class:`JournalRegistryMismatchError`) —
-  replay never manufactures success out of registry corruption.
-
-Imports only from within ``algua.operator`` (a package leaf), so no import-linter contract touches
-it. ``RealGitOps``/``merge_back_lock`` re-export from :mod:`algua.operator.gitops` for the CLI.
+The private saga retains legacy crash/evidence tests; the public entry admits only
+an already merged, exact-head verified PR. RealGitOps cannot publish main/reverts.
+All new admission/recovery semantics are DRAFT and require owner review.
 """
 
 from __future__ import annotations
@@ -59,6 +18,7 @@ from algua.operator.journal import (
     derive_attempt_token,
     strict_relaxation_fingerprint,
 )
+from algua.operator.pr_admission import AdmissionPending
 
 __all__ = [
     "ALREADY_PRESENT_PREFIX",
@@ -146,7 +106,7 @@ class CycleResult:
     gate_id: int | None = None
 
 
-def run_merge_back(  # noqa: PLR0912, PLR0913, PLR0915 — a saga state machine; each branch is a step
+def _run_merge_back_saga(  # noqa: PLR0912, PLR0913, PLR0915 — a saga state machine; each branch is a step
     *,
     git: GitOps,
     journal: Journal,
@@ -165,32 +125,10 @@ def run_merge_back(  # noqa: PLR0912, PLR0913, PLR0915 — a saga state machine;
     audit_log: Callable[[dict], None] | None = None,
     base_ref: str = _MAIN,
 ) -> CycleResult:
-    """Drive one merge-back cycle for ``strategy`` on ``branch`` as a journal-driven state machine.
+    """Retained internal saga for strict token-bound evidence/promotion/intake recovery.
 
-    The concrete effects are injected: ``git`` (:class:`~algua.operator.gitops.GitOps`), ``journal``
-    (:class:`~algua.operator.journal.Journal`), ``codeowners_text`` (for the diff-policy denylist),
-    ``stage_of`` (read the lifecycle stage; ``None`` = unregistered — the canonical factory-fresh
-    state), ``run_gate`` (full quality gate on the staged tree — returns the gated TREE SHA on
-    green, None on red; the sha binds ``commit_merge`` to the exact tree the gate blessed),
-    ``ensure_backtested`` (the authoritative-intake registration chokepoint — one-tx create-if-
-    absent + CAS to ``backtested``; called with ``(branch_tip, merge_sha, base_sha)`` and returning
-    ``"created" | "existed"``), ``produce_evidence`` (authoritative promote-evidence reproduction —
-    called with ``(ensure_status, branch_tip)`` and returning the evidence status the journal
-    mirrors; both run ONLY after the gate-green merge is durably on ``main``, immediately before
-    promote, and their failures route through the same proven-failure revert as a promote
-    exception),
-    ``promote`` (the strict-agent promote seam — it takes the ``attempt_token`` and stamps it on the
-    gate row), ``passing_gate_by_token`` (authoritative read of THIS attempt's passing gate row id,
-    or None), ``gate_exists_by_token`` (does ANY gate row — passing OR failing — already bear this
-    attempt's token; the crash-idempotency read that stops a resume from re-invoking a metered
-    promote whose prior attempt already burned the holdout), ``intake`` (FIFO candidate->paper
-    intake), ``target_allocated`` (did intake allocate
-    THIS strategy?), and an optional ``audit_log`` sink for push/revert records.
-
-    Returns a :class:`CycleResult` on a completed cycle (including the non-error ``gate_failed`` /
-    ``promote_failed`` / ``diff_policy_rejected`` terminals); raises :class:`StageDriftError`,
-    :class:`MergeContentAbsentError`, or :class:`~algua.operator.gitops.RemoteMovedError` when it
-    must fail closed, and re-raises a genuine promote exception after reverting.
+    Production callers enter through run_merge_back below. RealGitOps disables
+    the old publication methods; its internal merge branches remain test fixtures.
     """
     audit = audit_log if audit_log is not None else (lambda _e: None)
 
@@ -507,7 +445,8 @@ def run_merge_back(  # noqa: PLR0912, PLR0913, PLR0915 — a saga state machine;
         # commit belongs to a sibling that may already be live with allocated capital.
         already_present = True
         merge_sha = f"{ALREADY_PRESENT_PREFIX}{branch_tip}"
-        _write(base_sha=base_sha, merge_mode="already_present", diff_policy="skipped",
+        original_base = rec.base_sha if rec is not None and rec.pr_number is not None else base_sha
+        _write(base_sha=original_base, merge_mode="already_present", diff_policy="skipped",
                gate_status="skipped", merge_sha=merge_sha, push_status="skipped")
     else:
         # -------------------------------------------------------------- DIFF POLICY (pre-merge)
@@ -608,6 +547,8 @@ def run_merge_back(  # noqa: PLR0912, PLR0913, PLR0915 — a saga state machine;
             _write(base_sha=base_sha, **_merge_phase(), merge_sha=merge_sha, attempt_token=token,
                    ensure_status=ensure_status, evidence_status=evidence_status)
             promote(token)
+        except AdmissionPending:
+            raise
         except BaseException as exc:  # noqa: BLE001 — outcome read authoritatively below, not raise
             raised = exc
         gate_id = passing_gate_by_token(token)
@@ -666,3 +607,62 @@ def run_merge_back(  # noqa: PLR0912, PLR0913, PLR0915 — a saga state machine;
         raise raised
     return CycleResult(ok=False, status="promote_failed", merged=True, reverted=True,
                        promoted=False, intake=None, branch_tip=branch_tip, attempt_token=token)
+
+
+def run_merge_back(  # noqa: PLR0913
+    *, git: GitOps, journal: Journal, strategy: str, branch: str, codeowners_text: str,
+    stage_of: Callable[[str], str | None], run_gate: Callable[[], str | None],
+    ensure_backtested: Callable[[str, str, str], str], produce_evidence: Callable[[str, str], str],
+    promote: Callable[[str], object], passing_gate_by_token: Callable[[str], int | None],
+    gate_exists_by_token: Callable[[str], bool], intake: Callable[[], dict],
+    target_allocated: Callable[[str], bool], audit_log: Callable[[dict], None] | None = None,
+    base_ref: str = _MAIN,
+) -> CycleResult:
+    """DRAFT verified-existing-PR admission; missing evidence never imports or promotes.
+
+    Direct main/revert publication is disabled. PR creation, a trusted autonomous
+    merger and artifact CI are not implemented by this increment.
+    """
+    from algua.operator.pr_admission import verify_and_adopt
+
+    arguments = dict(locals())
+    arguments.pop("verify_and_adopt", None)
+    tip = git.resolve(branch)
+    record = journal.latest(strategy, tip)
+    def pending(status: str) -> CycleResult:
+        return CycleResult(True, status, False, False, False, None, branch_tip=tip)
+    if record is not None and record.pr_number is None:
+        return pending("owner_recovery_required")
+    if (git.current_branch() != "main" or not git.working_tree_clean()
+            or base_ref != "main"):
+        raise ValueError("verified PR admission requires clean main")
+    proof = verify_and_adopt(git, tip, codeowners_text)
+    if proof is None:
+        return pending("awaiting_pr_admission")
+    number, merge, original_base = proof
+    if record is None:
+        journal.append(MergeBackRecord(
+            strategy, branch, tip, base_sha=original_base, merge_mode="already_present",
+            pr_number=number, pr_merge_sha=merge))
+    elif (record.pr_number, record.pr_merge_sha, record.base_sha) != (number, merge, original_base):
+        return pending("owner_recovery_required")
+    def fenced(callback: Callable[..., object]) -> Callable[..., object]:
+        def invoke(*args: object) -> object:
+            if verify_and_adopt(git, tip, codeowners_text, adopt=False) != proof:
+                raise AdmissionPending("PR admission changed before authority effect")
+            return callback(*args)
+        return invoke
+    for name in ("ensure_backtested", "produce_evidence", "promote", "intake"):
+        arguments[name] = fenced(arguments[name])
+    try:
+        result = _run_merge_back_saga(**arguments)
+    except AdmissionPending:
+        return pending("awaiting_pr_admission")
+    except Exception:
+        failed = journal.latest(strategy, tip)
+        if failed is not None and failed.terminal == "promote_failed":
+            return pending("reviewed_revert_pending")
+        raise
+    if result.status == "promote_failed":
+        return pending("reviewed_revert_pending")
+    return result

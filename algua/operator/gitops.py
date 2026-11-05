@@ -86,6 +86,10 @@ class GitOps(Protocol):
         pushed SHA is now live. Raises :class:`RemoteMovedError` on any CAS failure."""
         ...
 
+    def adopt_verified_main(self, merge_sha: str) -> None:
+        """Fast-forward a clean main to the already-verified remote, never publish."""
+        ...
+
     def revert_merge(self, merge_sha: str) -> str:
         """``git revert -m 1 <merge_sha> --no-edit`` and return the revert commit SHA."""
         ...
@@ -202,35 +206,20 @@ class RealGitOps:
         return self._run(["merge-base", "--is-ancestor", sha, ref], check=False).returncode == 0
 
     def push_cas(self, merge_sha: str, expected_base: str) -> None:
-        self.fetch_remote("main")
-        if self.remote_tip("main") != expected_base:
-            raise RemoteMovedError(
-                f"origin/main moved before push (expected base {expected_base}, "
-                f"found {self.remote_tip('main')}); merge is stale")
-        self._run(["push", self.remote, f"{merge_sha}:refs/heads/main"])
-        self.fetch_remote("main")
-        if self.remote_tip("main") != merge_sha:
-            raise RemoteMovedError(
-                f"origin/main is {self.remote_tip('main')} after push, not the pushed "
-                f"{merge_sha}; remote moved between push and re-verify")
+        raise RuntimeError("direct-main publication disabled; verified PR admission required")
+
+    def adopt_verified_main(self, merge_sha: str) -> None:
+        if (self.current_branch() != "main" or not self.working_tree_clean()
+                or not self.is_ancestor(merge_sha, "refs/remotes/origin/main")):
+            raise ValueError("verified PR adoption requires clean main and remote presence")
+        self._run(["merge", "--ff-only", self.remote_tip("main")])
 
     def revert_merge(self, merge_sha: str) -> str:
         self._run(["revert", "-m", "1", merge_sha, "--no-edit"])
         return self._run(["rev-parse", "HEAD"]).stdout.strip()
 
     def push_revert(self, revert_sha: str, expected_merge_sha: str) -> None:
-        self.fetch_remote("main")
-        if self.remote_tip("main") != expected_merge_sha:
-            raise RemoteMovedError(
-                f"origin/main moved before revert push (expected the reverted merge "
-                f"{expected_merge_sha}, found {self.remote_tip('main')}); the revert is stale, "
-                f"recompute rather than force it")
-        self._run(["push", self.remote, f"{revert_sha}:refs/heads/main"])
-        self.fetch_remote("main")
-        if self.remote_tip("main") != revert_sha:
-            raise RemoteMovedError(
-                f"origin/main is {self.remote_tip('main')} after revert push, not the pushed "
-                f"{revert_sha}; remote moved between push and re-verify")
+        raise RuntimeError("direct-main publication disabled; reviewed revert PR required")
 
     def tree_blobs(self, sha: str, paths: list[str]) -> dict[str, str]:
         out: dict[str, str] = {}

@@ -45,6 +45,21 @@ def _item(strategy="strat_a", branch="research-run/1", universe="sp500",
                 eval_context=eval_context if eval_context is not None else _ctx())
 
 
+@pytest.mark.parametrize("status", ["awaiting_pr_admission", "owner_recovery_required",
+                                   "reviewed_revert_pending"])
+def test_pr_wait_never_exhausts_retry_budget(paths, status):
+    queue, lock = paths
+    mergeback_queue.enqueue(queue, lock, **_item())
+    key = "strat_a@research-run/1"
+    for _ in range(7):
+        mergeback_queue.select_and_reserve(queue, lock)
+        result = mergeback_queue.record_attempt(
+            queue, lock, key=key, stdout_text=json.dumps({"ok": True, "status": status}))
+        assert result["action"] == "awaiting_admission"
+        assert result["item"]["attempts"] == result["item"].get("transient_failures", 0) == 0
+        assert result["item"]["status"] == "pending"
+
+
 # --- enqueue -------------------------------------------------------------------------------------
 
 
