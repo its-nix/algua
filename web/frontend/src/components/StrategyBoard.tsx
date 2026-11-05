@@ -160,6 +160,7 @@ export function StrategyBoardView({
   const [cohort, setCohort] = useState('')
   const [tier, setTier] = useState('pilot_real_proxy')
   const [order, setOrder] = useState<ObservedMetric | null>(null)
+  const [search, setSearch] = useState('')
 
   const board = isBoardPayload(query.data?.data) &&
     (expectedEvidenceSchema === undefined || query.data.data.evidence_schema_version === expectedEvidenceSchema)
@@ -208,9 +209,9 @@ export function StrategyBoardView({
       <>
         <StaleNotice env={query.data} />
         <RefreshError error={query.error} />
-        <section className="panel all-clear">
-          <span className="micro-label">strategy board</span>
-          no strategies registered — add one with <code>algua registry add &lt;name&gt;</code>
+        <section className="board-empty">
+          <div><h2>No registered strategies yet</h2>
+          <p>Research results are available below.</p></div>
         </section>
       </>
     )
@@ -230,6 +231,7 @@ export function StrategyBoardView({
   const hasFixtures = board.rows.some(row => declaredTier(row) === 'synthetic_fixture')
   const visible = board.rows.filter((row) =>
     matchesTier(row, tier) &&
+    `${row.name} ${row.family ?? ''}`.toLowerCase().includes(search.trim().toLowerCase()) &&
     (activeStage === null || row.stage === activeStage) &&
     (activeFamily === null || (activeFamily === UNKNOWN_FAMILY ? row.family === null : row.family === activeFamily)),
   )
@@ -277,6 +279,8 @@ export function StrategyBoardView({
           ? board.count : `${visible.length} of ${board.count}`} strategies ·
         latest {evidenceSchema === RESEARCH_SCHEMA_VERSION ? 'WF research' : 'gate'} run each
       </div>
+      <details className="context-disclosure board-context">
+      <summary>{publicMode ? 'In-sample research · not independent OOS' : 'Gate observations · not live performance'}</summary>
       <p className="board-disclosure">
         {publicMode && 'In-sample / selection / pre-holdout windows, not independent OOS. '}
         {compact ? 'Comparison is available on the leaderboard with recorded context. ' :
@@ -284,9 +288,16 @@ export function StrategyBoardView({
           'Exploratory research only. Select a matching cohort to order observed gate OOS metrics; other rows stay unranked. '}
         Never promotion or expected profit. Paper/live results remain in their own detail sections.
       </p>
+      </details>
 
       {hasFixtures && <p className="board-disclosure">{tier === 'synthetic_fixture'
         ? FIXTURE_LABEL : 'Synthetic fixture evidence is hidden; select its data tier in board controls to explore it.'}</p>}
+      <div className="board-toolbar">
+      <label className="board-search">
+        <span className="sr-only">Search strategies</span>
+        <input type="search" placeholder="Search strategies…" value={search}
+          onChange={event => setSearch(event.target.value)} />
+      </label>
       <button
         type="button"
         className="board-controls-toggle"
@@ -294,10 +305,11 @@ export function StrategyBoardView({
         aria-controls="board-controls"
         onClick={() => setControlsOpen((open) => !open)}
       >
-        <span>board controls</span>
-        <span className="num">{activeStage === null ? 'all stages' : activeStage}</span>
-        <span className="num">{familyLabel}</span>
+        <span>Filters & sort</span>
+        <span className="sr-only">board controls · {activeStage ?? 'all stages'} · {familyLabel}</span>
+        <span aria-hidden="true">{controlsOpen ? '−' : '+'}</span>
       </button>
+      </div>
 
       {controlsOpen && (
         <div id="board-controls" className="board-controls-panel">
@@ -462,6 +474,7 @@ function BoardRow({
     )
   }
   return (
+    <article className="board-entry">
     <Link
       to={`/strategy/${row.strategy_id}${row.latest_research ? `?research_run=${row.latest_research.run_id}` : ''}`}
       aria-label={linkLabel}
@@ -490,8 +503,14 @@ function BoardRow({
       </div>
       {gate === null && <div className="dim-note">no usable {Object.hasOwn(row, 'latest_research') ? 'WF research' : 'gate'} evidence</div>}
       {declaredTier(row) === 'synthetic_fixture' && <div className="board-disclosure">{FIXTURE_LABEL}</div>}
-      <BoardEvidence row={row} evidenceSchema={evidenceSchema} compact={false} evidence={evidence} />
     </Link>
+    <details className="board-evidence-disclosure">
+      <summary>Data & methodology <span>{declaredTier(row) === 'synthetic_fixture'
+        ? 'Synthetic fixture' : evidence?.snapshot_provenance.value?.data_tier === 'pilot_real_proxy'
+          ? 'Pilot data · non-PIT' : 'Unverified context'}</span></summary>
+      <BoardEvidence row={row} evidenceSchema={evidenceSchema} compact={false} evidence={evidence} />
+    </details>
+    </article>
   )
 }
 

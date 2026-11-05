@@ -43,7 +43,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resolveFixture } from '../fixtures'
-import { ACTIVITY, BOARD, BOOK, FLEET, RUNS, TRIAGE } from '../fixtures/steady-state'
+import { ACTIVITY, BOARD, BOOK, FLEET, IDEAS, RUNS, TRIAGE } from '../fixtures/steady-state'
 import Fleet from '../screens/Fleet'
 import Money from '../screens/Money'
 import Now from '../screens/Now'
@@ -78,11 +78,10 @@ import StrategyDetail from '../screens/StrategyDetail'
 export const BUDGETS: Record<string, { min: number; max: number; marks: number }> = {
   Now: { min: 29, max: 63, marks: 0 },
   Money: { min: 43, max: 94, marks: 0 },
-  // The decision layer and collapsed board/venue controls reduce the persistent view from 292
-  // to 242 words against the 14-strategy fixture. The ceiling retains the documented 10% margin
-  // and the floor remains half the measured count. Synthetic scatter points are omitted; gate
-  // sparklines require an explicit fixture-tier selection. waitUntilPopulated still requires all 14 registered rows.
-  Research: { min: 121, max: 267, marks: 1 },
+  // Results-first view: 124 words, including the collapsed archive caveat's DOM text.
+  // Legacy pipeline/registry feeds and charts mount only when diagnostics are requested.
+  // Their populated rows, honest exclusions and marks are checked after expansion below.
+  Research: { min: 62, max: 137, marks: 0 },
   Fleet: { min: 38, max: 84, marks: 0 },
   // The collapsed decision report is intentionally terse; supporting/raw evidence is mounted
   // only after explicit disclosure. Measured at 57 words, with a 10% ceiling. Expanded evidence
@@ -158,8 +157,14 @@ function marks(el: HTMLElement): number {
 async function waitUntilPopulated(name: string, container: HTMLElement): Promise<void> {
   await waitFor(() => expect(container.textContent).not.toBe(''))
   if (name === 'Research') {
-    await waitFor(() => expect(container.querySelectorAll('[data-testid="board-row"]')).toHaveLength(14))
+    await waitFor(() => expect(container.querySelectorAll('.idea-row')).toHaveLength(3))
   }
+}
+
+function openResearchDiagnostics(container: HTMLElement) {
+  const disclosure = container.querySelector<HTMLDetailsElement>('.research-diagnostics')!
+  disclosure.open = true
+  fireEvent(disclosure, new Event('toggle'))
 }
 
 describe.each([
@@ -192,6 +197,8 @@ describe.each([
     )
     await waitUntilPopulated(name, container as HTMLElement)
     if (name === 'Research') {
+      openResearchDiagnostics(container)
+      await waitFor(() => expect(container.querySelectorAll('[data-testid="board-row"]')).toHaveLength(14))
       const rows = container.querySelectorAll('[data-testid="board-row"]')
       expect(rows).toHaveLength(14)
       expect([...rows].every(row => row.getAttribute('aria-label')?.includes('public WF'))).toBe(true)
@@ -202,7 +209,7 @@ describe.each([
       fireEvent.change(screen.getByRole('combobox', { name: 'data tier' }), {
         target: { value: 'synthetic_fixture' },
       })
-      await waitFor(() => expect(marks(container as HTMLElement)).toBeGreaterThanOrEqual(BUDGETS[name].marks))
+      await waitFor(() => expect(marks(container as HTMLElement)).toBeGreaterThanOrEqual(1))
       expect(container.textContent).toMatch(/Synthetic fixture.*not market data.*not qualification/i)
       expect(container.querySelectorAll('[data-testid="scatter-point"]')).toHaveLength(0)
     }
@@ -289,6 +296,7 @@ describe('actually renders fixture data', () => {
         <Research />
       </MemoryRouter>,
     )
+    openResearchDiagnostics(container)
     await waitFor(() => expect(container.textContent).toContain(RUNS.data.runs[0].strategy_name))
   })
 
@@ -298,6 +306,7 @@ describe('actually renders fixture data', () => {
         <Research />
       </MemoryRouter>,
     )
+    openResearchDiagnostics(container)
     await waitFor(() =>
       expect(container.querySelectorAll('[data-testid="board-row"]')).toHaveLength(
         BOARD.data.rows.length,
@@ -367,7 +376,8 @@ describe.each([
   {
     name: 'Research',
     Screen: Research,
-    overrides: () => ({ '/api/runs': EMPTY_RUNS, '/api/strategy-board': EMPTY_BOARD }),
+    overrides: () => ({ '/api/runs': EMPTY_RUNS, '/api/strategy-board': EMPTY_BOARD,
+      '/api/ideas': { ...IDEAS, ideas: [] } }),
   },
   { name: 'Fleet', Screen: Fleet, overrides: () => ({ '/api/fleet': EMPTY_FLEET }) },
 ])('$name: populated fixture beats an emptied one', ({ name, Screen, overrides }) => {

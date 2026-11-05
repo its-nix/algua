@@ -18,7 +18,10 @@ function errorCode(error: Error | null): string {
   return error instanceof ApiError && error.code !== null ? error.code : (error?.message ?? 'unknown error')
 }
 
-export default function OperationalHealth({ updateHeader = false }: { updateHeader?: boolean }) {
+export default function OperationalHealth({ updateHeader = false, compact = false }: {
+  updateHeader?: boolean
+  compact?: boolean
+}) {
   const triage = useFetch<TriagePayload>('/api/triage', { ttlMs: 10_000 })
   const setFetchedAt = useSetFetchedAt()
   const fetchedAt = triage.data?.fetched_at ?? null
@@ -28,6 +31,26 @@ export default function OperationalHealth({ updateHeader = false }: { updateHead
     setFetchedAt(fetchedAt)
     return () => setFetchedAt(null)
   }, [fetchedAt, setFetchedAt, updateHeader])
+
+  if (compact) {
+    const data = triage.data
+    const unavailable = data === undefined || Object.values(data.sources).some(ok => !ok)
+    const stale = data?.stale || triage.error !== null
+    const warnings = data?.items ?? []
+    const state = data === undefined && triage.loading ? 'loading' :
+      unavailable || stale ? 'unknown' : warnings.length > 0 ? 'warning' : 'ok'
+    return <aside className="system-strip" data-state={state} aria-label="System status">
+      <span className="system-indicator" aria-hidden="true" />
+      <span className="system-strip-copy">
+        {state === 'loading' ? 'Checking system…' :
+          warnings[0]?.title ?? (state === 'ok' ? 'System operational' : 'System status incomplete')}
+        {warnings.length > 1 && <span className="system-strip-extra"> +{warnings.length - 1} warnings</span>}
+        {stale && <span className="system-strip-extra"> · stale data</span>}
+        {unavailable && data !== undefined && <span className="system-strip-extra"> · status incomplete</span>}
+      </span>
+      <Link to="/now" aria-label="full ops diagnostics">View system →</Link>
+    </aside>
+  }
 
   if (triage.data === undefined) {
     if (triage.loading) {

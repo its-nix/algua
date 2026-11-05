@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, expect, it, vi } from 'vitest'
 import { clearFetchCache } from '../api'
@@ -12,7 +12,7 @@ const index = {
   evidence_mode: 'UNVERIFIED_WORKER', authority: 'none', association: 'cycle_only',
   count: 1, has_more: false, limit: 20,
   attempts: [{ attempt_id: 7, evidence_id: 'idea_attempts:7', idea_id: 6,
-    research_cycle_id: cycle, outcome: 'integrity_fail', outcome_at: null,
+    research_cycle_id: cycle, outcome: 'integrity_fail', outcome_at: '2026-11-05T10:59:03Z',
     archive_reference: reference }],
 }
 const observation = (id: number, value: number | null) => ({
@@ -35,7 +35,7 @@ const detail = {
 
 afterEach(() => { cleanup(); clearFetchCache(); vi.unstubAllGlobals() })
 
-function serve(list = index, payload = detail, stale = false) {
+function serve(list: unknown = index, payload: unknown = detail, stale = false) {
   const fetch = vi.fn(async (url: string) => ({ ok: true, status: 200, json: async () => ({
     ok: true, data: url.includes(`/${cycle}`) ? payload : list,
     fetched_at: '2026-01-01', stale,
@@ -49,19 +49,28 @@ it('shows retained attempts without registered strategies and selects exact cycl
   render(<RetainedExperiments />)
   const button = await screen.findByRole('button', { name: /Inspect.*fixture-retained/ })
   expect(fetch).toHaveBeenCalledTimes(1) // Never fan out archives on list render.
-  expect(screen.getByText(/index metadata.*not verified/i)).toBeTruthy()
+  expect(screen.getByText('1 attempt · not registered strategies')).toBeTruthy()
+  expect(screen.getByText(/5 Nov.*10:59.*UTC/)).toBeTruthy()
+  expect(within(button).getByText('Qualification blocked')).toBeTruthy()
   fireEvent.click(button)
-  expect(await screen.findByText('worker_1')).toBeTruthy()
-  expect(screen.getByText('unavailable')).toBeTruthy()
+  const title = await screen.findByRole('heading', { name: 'worker_1' })
+  expect(button.closest('li')?.contains(title)).toBe(true) // Detail follows this mobile selection.
+  expect(button.getAttribute('aria-pressed')).toBe('true')
+  expect(within(screen.getByRole('group', { name: 'Key research metrics' }))
+    .getByText('Unavailable')).toBeTruthy()
   expect(screen.getByText(/worker exit: 0/i)).toBeTruthy()
   expect(screen.getAllByText(/integrity_fail/).length).toBeGreaterThan(0)
   expect(screen.getByText(/cycle-only association/i)).toBeTruthy()
   expect(screen.getByText(/model references only/i)).toBeTruthy()
   expect(screen.getByText(/unrecorded_variant_failures/)).toBeTruthy()
+  const disclosures = [...document.querySelectorAll('details')]
+  expect(disclosures.length).toBeGreaterThanOrEqual(4)
+  expect(disclosures.every(item => !item.open)).toBe(true)
   fireEvent.change(screen.getByRole('combobox', { name: 'Evaluation' }),
     { target: { value: `scratch:${cycle}:runs:2` } })
-  expect(screen.getByText('worker_2')).toBeTruthy()
-  expect(screen.getByText('-0.25')).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'worker_2' })).toBeTruthy()
+  expect(within(screen.getByRole('group', { name: 'Key research metrics' }))
+    .getByText('-0.25')).toBeTruthy()
   expect(fetch).toHaveBeenCalledTimes(2)
   expect(document.querySelector('a[href^="/strategy/"]')).toBeNull()
 })
@@ -80,8 +89,9 @@ it('integrates the retained section into Research even when the main strategy bo
   } })))
   render(<MemoryRouter><Research /></MemoryRouter>)
   expect(await screen.findByRole('button', { name: /Inspect.*fixture-retained/ })).toBeTruthy()
-  expect(screen.getByRole('heading', { name: 'Retained worker experiments' })).toBeTruthy()
-  expect(screen.getByText('no strategies registered')).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'Research results' })).toBeTruthy()
+  expect(screen.queryByText('No registered strategies yet')).toBeNull()
+  expect(document.querySelector<HTMLDetailsElement>('.research-diagnostics')?.open).toBe(false)
 })
 
 it('does not display metrics when show does not bind the selected attempt', async () => {
@@ -107,4 +117,33 @@ it('shows archive failure instead of inventing an evaluation', async () => {
   fireEvent.click(await screen.findByRole('button', { name: /Inspect/ }))
   expect(await screen.findByText('archive integrity mismatch')).toBeTruthy()
   expect(screen.queryByRole('combobox')).toBeNull()
+})
+
+it('formats known in-sample metrics while preserving exact raw values behind disclosure', async () => {
+  const metrics = { total_return_is: -0.1234, sharpe_is: null, max_drawdown_is: -0.2 }
+  serve(index, { ...detail, evaluations: [{ ...observation(1, null), metrics }] })
+  render(<RetainedExperiments compact />)
+  const group = await screen.findByRole('group', { name: 'Key research metrics' })
+  expect(within(group).getByText('IS return')).toBeTruthy()
+  expect(within(group).getByText('-12.3%')).toBeTruthy()
+  expect(within(group).getByText('-20.0%')).toBeTruthy()
+  expect(within(group).getByText('Unavailable')).toBeTruthy()
+  const summary = screen.getByText('All recorded metrics')
+  const disclosure = summary.closest('details')!
+  expect(disclosure.open).toBe(false)
+  fireEvent.click(summary)
+  expect(disclosure.open).toBe(true)
+  expect(within(disclosure).getByText('-0.1234')).toBeTruthy()
+  expect(screen.getByText(/lookback/).closest('details')?.open).toBe(false)
+  expect(screen.getByText(/fixture-model/).closest('details')?.open).toBe(false)
+  expect(document.querySelector('.retained-compact')).toBeTruthy()
+})
+
+it('keeps missing dates honest and execution errors distinct from qualification', async () => {
+  serve({ ...index, attempts: [{ ...index.attempts[0], outcome: 'run_error', outcome_at: null }] })
+  render(<RetainedExperiments />)
+  const row = await screen.findByRole('button', { name: /Inspect/ })
+  expect(within(row).getByText('Execution error')).toBeTruthy()
+  expect(within(row).getByText(/Date unavailable/)).toBeTruthy()
+  expect(screen.queryByText('Qualification blocked')).toBeNull()
 })

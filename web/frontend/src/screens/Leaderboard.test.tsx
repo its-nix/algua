@@ -47,8 +47,8 @@ it('leads with the strategy leaderboard while keeping stale operational warnings
 
   expect(screen.getByRole('heading', { name: 'Strategy leaderboard' })).toBeTruthy()
   expect(await screen.findByText('paper loop stalled')).toBeTruthy()
-  expect(screen.getByText('stale data')).toBeTruthy()
-  expect(screen.getByText(/book unavailable.*warnings may be incomplete/i)).toBeTruthy()
+  expect(screen.getByText(/stale data/)).toBeTruthy()
+  expect(screen.getByText(/status incomplete/)).toBeTruthy()
   expect(screen.getByRole('link', { name: 'full ops diagnostics' }).getAttribute('href')).toBe('/now')
   expect((await screen.findByText('quality_momentum')).closest('a')?.getAttribute('href')).toBe('/strategy/41')
 })

@@ -10,11 +10,11 @@ export function useSetFetchedAt() {
   return useContext(FetchedAtContext)
 }
 
-const SECONDARY_LINKS = [
-  { to: '/now', label: 'Ops', end: false },
-  { to: '/fleet', label: 'Fleet', end: false },
-  { to: '/money', label: 'Money', end: false },
+const PRIMARY_LINKS = [
+  { to: '/', label: 'Leaderboard', end: true },
   { to: '/research', label: 'Research', end: false },
+  { to: '/money', label: 'Portfolio', end: false },
+  { to: '/now', label: 'System', end: false },
 ]
 
 export default function App() {
@@ -38,20 +38,20 @@ export default function App() {
                   else navigate('/')
                 }}
               >
-                back
+                ← Back
               </button>
             ) : (
               <NavLink to="/" className="brand" aria-label="Algua strategy leaderboard">
                 <Logo />
-                <span className="brand-descriptor">monitor</span>
+                <span className="brand-descriptor">research desk</span>
               </NavLink>
             )}
             {fetchedAt !== null && (
-              <span className="fetched-at">fetched {formatTimestamp(fetchedAt)}</span>
+              <span className="fetched-at">Updated {formatTimestamp(fetchedAt)}</span>
             )}
           </div>
-          <nav className="secondary-nav" aria-label="Secondary monitoring">
-            {SECONDARY_LINKS.map(({ to, label, end }) => (
+          <nav className="secondary-nav" aria-label="Main navigation">
+            {PRIMARY_LINKS.map(({ to, label, end }) => (
               <NavLink
                 key={to}
                 to={to}
