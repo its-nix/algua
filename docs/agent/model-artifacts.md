@@ -62,3 +62,47 @@ Research memory preserves model references, not model bytes. The current researc
 snapshots and their manifest into scratch; this command does not add model transport, cross-cycle
 artifact retention or a training pipeline. It also does not expand the separate public-memory
 name/reference vocabulary.
+
+## Frozen dense inference reference
+
+`features.dense_network.FrozenDenseNetwork` supplies inference only, using existing NumPy/pandas.
+Its `frozen-dense/v1` JSON has exactly `schema`, ordered unique `features`, and three `layers`.
+Each layer has exactly `weights` (output-by-input rows) and `bias`. Both hidden layers apply ReLU;
+the final layer has one linear output. Inputs/parameters and every layer result must be finite
+real float64 values; booleans, invalid dimensions, duplicate/unknown keys and wrong feature order
+refuse. Limits: 64 KiB encoded model, 32 inputs/hidden units, three layers and 4096 scoring rows.
+`from_json(bytes)`, `to_json()` and `predict(DataFrame) -> Series` perform no file or registry I/O,
+training, random sampling or order execution. Output is a score, not a weight or order.
+
+The supplied `model_dense_scores` context strategy uses one/five-observed-bar returns and a
+2→2→2→1 network. Its weights are **hand-authored and untrained**; the illustrative declared cutoff
+does not establish historical knowledge or PIT correctness. Null training snapshot/seed and the
+`hand_authored_inference_fixture` evaluation marker are part of the exact provenance pin.
+Prepare the fixture files offline, then use the existing commands in a fresh local model store:
+
+```python
+import json
+from pathlib import Path
+from algua.strategies.ml import model_dense_scores as fixture
+
+Path("dense.json").write_bytes(fixture.ARTIFACT_BYTES)
+Path("dense-metadata.json").write_text(json.dumps({
+    "training_snapshot_id": fixture.TRAINING_SNAPSHOT_ID,
+    "training_as_of": fixture.TRAINING_AS_OF, "code_hash": None,
+    "hyperparameters": fixture.HYPERPARAMETERS, "seed": None,
+    "eval_report": fixture.EVAL_REPORT,
+}))
+```
+
+```sh
+uv run algua model register model_dense_scores --artifact dense.json --metadata dense-metadata.json
+uv run algua backtest run model_dense_scores --snapshot EXISTING_BARS_SNAPSHOT \
+  --start 2023-01-03 --end 2023-03-01
+```
+
+Use an immutable stored bars snapshot covering the three configured symbols and requested period;
+context scoring refuses unpinned `--demo` input. The tests ingest explicitly synthetic bars.
+The existing loader verifies the exact version/bytes/provenance; canonical context validation,
+five-bar warmup and `t→t+1` execution remain in force. Context paper/live and model-backed
+walk-forward/sweeps remain refused. This demonstrates executable DL inference on fixtures,
+not a trained DL producer, real multimodal evidence, predictive quality or trading qualification.
