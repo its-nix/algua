@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import stat
 import subprocess
 import sys
@@ -18,6 +19,107 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 FORAGE = REPO / ".opencode" / "scripts" / "forage.sh"
 LEAP = REPO / ".opencode" / "scripts" / "leap.sh"
+
+
+def _run_leap_memory_context(tmp_path, response, *, memory_exit=0, dry_run=False):
+    """Execute the actual context/GOAL and digest adapters; never enter the agent seam."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    response_path = tmp_path / "memory-response.json"
+    response_path.write_text(response)
+    calls = tmp_path / "calls.jsonl"
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    uv = bindir / "uv"
+    uv.write_text(f'''#!{sys.executable}
+import json,os,sys
+from pathlib import Path
+args=sys.argv[1:]
+with Path({str(calls)!r}).open('a') as stream: stream.write(json.dumps(args)+'\\n')
+if 'python' in args:
+    i=args.index('python'); os.execv(sys.executable,[sys.executable,*args[i+1:]])
+if 'prompt-context' in args:
+    sys.stdout.write(Path({str(response_path)!r}).read_text()); raise SystemExit({memory_exit})
+print(json.dumps({{'by_category':{{}}}}) if 'scorecard' in args else '[]')
+''')
+    uv.chmod(0o700)
+    source = LEAP.read_text()
+    context = source[source.index('_read_json() {'):source.index('# --- Agent invocation')]
+    start = source.index('echo "Appending run digest to ${DIGEST}..."')
+    digest = source[start:source.index('\necho\n', start)]
+    values = {'REPO_ROOT': str(REPO), 'AUTH_DB': str(tmp_path / 'unused.db'),
+              'AUTH_DATA_DIR': str(tmp_path),
+              'CATEGORIES_FILE': str(REPO / '.opencode/categories.txt'),
+              'LEAP_MAX_IDEAS': '3', 'DRY_RUN': str(int(dry_run)), 'STAMP': 'fixture-leap',
+              'DIGEST': str(tmp_path / 'digest.jsonl'), 'DEPTH_JSON': '{}',
+              'IMPORTED_JSON': '[]', 'SKIPPED_JSON': '[]', 'CRITIC_ROWS': '0',
+              'EXHAUSTED_JSON': '[]', 'rc': '0', 'timed_out': '0', 'wall_s': '0',
+              'rate_limited': '0', 'IMPORT_PARSE_ERROR': '0',
+              'INSPIRATIONS_JSON': '[]', 'REFUTED_JSON': '[]', 'NEGATIVE_JSON': '[]',
+              'SCORECARD_BY_CATEGORY': '{}'}
+    command = 'set -euo pipefail\n' + '\n'.join(
+        f'{key}={shlex.quote(value)}' for key, value in values.items()) + '\n'
+    goal_path = tmp_path / 'goal.txt'
+    command += context + f'\nprintf "%s" "$GOAL" > {shlex.quote(str(goal_path))}\n' + digest
+    env = {**os.environ, 'PATH': str(bindir) + os.pathsep + os.environ['PATH']}
+    result = subprocess.run(['bash', '-c', command], cwd=REPO, capture_output=True,
+                            text=True, env=env, timeout=30)
+    assert result.returncode == 0, result.stderr
+    return {'goal': goal_path.read_text(),
+            'digest': json.loads((tmp_path / 'digest.jsonl').read_text()),
+            'calls': [json.loads(line) for line in calls.read_text().splitlines()]
+                     if calls.exists() else [], 'stderr': result.stderr}
+
+
+def test_leap_advisory_memory_failure_continues_without_fake_metrics(tmp_path):
+    result = _run_leap_memory_context(tmp_path, '{"ok":false,"error":"PRIVATE_SENTINEL"}',
+                                     memory_exit=1)
+    assert 'refuted' in result['goal'].lower()  # Existing context remains available.
+    assert 'PRIVATE_SENTINEL' not in result['goal'] + result['stderr']
+    summary = result['digest']['public_research_memory_context']
+    assert summary['status'] == 'read_error' and summary['snapshot_sha256'] is None
+    assert summary['receipt_refs'] == [] and summary['observation_count'] == 0
+    assert 'read_error' in result['goal'] and 'not zero trials' in result['goal']
+    assert sum('prompt-context' in call for call in result['calls']) == 1
+
+
+def test_leap_invalid_memory_response_is_unavailable_without_worker_text(tmp_path):
+    raw = '{"ok":true,"public_research_memory":{"metrics":"PRIVATE_SENTINEL"}}'
+    result = _run_leap_memory_context(tmp_path, raw)
+    assert result['digest']['public_research_memory_context']['status'] == 'read_error'
+    assert 'PRIVATE_SENTINEL' not in result['goal'] + result['stderr']
+    assert 'read_error' in result['goal']
+
+
+def test_leap_dry_context_does_not_query_archives(tmp_path):
+    result = _run_leap_memory_context(tmp_path, 'PRIVATE_SENTINEL', dry_run=True)
+    assert not any('prompt-context' in call for call in result['calls'])
+    assert result['digest']['public_research_memory_context']['status'] == 'not_requested'
+
+
+def test_leap_idle_gates_do_not_read_archives(tmp_path):
+    bindir = tmp_path / 'bin'
+    bindir.mkdir()
+    marker = tmp_path / 'unexpected-memory-read'
+    uv = bindir / 'uv'
+    uv.write_text(f'''#!{sys.executable}
+import json,os,sys
+from pathlib import Path
+if 'prompt-context' in sys.argv:
+    Path({str(marker)!r}).touch(); raise SystemExit(9)
+if 'depth' in sys.argv:
+    print(json.dumps({{'below_refill':os.environ['FIXTURE_DEPTH']=='below',
+                      'open_unclaimed':0,'refill_at':3}}))
+else: print('[]')
+''')
+    uv.chmod(0o700)
+    for depth in ['above', 'below']:
+        env = {**os.environ, 'PATH': str(bindir) + os.pathsep + os.environ['PATH'],
+               'FIXTURE_DEPTH': depth, 'ALGUA_DATA_DIR': str(tmp_path / 'data')}
+        result = subprocess.run(['bash', str(LEAP)], cwd=REPO, env=env,
+                                capture_output=True, text=True, timeout=15)
+        assert result.returncode == 0, result.stderr
+        assert 'nothing to do' in result.stdout
+        assert not marker.exists()
 
 
 def _dry(script, *args):
