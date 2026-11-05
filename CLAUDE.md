@@ -28,6 +28,10 @@ drive the system through the **same** CLI. Every data command emits JSON on stdo
   knowledge/tracking and operator machinery are implemented. The architecture map describes
   these packages; the reconciliation record distinguishes partial capabilities from targets.
 
+## Knowledgebase and Drive assets
+
+The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive asset bridge](kb/drive-assets.md) links the access-controlled commercial-assets folder and the canonical private [Nix company KB](https://github.com/its-nix/knowledgebase/blob/main/START-HERE.md). This repository is public: do not publish private Drive file links, credentials, trade or account records, or other restricted data. Do not duplicate notes in Drive or treat any document or company summary as permission to bypass runtime/trading gates.
+
 ## Golden rules
 - Drive the system through `uv run algua ...`. Never reach into modules to bypass the CLI.
 - You may operate the lifecycle autonomously **up to and including `forward_tested`**.
