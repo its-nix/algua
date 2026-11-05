@@ -64,9 +64,22 @@ current-collected research inputs, not a historical PIT dataset or evidence of n
 Missing/invalid data for any requested issuer refuses before any snapshot is published. Existing
 `ingest-fundamentals --from-file` remains available for explicitly sourced local data.
 
-News ingestion still requires a sourced local file: the free yfinance news endpoint returned a
-provider-unavailable error during this slice's live check. No replacement news or historical
-knowledge timestamps were fabricated.
+### Current-collected news
+
+```sh
+uv run algua data fetch-news --symbols AAPL,MSFT
+uv run algua data query-news --snapshot-id <returned-id>
+```
+
+The separate yfinance news API was unavailable during the live check, but the official Yahoo
+Finance RSS feed returned genuine current headlines. This command collects RSS titles, links and
+vendor publication times, with every row becoming knowable only at collection completion.
+It records raw feed hashes, clocks and limitations in the existing immutable news snapshot.
+Feed tickers are source associations, not independently verified issuer mentions. Publication
+times are vendor declarations; historical availability remains UNKNOWN. The feed is not exhaustive
+history, and no full article body or sentiment is inferred. Each feed is capped at 2 MiB and a
+10-second wall deadline; malformed, future-dated or missing requested feeds refuse the whole batch.
+No `--as-of` override backdates collection. The existing source-file ingest path remains available.
 
 ## Containerized research-loop runs (local-first)
 
