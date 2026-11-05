@@ -14,6 +14,46 @@ REPORT_OUTCOMES = frozenset({
 })
 
 
+def completed_research_execution(record: dict[str, Any]) -> bool:
+    """Recognize the recorded qualification-only exit, never infer it for legacy rows.
+
+    Final exit 1 remains a qualification refusal. A valid report and matching complete controller
+    facts distinguish it from an execution/finalization failure; no publication authority follows.
+    """
+    cycle_id = record.get("research_cycle_id")
+    if (not isinstance(cycle_id, str)
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,95}", cycle_id) is None):
+        return False
+    if (record.get("outcome") != "completed" or type(record.get("exit_code")) is not int
+            or record["exit_code"] != 1 or type(record.get("worker_exit_code")) is not int
+            or record["worker_exit_code"] != 0 or record.get("timed_out") is not False
+            or record.get("rate_limited") is not False
+            or record.get("trailer_parse_error") is not False):
+        return False
+    result = record.get("controller")
+    if not isinstance(result, dict) or result.get("phase") != "completed":
+        return False
+    ids, counts = result.get("idea_ids"), result.get("outcome_counts")
+    if (result.get("research_cycle_id") != record.get("research_cycle_id")
+            or not isinstance(ids, list) or not ids or len(ids) > 40
+            or any(type(value) is not int or value <= 0 for value in ids)
+            or len(set(ids)) != len(ids) or ids != record.get("idea_ids")
+            or not isinstance(counts, dict) or not counts
+            or any(key not in REPORT_OUTCOMES - {"run_error"} for key in counts)
+            or any(type(value) is not int or value <= 0 for value in counts.values())):
+        return False
+    keys = ("attempts_total", "terminal_count", "unfinished_count", "invalid_count",
+            "write_error_count", "error_count", "ok_count")
+    if any(type(result.get(key)) is not int or result[key] < 0 for key in keys):
+        return False
+    total, invalid = len(ids), counts.get("integrity_fail", 0)
+    return (invalid > 0 and sum(counts.values()) == total
+            and result["attempts_total"] == result["terminal_count"] == total
+            and result["unfinished_count"] == result["invalid_count"]
+            == result["write_error_count"] == 0
+            and result["error_count"] == invalid and result["ok_count"] == total - invalid)
+
+
 def clean_report_text(value: str, limit: int = 120) -> str:
     return re.sub(r"[^A-Za-z0-9 ._,%+-]", "", value)[:limit].strip()
 

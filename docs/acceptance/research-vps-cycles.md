@@ -52,6 +52,18 @@ no candidate was created, and no merge-back or paper/live deployment was request
 The archives remain unverified-worker evidence with authority `none`; successful
 archive readback does not certify evaluated-worktree identity or grant gate authority.
 
+A separate offline CLI replay of the fourth cycle's full-period backtest from retained commit
+`ee0265c` matched all seven archived in-sample scalars bit-for-bit on snapshot `61a2bda1e636d017`,
+with the same config, dependency hash and null seed. Total return was -0.13557876252529666 and
+Sharpe -0.25787427365969706. This one reproduction is not another hypothesis or unattended cycle;
+it does not reproduce walk-forward/sweep results or prove the original evaluated worktree identity.
+All pilot limitations remain.
+
+New digest rows distinguish worker execution from qualification using the raw worker exit and
+complete controller facts. A completed worker-zero `integrity_fail` can retain sanitized negative
+feedback without a worker-crash alert; final driver/service exit stays one and merge-back remains
+ineligible. Existing digest rows and their incident lineage are not rewritten or cleared.
+
 All cycles used snapshot `61a2bda1e636d017`, logical content hash
 `e63c513cf2b5820d0ef468de7c22e8ab53552a07c1f81a1b625c7849ac1dc550`,
 with 150 current selected US equity names and approximately two years of daily bars.
@@ -71,9 +83,12 @@ runbook documentation merge `109a029` was pulled after it became terminal.
 
 This milestone proves empirical cycle completion, retained negative results and one
 actual persistent-timer run from autonomous ideation. It does not yet prove cumulative
-learning: the successful optional chooser had empty historical context, and the
-nonempty integrated admission failure has no established cause. Isolated nonempty
-memory fixtures passed, which is narrower evidence. Genuine sidecar-data acceptance,
+learning. The successful optional chooser consumed structured scorecard history (seven attempts,
+four families and one negative-result entry); its explanation cited excluded prior attempts.
+It had one offered option and unavailable numerical archive context, so this does not demonstrate
+competitive selection, archive-metric learning or economic improvement. The original optional-memory
+admission failure has no established cause. Isolated nonempty memory fixtures passed, which is
+narrower evidence. Real sidecar-data acceptance,
 complete multimodal execution evidence, protected isolation/dashboard assessments,
 and verified paper deployment remain separately open. Missing paper credentials and
 saved-policy assessment denials are not waived by reducing the cycle threshold.

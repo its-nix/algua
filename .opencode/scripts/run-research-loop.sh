@@ -269,7 +269,7 @@ append_digest() {
     "${rc}" "${timed_out}" "${wall_s}" "${n_strategy_files}" "${rate_limited}" \
     "${DIGEST_REPORT_PATH}" "${STRATEGY_MODULE_NAMES}" "${REPO_ROOT}" \
     "${AUTH_QUEUE}" "${AUTH_QUEUE_LOCK}" "${REPO_ROOT}" "${CLAIMED_JSON}" "${CYCLE_RESULT}" \
-    "${CYCLE_CAMPAIGN:-}" <<'PY' && digest_ok=1
+    "${CYCLE_CAMPAIGN:-}" "${WORKER_EXIT:-}" <<'PY' && digest_ok=1
 import importlib.util
 import json
 import os
@@ -292,7 +292,8 @@ from pathlib import Path
 
 sys.path.insert(0, repo_root)
 from algua.operator.research_cycle_results import (
-    campaign_hypotheses, clean_report_text, read_report,
+    REPORT_OUTCOMES, campaign_hypotheses, clean_report_text, completed_research_execution,
+    read_report,
 )
 
 cycle_result = {}
@@ -303,6 +304,7 @@ if len(sys.argv) > 18 and sys.argv[18]:
     except Exception:
         pass
 campaign_required = len(sys.argv) > 19 and bool(sys.argv[19])
+worker_exit = int(sys.argv[20]) if len(sys.argv) > 20 and sys.argv[20] else None
 
 _STRATEGY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 _UNIVERSE_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -424,6 +426,25 @@ try:
             claim_tokens[_idea["id"]] = _idea.get("claim_token")
 except Exception as exc:
     print(f"WARNING: could not read this run's claimed ideas: {exc}")
+# Fixed public facts from the authority-side finish response, never claim tokens or free text.
+controller = None
+attempts = cycle_result.get("attempts")
+if (isinstance(attempts, list) and len(attempts) <= 40
+        and all(isinstance(a, dict) and type(a.get("idea_id")) is int
+                and isinstance(a.get("outcome"), str) and a["outcome"] in REPORT_OUTCOMES
+                for a in attempts)):
+    outcomes = [a["outcome"] for a in attempts]
+    controller = {key: cycle_result.get(key) for key in (
+        "research_cycle_id", "phase", "attempts_total", "terminal_count", "unfinished_count",
+        "invalid_count", "error_count", "ok_count")}
+    errors = cycle_result.get("write_errors")
+    controller.update(idea_ids=sorted(a["idea_id"] for a in attempts),
+                      outcome_counts={value: outcomes.count(value) for value in sorted(set(outcomes))},
+                      write_error_count=len(errors) if isinstance(errors, list) else None)
+execution = {"research_cycle_id": stamp, "idea_ids": sorted(claim_tokens), "outcome": outcome,
+             "exit_code": int(exit_code) if exit_code else None, "worker_exit_code": worker_exit,
+             "timed_out": timed_out == "1", "rate_limited": rate_limited == "1",
+             "controller": controller, "trailer_parse_error": False}
 hypotheses: list = []
 preview_gate = None
 trailer_parse_error = None  # only a completed run is expected to have a trailer
@@ -435,6 +456,22 @@ if outcome == "completed" and exit_code in ("", "0"):
         trailer_parse_error = False
     except Exception:
         hypotheses, preview_gate, trailer_parse_error, candidates = [], None, True, []
+elif completed_research_execution(execution):
+    # Informational negatives ONLY. Never invoke candidate validation, branch rename or enqueue
+    # on a nonzero final exit, even if a report claims a preview pass or a merge_back recipe.
+    try:
+        rows, _ = read_report(Path(report_path))
+        recorded = {a["idea_id"]: a["outcome"] for a in attempts}
+        if (len(rows) != len(recorded) or {h["idea_id"] for h in rows} != set(recorded)
+                or any(h["outcome"] != recorded[h["idea_id"]] for h in rows)):
+            raise ValueError("report differs from completed controller")
+        if campaign_required:
+            rows = campaign_hypotheses(rows, cycle_result, cycle_id=stamp, claim_tokens=claim_tokens)
+        hypotheses = [{**h, "verdict": None, "merge_back": None} for h in rows
+                      if h["outcome"] != "candidate_preview_pass"]
+        trailer_parse_error = False
+    except Exception:
+        hypotheses, trailer_parse_error = [], True
 
 # mergeback_queue module: needed for BOTH the candidate-keyed branch rename below and the enqueue
 # at the bottom. A load failure degrades loudly to no-rename + no-enqueue (the digest row below
@@ -488,6 +525,8 @@ row = {
     "idea_ids": sorted(claim_tokens),
     "outcome": outcome,
     "exit_code": int(exit_code) if exit_code else None,
+    "worker_exit_code": worker_exit,
+    "controller": controller,
     "timed_out": timed_out == "1",
     "wall_s": int(wall_s) if wall_s else None,
     "n_strategy_files": int(n_files) if n_files else None,

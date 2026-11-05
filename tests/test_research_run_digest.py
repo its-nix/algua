@@ -118,6 +118,84 @@ def _ec(**over):
     return ec
 
 
+def _qualification_result(stamp="fixture", **over):
+    return {"ok": False, "research_cycle_id": stamp, "phase": "completed",
+            "attempts_total": 1, "terminal_count": 1, "unfinished_count": 0,
+            "invalid_count": 0, "error_count": 1, "ok_count": 0, "write_errors": [],
+            "attempts": [{"idea_id": 8, "outcome": "integrity_fail"}], **over}
+
+
+def _completed_bash_digest(tmp_path, *, result=None, worker_exit=0, final_exit=1,
+                           trailer=None, timed_out=0):
+    """Execute the real Bash caller, including its worker/controller argv wiring."""
+    report = tmp_path / "report.md"
+    report.write_text(_fence(trailer or {"hypotheses": [{
+        "idea_id": 8, "title": "Negative proxy result", "outcome": "integrity_fail",
+        "reason": "Known non-PIT qualification refusal", "verdict": "discarded",
+        "falsification_assessment": "refuted"}]}))
+    result_path = tmp_path / "result.json"
+    result_path.write_text(json.dumps(result if result is not None else _qualification_result()))
+    start = _LAUNCHER_TEXT.index("append_digest() {")
+    end = _LAUNCHER_TEXT.index("\n}\n", _LAUNCHER_TEXT.index("\nPY\n", start)) + 3
+    function = _LAUNCHER_TEXT[start:end]
+    env = {**os.environ, "AUTH_DIGEST": str(tmp_path / "digest.jsonl"), "STAMP": "fixture",
+           "DIGEST_BRANCH": "research-run/fixture", "CATEGORY": "fixture", "rc": str(final_exit),
+           "WORKER_EXIT": str(worker_exit), "timed_out": str(timed_out), "wall_s": "12",
+           "n_strategy_files": "1", "rate_limited": "0", "DIGEST_REPORT_PATH": str(report),
+           "STRATEGY_MODULE_NAMES": "strat_a", "REPO_ROOT": str(REPO_ROOT),
+           "AUTH_QUEUE": str(tmp_path / "queue.json"),
+           "AUTH_QUEUE_LOCK": str(tmp_path / "queue.lock"),
+           "CLAIMED_JSON": json.dumps([{"id": 8, "claim_token": "SYNTHETIC_FIXTURE"}]),
+           "CYCLE_RESULT": str(result_path), "CYCLE_CAMPAIGN": ""}
+    command = function + '\nappend_digest completed\nprintf "rc=%s\\n" "$rc"'
+    proc = subprocess.run(["bash", "-c", command],
+                          env=env, capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 0, proc.stderr
+    assert f"rc={final_exit}" in proc.stdout
+    return _last_digest_row(tmp_path / "digest.jsonl"), tmp_path / "queue.json"
+
+
+def test_completed_qualification_failure_retains_information_without_candidates(tmp_path):
+    row, queue = _completed_bash_digest(tmp_path, trailer={"hypotheses": [{
+        "idea_id": 8, "title": "Negative proxy result", "outcome": "integrity_fail",
+        "reason": "Non-PIT refusal", "falsification_assessment": "refuted",
+        "verdict": "candidate-preview-pass", "merge_back": {
+            "strategy": "strat_a", "idea_id": 8, "universe": "fixture",
+            "start": "2024-01-01", "end": "2024-06-01", "eval_context": _ec()}}],
+        "preview_gate": {"passed": True, "failed_checks": []}})
+    assert row["exit_code"] == 1
+    assert row["worker_exit_code"] == 0
+    assert row["trailer_parse_error"] is False
+    assert row["hypotheses"] == [_expect_hyp(
+        "Negative proxy result", idea_id=8, outcome="integrity_fail", reason="Non-PIT refusal",
+        falsification_assessment="refuted")]
+    assert row["preview_gate"] is None and not queue.exists()
+    anti_dup = subprocess.run([sys.executable, "-", str(tmp_path / "digest.jsonl")],
+                              input=_ANTI_DUP_SRC, text=True, capture_output=True, timeout=10)
+    assert json.loads(anti_dup.stdout) == ["Negative proxy result"]
+
+
+@pytest.mark.parametrize("over,worker,code", [
+    ({}, 124, 124), ({}, 3, 3), ({}, 0, 3),
+    ({"write_errors": [{"idea_id": 8, "error": "FIXTURE"}]}, 0, 1),
+    ({"unfinished_count": 1, "terminal_count": 0}, 0, 1),
+    ({"error_count": 0}, 0, 1), ({"research_cycle_id": "wrong"}, 0, 1),
+    ({"attempts": [{"idea_id": 9, "outcome": "integrity_fail"}]}, 0, 1),
+    ({"attempts": [{"idea_id": 8, "outcome": "run_error"}]}, 0, 1),
+])
+def test_failed_completion_does_not_retain_success_information(tmp_path, over, worker, code):
+    row, queue = _completed_bash_digest(
+        tmp_path, result=_qualification_result(**over), worker_exit=worker, final_exit=code)
+    assert row["hypotheses"] == [] and row["preview_gate"] is None
+    assert not queue.exists()
+
+
+def test_qualification_failure_with_malformed_report_stays_unverified(tmp_path):
+    row, queue = _completed_bash_digest(tmp_path, trailer={"hypotheses": [3]})
+    assert row["trailer_parse_error"] is True
+    assert row["hypotheses"] == [] and not queue.exists()
+
+
 # --- (a) basic parse: verdict + validated merge_back on a matching strategy ---------------------
 
 

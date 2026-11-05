@@ -68,6 +68,57 @@ def test_machine_health_reads_persisted_negative_economics_without_writes(tmp_pa
     assert _tree(tmp_path) == before
 
 
+def _qualification_run(minutes=0, **over):
+    row = _run(minutes, exit_code=1, worker_exit_code=0, trailer_parse_error=False, idea_ids=[8])
+    row["controller"] = {
+        "research_cycle_id": row["research_cycle_id"], "phase": "completed",
+        "attempts_total": 1, "terminal_count": 1, "unfinished_count": 0,
+        "invalid_count": 0, "error_count": 1, "ok_count": 0, "write_error_count": 0,
+        "idea_ids": [8], "outcome_counts": {"integrity_fail": 1}}
+    return {**row, **over}
+
+
+def test_completed_worker_with_qualification_failure_is_not_a_crash(tmp_path, monkeypatch):
+    _seed(tmp_path, monkeypatch, [_qualification_run(60), _qualification_run()])
+    before = _tree(tmp_path)
+    result = _invoke()
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["loops"]["research"] == "ok" and payload["incidents"] == []
+    assert _tree(tmp_path) == before
+
+
+@pytest.mark.parametrize("changes", [
+    {"worker_exit_code": 124, "exit_code": 124}, {"worker_exit_code": 3, "exit_code": 3},
+    {"exit_code": 3}, {"trailer_parse_error": True}, {"controller": None},
+    {"outcome": "driver_failed"}, {"timed_out": True},
+])
+def test_qualification_metadata_never_hides_execution_failures(tmp_path, monkeypatch, changes):
+    _seed(tmp_path, monkeypatch, [_qualification_run(60, **changes), _qualification_run(**changes)])
+    result = _invoke()
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["loops"]["research"] == "failing"
+    assert payload["incidents"][0]["cause"] in {"worker_failed", "worker_timeout"}
+
+
+@pytest.mark.parametrize("changes", [
+    {"write_error_count": 1}, {"unfinished_count": 1}, {"error_count": 0},
+    {"outcome_counts": {"candidate_preview_pass": 1}, "error_count": 0, "ok_count": 1},
+    {"outcome_counts": {"run_error": 1}}, {"idea_ids": [9]},
+])
+def test_inconsistent_controller_never_hides_final_failure(tmp_path, monkeypatch, changes):
+    records = [_qualification_run(60), _qualification_run()]
+    for record in records:
+        record["controller"].update(changes)
+    _seed(tmp_path, monkeypatch, records)
+    result = _invoke()
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["loops"]["research"] == "failing"
+    assert payload["incidents"][0]["cause"] == "worker_failed"
+
+
 def test_repeated_systemic_faults_deduplicate_retries_preserving_lineage(tmp_path, monkeypatch):
     first = _run(90, exit_code=1)
     second = _run(60, exit_code=1)
