@@ -878,9 +878,19 @@ merge_back you name it enqueues the real 'paper merge-back' for the trusted drai
 not run it yourself, and no human needs to either.
 
 Hold the research discipline (it makes your preview trustworthy):
-  - Use PIT-CORRECT ADJUSTED prices, never raw close/volume (raw is corporate-action contaminated).
+  - Use adj_close for returns and price signals, never raw close/volume as a substitute.
+    Verified point-in-time data is required for qualification. A declared pilot_real_proxy
+    snapshot is permitted for exploratory backtest, walk-forward and sweep calculations:
+    preserve its provenance and all limitations; do not stop before those calculations solely
+    because historical membership or as-of adjustments are unavailable. These proxy results
+    are not PIT evidence, untouched holdout evidence or proof of alpha. Pass this distinction
+    to author and interpret. See the run-the-research-loop skill's pilot instructions.
   - Measure breadth with 'backtest sweep' before you promote (the gate requires it).
   - TRUST THE GATE; never pass a relaxation flag (human-only; they fail closed on your path).
+    Proxy exploration does not authorize promotion: never fabricate a PIT universe, relabel
+    data or enqueue merge_back for a known-ineligible proxy. Record its qualification limits
+    separately from the empirical results, and distinguish a known preflight limit from an
+    actual gate invocation/refusal.
 
 Work the claimed ideas above (up to ${N_HYPOTHESES}) — do NOT invent your own hypothesis. For each:
 take the idea's hypothesis/falsification as given and delegate scaffolding and authoring once to
