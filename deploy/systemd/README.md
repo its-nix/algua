@@ -524,3 +524,26 @@ gets **no `OPERATOR_JOBS` manifest entry** — `lock-run` is a parallel, purpose
 new job key. Zero lines of `run_session` (`algua/operator/session_runner.py`)/`session_gate`/the
 existing `run` command are touched by
 its existence.
+
+## Draft verified-PR admission (not activated)
+
+The Task7 bypass-removal increment makes `paper merge-back` refuse direct publication to
+`main`, including automatic revert pushes. It can adopt an **already merged** PR only after
+exact-head independent review, named check-run/app identities, a trusted integrated-tree
+attestation binding base/head/tree/check IDs, and explicit Task4 **authoritative strategy
+execution** attestation. Authoring sandbox success is insufficient. No production attestation
+or admission policy has been issued; Task4 remains unproved.
+
+`ALGUA_MERGEBACK_ADMISSION` selects a bounded, root-controlled descriptor, never a worker
+receipt. Its `merge-pr-admission/v1` fields are `repository`, `pull_request`, `head_sha`,
+`base_sha`, `reviewer_ids`, `required_checks`, `checked_tree` and `isolation` (plus `schema`).
+The attested execution baseline must have no subsequent changes outside the existing allowlist.
+Deployment also requires an immutable reviewed operator and trusted GitHub CLI/host; a root-owned
+JSON file alone establishes neither. The checked-tree attestation producer is not implemented.
+
+Missing evidence stays operationally pending without burning queue retry budgets. Old direct-main
+journals require owner recovery. A failed strict promotion remains in history with
+`reviewed_revert_pending`; no automatic rollback publication occurs. Actual PR creation, a trusted
+autonomous merger, artifact-producing CI and reviewed-revert completion remain gaps. Current
+repository CI remains manual, and this platform-delivery waiver never supplies strategy CI proof.
+All new safety/recovery behavior requires human review before merge or activation.

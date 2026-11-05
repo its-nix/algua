@@ -65,6 +65,8 @@ class MergeBackRecord:
     branch: str
     branch_tip: str
     base_sha: str | None = None
+    pr_number: int | None = None
+    pr_merge_sha: str | None = None
     # How this attempt got the branch's code onto `main`. "merge" — it merged, gated and CAS-pushed
     # the branch itself. "already_present" — the branch tip was ALREADY an ancestor of origin/main
     # when the attempt started (a SIBLING strategy on the same multi-strategy research branch merged

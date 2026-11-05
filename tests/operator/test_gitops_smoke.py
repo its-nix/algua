@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from algua.operator.gitops import RealGitOps, RemoteMovedError, merge_back_lock
+from algua.operator.gitops import RealGitOps, merge_back_lock
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -187,7 +187,12 @@ def test_merge_push_cas_and_content_check(repo: Path) -> None:
     merge_sha = git.merge_commit_of(tip)
     assert git.commit_second_parent(merge_sha) == tip
 
-    git.push_cas(merge_sha, base)                       # real remote CAS
+    with pytest.raises(RuntimeError, match="direct-main publication disabled"):
+        git.push_cas(merge_sha, base)
+    assert git.remote_tip("main") == base
+    # Fixture-only external publisher; the application no longer owns this authority.
+    _git(repo, "push", "origin", f"{merge_sha}:refs/heads/main")
+    git.fetch_remote("main")
     assert git.remote_tip("main") == merge_sha
     assert git.is_ancestor(merge_sha, "refs/remotes/origin/main")
 
@@ -225,7 +230,7 @@ def test_push_cas_stale_base_rejects(repo: Path) -> None:
     _commit_staged_merge(git, repo)
     merge_sha = git.merge_commit_of(tip)
     # A wrong expected_base (origin/main has not moved to it) fails the pre-push CAS.
-    with pytest.raises(RemoteMovedError):
+    with pytest.raises(RuntimeError, match="direct-main publication disabled"):
         git.push_cas(merge_sha, "0" * 40)
 
 

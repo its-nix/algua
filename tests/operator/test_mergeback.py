@@ -25,7 +25,9 @@ from algua.operator.mergeback import (
     LocalMainDriftError,
     MergeContentAbsentError,
     StageDriftError,
-    run_merge_back,
+)
+from algua.operator.mergeback import (
+    _run_merge_back_saga as run_merge_back,
 )
 
 _CODEOWNERS = "/algua/registry/store.py @x\n/algua/registry/promotion.py @x\n"
