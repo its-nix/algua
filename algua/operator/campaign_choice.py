@@ -103,7 +103,7 @@ def choose_campaign(cycle: ResearchCycle, *, menu: dict, directory: Path | None,
     limits = menu['request']['limits']
     command = ['prlimit', f"--cpu={min(120, limits['cpu_seconds'])}",
                f"--as={limits['memory_mb'] * 1024 * 1024}",
-               f"--fsize={min(8, limits['file_mb']) * 1024 * 1024}",
+               f"--fsize={limits['file_mb'] * 1024 * 1024}",
                '--nofile=256', '--', *command]
     with (directory / 'seam.stdout').open('wb') as stdout, (
             directory / 'seam.stderr').open('wb') as stderr:

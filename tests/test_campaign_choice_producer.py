@@ -63,6 +63,12 @@ if 'debug' in sys.argv:
     sys.exit(0)
 Path('fixture-environment.json').write_text(json.dumps({k:os.environ.get(k) for k in
     ['XDG_CONFIG_HOME','XDG_DATA_HOME','XDG_STATE_HOME','XDG_CACHE_HOME']}))
+if case == 'internal_state':
+    state = Path(os.environ['XDG_DATA_HOME']) / 'opencode/runtime-state.bin'
+    state.parent.mkdir(parents=True, exist_ok=True)
+    with state.open('wb') as stream:
+        for _ in range(9):
+            stream.write(b'x' * 1024 * 1024)
 prompt = Path(sys.argv[sys.argv.index('-f')+1]).read_text()
 menu = json.loads(prompt.split('MENU_JSON\\n',1)[1])
 choice = {**menu['choices'][-1], 'reason':'SYNTHETIC_FIXTURE uses the captured evidence'}
@@ -153,6 +159,28 @@ def prepared(database, tmp_path, **changes):
     args = {'limits': CycleLimits(max_hypotheses=3), 'context': {'tier':'synthetic_fixture'},
             'ttl_minutes':180, **changes}
     return conn, cycle, args, cycle.campaign_menu(**args)
+
+
+@pytest.mark.parametrize('file_mb', [16, 4])
+def test_native_state_uses_configured_file_budget_without_enlarging_output_bounds(
+        fixture_pool, fake_runtime, tmp_path, monkeypatch, file_mb):
+    monkeypatch.setenv('FIXTURE_CASE', 'internal_state')
+    evidence = tmp_path / 'native-state'
+    result = cli('cycle-start', '--run', 'native-state', '--limit', '3',
+                 '--file-mb', str(file_mb), '--choose', '--choice-dir', str(evidence))
+    payload = json.loads(result.stdout)
+    state = evidence / 'data/opencode/runtime-state.bin'
+    if file_mb == 16:
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert state.stat().st_size == 9 * 1024 * 1024
+        assert [idea['id'] for idea in payload['claimed']] == [3]
+        assert (evidence / 'runtime.jsonl').stat().st_size < 256 * 1024
+        assert (evidence / 'session.json').stat().st_size < 256 * 1024
+    else:
+        assert result.returncode != 0 and payload['ok'] is False
+        assert state.stat().st_size <= file_mb * 1024 * 1024
+        assert not (evidence / 'campaign.json').exists()
+        assert not (tmp_path / 'data/research-cycles/native-state.json').exists()
 
 
 @pytest.mark.parametrize('case', [

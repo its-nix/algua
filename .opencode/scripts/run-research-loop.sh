@@ -711,7 +711,33 @@ else
     fi
     ALGUA_DB_PATH="${AUTH_DB}" ALGUA_DATA_DIR="${AUTH_DATA_DIR}" "${AUTH_CLI[@]}" "${CLAIM_ARGS[@]}"
   )" \
-    || { echo "claim failed; refusing to run without claimed ideas" >&2
+    || { # Never echo the captured response: it can contain claims or arbitrary exception text.
+         printf '%s' "${CLAIM_START_JSON}" | python3 -c '
+import json,re,sys
+safe = {"ok": False, "error": "cycle-start failed; inspect private artifacts",
+        "code": "cycle_start_failed", "retryable": False, "phase": "cycle_start"}
+try:
+    raw = sys.stdin.buffer.read(1024 * 1024 + 1)
+    payload = json.loads(raw) if len(raw) <= 1024 * 1024 else None
+    codes = {"invalid_input", "internal", "usage_error", "aborted", "db_unavailable",
+             "file_not_found", "not_found"}
+    if isinstance(payload, dict) and payload.get("ok") is False:
+        code = payload.get("code")
+        if isinstance(code, str) and code in codes:
+            safe["code"] = code
+            if type(payload.get("retryable")) is bool:
+                safe["retryable"] = payload["retryable"]
+        error = payload.get("error")
+        match = re.fullmatch(r"chooser runtime failed \(exit ([0-9]{1,3})\); see private artifacts",
+                             error) if isinstance(error, str) else None
+        if match and int(match[1]) <= 255:
+            safe["error"] = "chooser runtime failed (exit %d); see private artifacts" % int(match[1])
+except (ValueError, RecursionError):
+    pass
+print(json.dumps(safe), file=sys.stderr)
+' || true
+         unset CLAIM_START_JSON
+         echo "claim failed; refusing to run without claimed ideas" >&2
          rc=1; exit 1; }
   CLAIMED_JSON="$(printf '%s' "${CLAIM_START_JSON}" | python3 -c '
 import json,sys

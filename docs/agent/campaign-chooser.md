@@ -36,8 +36,9 @@ a containment failure is terminal and must not be worked around by changing perm
 The producer accepts at most 96 KiB of prompt, 256 KiB per event/log file and 32 KiB of selection
 text. Model wall time is at most 120 seconds (or the smaller captured wall limit), with at most
 15 seconds each for configuration inspection and session export, plus 5 seconds for cleanup.
-CPU and address-space limits tighten the captured resources; file limits are at most the captured
-limit or 8 MiB, whichever is smaller. These are process limits, not strategy isolation. No model
+CPU and address-space limits tighten the captured resources; the process-wide file limit uses the
+captured `file_mb` budget so native state may exceed 8 MiB. Independent prompt, output and reply
+bounds above remain unchanged. These are process limits, not strategy isolation. No model
 call or claim is allowed with a configured monetary cap while cost is UNKNOWN, even a zero cap.
 Reported runtime costs do not establish an authoritative monetary accounting source.
 
@@ -54,6 +55,9 @@ The private directory must be new. It keeps `menu.json`, `prompt.txt`, raw `runt
 `runtime.jsonl.stderr`, `effective-agent.json`, sanitized `session.json`, actual session/model
 identity in `runtime-evidence.json`, exit status, and an accepted `campaign.json`. Files may
 exist for failed calls, but there are no claims or controller records for rejected output.
+Failed cycle starts also emit a small driver diagnostic with a fixed phase, recognized code,
+typed retry flag and fixed error text (including a chooser exit status when available). Captured
+claims, free-form exception messages and native login/session contents are never echoed there.
 Keep the directory private: prompts contain registry metadata and paths. Runtime state/cache and
 native refresh state stay under it. The seam reads the existing native login store into inherited
 process memory when needed, without changing the original store or printing credentials. Treat
