@@ -47,6 +47,9 @@ RUN_KINDS = frozenset({"backtest", "walk_forward", "sweep", "sweep_trial", "gate
 # exec).
 MAX_SERIES_RUN_IDS = 16
 
+# Same cycle vocabulary as ResearchCycle; web remains independent of algua imports.
+RESEARCH_CYCLE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,95}")
+
 
 class InvalidParam(Exception):
     """A user-supplied parameter failed validation (rendered as HTTP 422)."""
@@ -54,6 +57,12 @@ class InvalidParam(Exception):
     def __init__(self, error: str) -> None:
         super().__init__(error)
         self.error = error
+
+
+def validate_research_cycle(value: str) -> str:
+    if RESEARCH_CYCLE_RE.fullmatch(value) is None:
+        raise InvalidParam("invalid retained research cycle identifier")
+    return value
 
 
 def validate_strategy_name(name: str) -> str:
