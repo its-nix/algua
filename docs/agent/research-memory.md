@@ -245,7 +245,7 @@ newer archive. An already started chooser refuses before another archive/model c
 Domain refusals retain the standard JSON envelope, exit 1, `code=invalid_input`,
 `retryable=false`, and `error=public_memory_context:<reason>`. This opt-in context demonstrates
 retained-memory plumbing; fixture choices do not prove causal autonomous learning, 100 recorded
-experiments, ten unattended cycles, paper readiness or profitable alpha.
+experiments, three unattended cycles, paper readiness or profitable alpha.
 
 ## Optional primary research prompt
 

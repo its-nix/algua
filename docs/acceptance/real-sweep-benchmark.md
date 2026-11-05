@@ -131,7 +131,7 @@ bounded numerical/retention results while leaving the original collector's faile
 
 This case demonstrates actual finite sweep computation and public-result retention across four
 existing mechanisms. It does not demonstrate 100 independent research hypotheses, a model call,
-causal use of memory, ten unattended research cycles, elapsed forward testing, portfolio
+causal use of memory, three unattended research cycles, elapsed forward testing, portfolio
 qualification, paper deployment or live readiness. Raw private evidence remains outside the
 repository; the [aggregate receipt](real-sweep-benchmark.json) records public identities and
 counts only.
