@@ -58,6 +58,11 @@ exist for failed calls, but there are no claims or controller records for reject
 Failed cycle starts also emit a small driver diagnostic with a fixed phase, recognized code,
 typed retry flag and fixed error text (including a chooser exit status when available). Captured
 claims, free-form exception messages and native login/session contents are never echoed there.
+On a failed CLI exit, the driver also saves its captured response (at most 1 MiB) to
+`research-cycles/<run>.start-error.txt` outside worker scratch, mode 0600, without overwriting
+existing files or following a symlink. Unsafe/unwritable paths and oversized responses produce
+only a fixed warning. This private response may contain sensitive text/claim tokens: never publish
+it or copy it into a worker/public archive. Successful claim responses are not saved there.
 Keep the directory private: prompts contain registry metadata and paths. Runtime state/cache and
 native refresh state stay under it. The seam reads the existing native login store into inherited
 process memory when needed, without changing the original store or printing credentials. Treat

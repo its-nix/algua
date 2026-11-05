@@ -832,11 +832,34 @@ else
   )" \
     || { # Never echo the captured response: it can contain claims or arbitrary exception text.
          printf '%s' "${CLAIM_START_JSON}" | python3 -c '
-import json,re,sys
+import json,os,re,stat,sys
 safe = {"ok": False, "error": "cycle-start failed; inspect private artifacts",
         "code": "cycle_start_failed", "retryable": False, "phase": "cycle_start"}
+raw = sys.stdin.buffer.read(1024 * 1024 + 1)
 try:
-    raw = sys.stdin.buffer.read(1024 * 1024 + 1)
+    if len(raw) > 1024 * 1024:
+        raise ValueError("response too large")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    base = os.open(sys.argv[1], flags)
+    try:
+        directory = os.open("research-cycles", flags, dir_fd=base)
+        try:
+            info = os.fstat(directory)
+            if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o022:
+                raise ValueError("unsafe diagnostic directory")
+            fd = os.open(sys.argv[2] + ".start-error.txt",
+                         os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                         0o600, dir_fd=directory)
+            with os.fdopen(fd, "wb") as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                stream.write(raw)
+        finally:
+            os.close(directory)
+    finally:
+        os.close(base)
+except (OSError, ValueError):
+    print("private cycle-start response not saved", file=sys.stderr)
+try:
     payload = json.loads(raw) if len(raw) <= 1024 * 1024 else None
     codes = {"invalid_input", "internal", "usage_error", "aborted", "db_unavailable",
              "file_not_found", "not_found"}
@@ -864,7 +887,7 @@ try:
 except (ValueError, RecursionError):
     pass
 print(json.dumps(safe), file=sys.stderr)
-' || true
+' "${AUTH_DATA_DIR}" "${STAMP}" || true
          unset CLAIM_START_JSON
          echo "claim failed; refusing to run without claimed ideas" >&2
          rc=1; exit 1; }
