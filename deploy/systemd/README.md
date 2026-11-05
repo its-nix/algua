@@ -163,6 +163,69 @@ Owner adoption, compatible approved Python/OS base, release compatibility and ac
 separate prerequisites. Linux CI output alone proves no VPS compatibility. This dependent draft
 does not enable deployment, signing, secrets, automatic runs or any persistent-host execution.
 
+### Draft conditional artifact adoption (separate owner decision)
+
+`deploy/scripts/adopt-paper-artifact.py` downloads and materializes files only after an explicit
+root-controlled approval request. Install the reviewed entry, its sibling `paper_archive.py` and
+trusted `algua` helpers under root-controlled parents, separately from the candidate artifact:
+
+```sh
+/root-controlled/python3 -I -S /root-controlled/operator/deploy/scripts/adopt-paper-artifact.py \
+  /root-controlled/artifact-approval.json
+```
+
+The helper is compiled directly from checked source bytes; adjacent bytecode caches are ignored.
+The bounded original approval bytes are parsed and hashed once, so a later request-file rewrite
+cannot attribute an earlier adoption to the replacement request.
+
+An optional final numeric argument identifies an already-open credential file descriptor for
+private GitHub access. The entry does not discover credentials or run `gh`; credential values and
+signed storage URLs must remain private. Authorization is sent only to the fixed
+`api.github.com/repos/its-nix/algua` API, never to the HTTPS storage redirect. No workflow is started.
+
+The closed JSON request contains exactly these fields:
+
+```json
+{
+  "schema": "algua-paper-adoption/v1",
+  "approval_ref": "owner-reviewed-exact-artifact-decision",
+  "repository_id": 123, "run_id": 234, "run_attempt": 1, "artifact_id": 345,
+  "artifact_sha256": "<64 lowercase hex>", "recipe_commit": "<40 lowercase hex>",
+  "source_commit": "<40 lowercase hex>", "application_digest": "<64 lowercase hex>",
+  "provenance_sha256": "<64 lowercase hex>", "destination": "/root-controlled/fresh-bundle",
+  "base": {
+    "approval_ref": "separately-reviewed-compatible-base-decision",
+    "ci_image": "<exact approved producer image reference>",
+    "python_path": "/approved/base/python3.12", "python_sha256": "<64 lowercase hex>",
+    "stdlib_path": "/approved/base/lib/python3.12", "stdlib_py_digest": "<64 lowercase hex>",
+    "os_release_sha256": "<64 lowercase hex>", "machine": "x86_64", "libc": "glibc 2.39"
+  }
+}
+```
+
+These are owner-supplied identities, not permissions inferred from artifact ownership. Exact run,
+attempt, successful manual main workflow, recipe/source, immutable service artifact digest and
+provenance must agree. The installed base must already be root-controlled and match the approved
+binary, standard-library Python sources, OS, architecture and libc observations. Every stdlib
+entry, including native extensions and caches, must be root-controlled. These checks verify
+declared identities without executing the base or artifact. It is not a native-library closure or
+a portability proof. The observed VPS research Python `/usr` 3.12.3 differs from CI 3.12.12 Bookworm;
+no compatible approved base has been proved, and separate `/usr/local` bases were not inspected.
+
+The standalone Linux entry bounds the storage connection/transfer to 2 GiB and a scoped 300-second
+wall timer, with progress reads and deadline checks. Each HTTP request has a 30-second socket timeout.
+Extraction accepts only the four producer sidecars and regular tar files/directories, with no
+duplicate/traversal/link/special entries, at most 100,000 tar members, 512 MiB per file and 4 GiB
+total file payload. Checksums, the complete runtime inventory and approved reconstructed Git
+metadata digest are checked as data; no artifact Git, Python, hooks or strategy code runs.
+A private sibling stage is atomically published without replacement as one fresh bundle containing
+`release/`, `release-spec.json`, original `provenance.json` and `adoption.json`. Existing destinations
+and racing writers are preserved; failure removes only the private stage. The descriptor retains
+the existing consumer shape/digest and binds its path to `release/` in that bundle. Adoption does
+not approve release compatibility, mint an approval, migrate a DB, sign, activate or change units.
+The separately reviewed release request below remains necessary. Only synthetic disposable adoption
+is tested; real Actions delivery, compatible-base adoption and paper activation remain unproved.
+
 Required installation:
 
 - Run the trusted, separately installed operator entry with a root-controlled Python 3.12 interpreter
