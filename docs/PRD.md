@@ -911,9 +911,12 @@ Do not judge the project by the number of features shipped.
 
 ### Machine acceptance and investment acceptance are independent
 
+**Owner amendment (2026-11-05):** the unattended-cycle target is reduced from ten to three.
+All other acceptance requirements remain unchanged.
+
 **Machine acceptance** on limited real data requires all of the following:
 
-- Ten completed **unattended OpenCode research cycles** on the actual scheduler and registry, plus
+- Three completed **unattended OpenCode research cycles** on the actual scheduler and registry, plus
   **at least 100 individually recorded real-data hypothesis/variant attempts across multiple
   families**. Expose errors, exclusions, duplicates and unfinished work with honest denominators;
   they are not completed validations.
@@ -937,7 +940,7 @@ immutable live artifacts and signer anchors; broker/economic-state reconciliatio
 enforced capital/drawdown policy; and the human-signed live ceremony. Machine acceptance cannot
 prove alpha, investment eligibility or authority to trade.
 
-**Current evidence:** the full machine target is not accepted. Ten unattended cycles and 100
+**Current evidence:** the full machine target is not accepted. Three unattended cycles and 100
 real-data attempts remain **UNKNOWN**. Merged component slices do not satisfy those counts or the
 integrated isolation, learning, portfolio, release and recovery demonstrations. Zero gate-qualified
 strategies is compatible with machine acceptance if honest refusals and isolated execution mechanics

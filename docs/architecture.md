@@ -321,7 +321,7 @@ can qualify forward operation.
 | Portfolio / memory / factory | Construction, allocations, risk, attempts, scorecards, tracking/KB and operator primitives | Integrated allocator, comprehensive learning and one independent factory require system evidence. |
 | Execution / release / repair | Frozen-paper reproducibility/evidence, current supervisor, CI and operational controls | Authoritative strategy sandbox, safe immutable paper release/recovery and closed repair loop not accepted. |
 | Capital / live | Authenticated promotion/live gates and existing book guards | ₪2,000 envelope and inclusive cash-flow-adjusted 10% pause differ from current defaults; frozen live unsupported. |
-| Unattended machine | Components and fixtures exist | **10 unattended cycles / >=100 real-data attempts: UNKNOWN.** Integrated scheduled operation and fault-recovery acceptance not established. |
+| Unattended machine | Components and fixtures exist | **3 unattended cycles / >=100 real-data attempts: UNKNOWN.** Integrated scheduled operation and fault-recovery acceptance not established. |
 
 The architecture dependency order is data/provenance and canonical direction → context and
 portfolio → authoritative strategy isolation → independent factory/learning → paper release,
