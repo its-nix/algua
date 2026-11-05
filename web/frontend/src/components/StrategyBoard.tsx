@@ -273,7 +273,8 @@ export function StrategyBoardView({
         {compact ? 'strategy board' : 'Strategy evidence'}
       </h2>
       <div className="dim-note num">
-        {activeStage === null && activeFamily === null ? board.count : `${visible.length} of ${board.count}`} strategies ·
+        {activeStage === null && activeFamily === null && visible.length === board.count
+          ? board.count : `${visible.length} of ${board.count}`} strategies ·
         latest {evidenceSchema === RESEARCH_SCHEMA_VERSION ? 'WF research' : 'gate'} run each
       </div>
       <p className="board-disclosure">

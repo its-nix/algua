@@ -255,11 +255,13 @@ it.each([false, true])('requires explicit synthetic tier choice and labels fixtu
   }
   mount([row(3, 1, 'b'.repeat(64)), ...fixtures], false, null, compact)
   expect(names()).toEqual(['strategy_3'])
+  expect(screen.getByText(/1 of 3 strategies/)).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: /board controls/i }))
   fireEvent.change(screen.getByRole('combobox', { name: 'data tier' }), {
     target: { value: 'synthetic_fixture' },
   })
   expect(names()).toEqual(['strategy_1', 'strategy_2'])
+  expect(screen.getByText(/2 of 3 strategies/)).toBeTruthy()
   expect(screen.getAllByText(/synthetic fixture.*not market data.*not qualification/i).length).toBeGreaterThan(0)
   const link = screen.getAllByTestId('board-row')[0]
   expect(link.getAttribute('href')).toBe('/strategy/1')
@@ -280,4 +282,5 @@ it.each([false, true])('requires explicit synthetic tier choice and labels fixtu
     target: { value: 'pilot_real_proxy' },
   })
   expect(names()).toEqual(['strategy_3'])
+  expect(screen.getByText(/1 of 3 strategies/)).toBeTruthy()
 })
