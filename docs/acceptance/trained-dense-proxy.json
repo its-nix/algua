@@ -1,0 +1,171 @@
+{
+  "schema": "trained-dense-proxy-engineering-summary/v1",
+  "status": "PASS_ENGINEERING_ONLY",
+  "observed_date": "2026-11-05",
+  "scope": "One reviewed private offline fit and canonical evaluation; not a delivered dense-training CLI or autonomous research cycle.",
+  "counts": {
+    "zero_compute_setup_failures": 1,
+    "actual_fits": 1,
+    "canonical_evaluations": 1,
+    "registered_model_versions": 1,
+    "unattended_cycles_added": 0,
+    "qualifications": 0
+  },
+  "source": {
+    "core_commit": "5ed05746c31e5f5489fb23b981115b801d42893e",
+    "literal_pin_commit": "829ae56d2c4c3821f3c9cbdca61361c979478ed4",
+    "fit_script_sha256": "2cdcb1d38663eceae165f0d0c5a7f9355eeec14e6a96ffa7b466cd56b9eac1dc",
+    "wrapper_sha256": "e31cf346f08f5f61fcf4f2c09a51ad500659544e0bd52c4fa9b090dc752aeeb9"
+  },
+  "data": {
+    "snapshot_id": "61a2bda1e636d017",
+    "logical_content_sha256": "e63c513cf2b5820d0ef468de7c22e8ab53552a07c1f81a1b625c7849ac1dc550",
+    "tier": "pilot_real_proxy",
+    "symbol_count": 150,
+    "source_rows": 75150,
+    "historical_source_availability": "UNKNOWN",
+    "limitations": [
+      "adjusted_close_vendor_revisable",
+      "corporate_actions_unverified",
+      "delisted_names_absent",
+      "event_timing_unavailable",
+      "historical_market_cap_unavailable",
+      "point_in_time_universe_unavailable",
+      "survivorship_biased_selection"
+    ]
+  },
+  "training": {
+    "start": "2024-11-01",
+    "end_exclusive": "2025-11-01",
+    "sessions": 250,
+    "eligible_rows": 36600,
+    "warmup_rows": 750,
+    "unlabelled_rows": 150,
+    "max_feature_event": "2025-10-30T00:00:00+00:00",
+    "max_target_event": "2025-10-31T00:00:00+00:00"
+  },
+  "clocks": {
+    "source_as_of": "2026-11-03T20:33:55.920328+00:00",
+    "source_created_at": "2026-11-03T20:34:36.766402+00:00",
+    "source_verified_at": "2026-11-05T20:05:19.557603+00:00",
+    "actual_fit_started_at": "2026-11-05T20:05:19.668316+00:00",
+    "actual_fit_finished_at": "2026-11-05T20:05:20.875924+00:00",
+    "actual_model_created_at": "2026-11-05T20:05:32.798805+00:00",
+    "declared_training_as_of": "2025-10-31T20:00:00+00:00",
+    "declared_cutoff_semantics": "ASSUMPTION: complete target XNYS close; NOT actual availability",
+    "historical_model_availability_proven": false
+  },
+  "recipe": {
+    "architecture": [
+      2,
+      8,
+      8,
+      1
+    ],
+    "hidden_activations": [
+      "relu",
+      "relu"
+    ],
+    "training_seed": 1729,
+    "epochs": 200,
+    "optimizer": "float64 full-batch gradient descent",
+    "learning_rate": 0.01,
+    "l2": 0.001,
+    "target": "next observed adjusted-close return on the complete common XNYS grid",
+    "normalization": "standard scaler fit on eligible training X only; folded into exported first-layer weights/bias",
+    "initial_training_objective": 0.1648683378641949,
+    "final_training_objective": 0.016957338875420017,
+    "layer_max_parameter_changes": [
+      0.020219889118393564,
+      0.07623104414854182,
+      0.09227170929151288
+    ],
+    "hidden_active_fractions": [
+      0.5016017759562842,
+      0.5915642076502732
+    ],
+    "folded_inference_parity_max_error": 5.551115123125783e-16
+  },
+  "model_ref": {
+    "name": "dense-proxy-pilot-v1",
+    "version": 1,
+    "digest": "6d807e78a8341d19",
+    "training_as_of": "2025-10-31T20:00:00+00:00",
+    "provenance_digest": "49feda78fb104a49"
+  },
+  "artifact_sha256": "6d807e78a8341d19aee3b34282391e5a9f7289002737706617feba528863edec",
+  "evaluation": {
+    "strategy": "dense_proxy_pilot_v1",
+    "start": "2025-11-03",
+    "end_exclusive": "2026-11-03",
+    "sessions": 251,
+    "code_hash": "829ae56d2c4c3821f3c9cbdca61361c979478ed4",
+    "config_hash": "00cbd018330bb4d39b50a2aba361536d",
+    "dependency_hash": "119aa0e1db7fdc3bbb43ca3d2d3bc4a88de5adbbc78e6676086dc623d21d3001",
+    "seed": null,
+    "execution": {
+      "rebalance_frequency": "1d",
+      "decision_lag_bars": 1,
+      "warmup_bars": 5,
+      "construction": "equal_weight_positive",
+      "target_gross_utilization": 0.95,
+      "allow_short": false,
+      "overlays": [],
+      "fees": 0.0005,
+      "slippage": 0.0005,
+      "units": "fraction of trade notional per side"
+    },
+    "metrics": {
+      "total_return": 0.012056811438518,
+      "cagr": 0.012105136115825976,
+      "ann_volatility": 0.135540361711512,
+      "sharpe": 0.15615691082078623,
+      "sortino": 0.23415867895246315,
+      "calmar": 0.1133754667671433,
+      "max_drawdown": -0.10677033101604039,
+      "hit_rate": 0.4581673306772908,
+      "tail_ratio": 1.2555700076230252,
+      "turnover": 65.53036998519886,
+      "avg_gross_exposure": 0.935258964143426,
+      "n_rebalances": 245,
+      "cost_fees": 0.0005,
+      "cost_slippage": 0.0005
+    },
+    "mlflow_run_id": "99a706d10e794b058e0afe229a6ef676",
+    "scalar_ledger_row_claim": false
+  },
+  "descriptive_prior_comparison": {
+    "same_previously_examined_evaluation_window": true,
+    "new_baseline_evaluations": 0,
+    "prior_linear": {
+      "total_return": 0.008892507678393002,
+      "sharpe": 0.13349804433464596
+    },
+    "prior_rule": {
+      "total_return": 0.11713926467998359,
+      "sharpe": 0.6009617167976232
+    },
+    "interpretation": "Dense result is above the prior linear result and below the prior rule result; no significance, tuning, fresh-holdout or causal-improvement inference. Rule construction/warmup differed as previously declared."
+  },
+  "setup_failure": {
+    "preserved": true,
+    "fits": 0,
+    "evaluations": 0,
+    "cause": "Precompute payload selection included unrelated operational state; the corrected setup copied only the manifest and snapshot tree. No numerical parameters changed."
+  },
+  "independent_audit": {
+    "status": "PASS_ENGINEERING_ONLY",
+    "audit_sha256": "383cd1011769183bb0ff61b014e58e7579e9dbd9587eefb881310c075b2ac542",
+    "scope": "read-only bytes/provenance/ret-series audit; no new fit or canonical evaluation",
+    "registered_artifact_equal": true,
+    "original_data_content_unchanged": true
+  },
+  "does_not_prove": [
+    "historical PIT or actual 2025 model availability",
+    "sealed or globally untouched holdout",
+    "alpha, economic utility or qualification",
+    "news/fundamentals feed availability or joint multimodal training",
+    "autonomous DL fitting or cumulative learning",
+    "paper/live acceptance or full Algua 2.0 completion"
+  ]
+}
