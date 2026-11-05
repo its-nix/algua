@@ -1,5 +1,7 @@
 # Algua operator — systemd packaging
 
+For the staged research-only VPS profile, use the [VPS research operating runbook](research-vps.md).
+
 A `oneshot` service fired by a `timer` drives the always-on **paper** operator (#486). Each firing
 runs `algua operator run`, which decides — via the XNYS calendar gate, a per-session idempotency
 marker, and a git-dir-anchored run lock — whether to actually run the wrapped driver command. A
