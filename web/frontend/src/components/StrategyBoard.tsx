@@ -19,6 +19,7 @@ import Sparkline from './Sparkline'
 import StaleNotice from './StaleNotice'
 import StageChip from './StageChip'
 import PublicWindowRail from './PublicWindowRail'
+import BoardDataTier, { declaredTier, FIXTURE_LABEL, matchesTier } from './BoardDataTier'
 
 const SCHEMA_VERSION = 'strategy-board/v1'
 const EVIDENCE_SCHEMA_VERSION = 'strategy-board-evidence/v2'
@@ -124,24 +125,24 @@ export function RefreshError({ error }: { error: Error | null }) {
  * complete payload and never replaces which run represents a strategy. Read-only: rows navigate
  * through the stable-ID resolver and nothing here mutates state.
  */
-export default function StrategyBoard() {
+export default function StrategyBoard({ compact = false }: { compact?: boolean }) {
   const [research, setResearch] = useState(true)
   return <>
     <div className="chip-row" role="group" aria-label="evidence mode">
       <button className={research ? 'filter-chip active' : 'filter-chip'} type="button" aria-pressed={research} onClick={() => setResearch(true)}>Public WF windows</button>
       <button className={research ? 'filter-chip' : 'filter-chip active'} type="button" aria-pressed={!research} onClick={() => setResearch(false)}>Gate OOS</button>
     </div>
-    <StrategyBoardFetch key={research ? 'public' : 'gate'} research={research} />
+    <StrategyBoardFetch key={research ? 'public' : 'gate'} research={research} compact={compact} />
   </>
 }
 
 /** Each mode owns its fetch state, so superseded completions cannot replace the selected board. */
-function StrategyBoardFetch({ research }: { research: boolean }) {
+function StrategyBoardFetch({ research, compact }: { research: boolean; compact: boolean }) {
   const query = useFetch<ApiEnvelope<StrategyBoardPayload>>(
     research ? STRATEGY_BOARD_EVIDENCE_URL : '/api/strategy-board?include_evidence=true',
   )
-  return <StrategyBoardView query={query}
-    expectedEvidenceSchema={research ? RESEARCH_SCHEMA_VERSION : EVIDENCE_SCHEMA_VERSION} />
+  return <StrategyBoardView query={query} compact={compact}
+    expectedEvidenceSchema={compact ? undefined : research ? RESEARCH_SCHEMA_VERSION : EVIDENCE_SCHEMA_VERSION} />
 }
 
 export function StrategyBoardView({
@@ -157,6 +158,7 @@ export function StrategyBoardView({
   const [family, setFamily] = useState<string | null>(null)
   const [controlsOpen, setControlsOpen] = useState(false)
   const [cohort, setCohort] = useState('')
+  const [tier, setTier] = useState('pilot_real_proxy')
   const [order, setOrder] = useState<ObservedMetric | null>(null)
 
   const board = isBoardPayload(query.data?.data) &&
@@ -225,7 +227,9 @@ export function StrategyBoardView({
   const activeFamily = family === UNKNOWN_FAMILY && hasUnknownFamily
     ? family
     : family !== null && families.includes(family) ? family : null
+  const hasFixtures = board.rows.some(row => declaredTier(row) === 'synthetic_fixture')
   const visible = board.rows.filter((row) =>
+    matchesTier(row, tier) &&
     (activeStage === null || row.stage === activeStage) &&
     (activeFamily === null || (activeFamily === UNKNOWN_FAMILY ? row.family === null : row.family === activeFamily)),
   )
@@ -249,7 +253,7 @@ export function StrategyBoardView({
       existing.conflict ||= contextKey(existing.evidence.context) !== contextKey(comparison.context)
     } else cohorts.set(comparison.cohort_id, { evidence: comparison, rows: [row], conflict: false })
   }
-  const availableCohorts = [...cohorts.entries()].filter(([, c]) => !c.conflict && c.rows.length >= 2)
+  const availableCohorts = [...cohorts.entries()].filter(([, c]) => !c.conflict && c.rows.length >= 2 && c.evidence.context?.data_tier === tier)
   const activeCohort = !compact && !query.data?.stale && query.error === null
     ? availableCohorts.find(([id]) => id === cohort)?.[1] : undefined
   const candidates = activeCohort === undefined ? [] : visible.filter(row =>
@@ -269,7 +273,8 @@ export function StrategyBoardView({
         {compact ? 'strategy board' : 'Strategy evidence'}
       </h2>
       <div className="dim-note num">
-        {activeStage === null && activeFamily === null ? board.count : `${visible.length} of ${board.count}`} strategies ·
+        {activeStage === null && activeFamily === null && visible.length === board.count
+          ? board.count : `${visible.length} of ${board.count}`} strategies ·
         latest {evidenceSchema === RESEARCH_SCHEMA_VERSION ? 'WF research' : 'gate'} run each
       </div>
       <p className="board-disclosure">
@@ -280,6 +285,8 @@ export function StrategyBoardView({
         Never promotion or expected profit. Paper/live results remain in their own detail sections.
       </p>
 
+      {hasFixtures && <p className="board-disclosure">{tier === 'synthetic_fixture'
+        ? FIXTURE_LABEL : 'Synthetic fixture evidence is hidden; select its data tier in board controls to explore it.'}</p>}
       <button
         type="button"
         className="board-controls-toggle"
@@ -294,6 +301,9 @@ export function StrategyBoardView({
 
       {controlsOpen && (
         <div id="board-controls" className="board-controls-panel">
+          {hasFixtures && <BoardDataTier value={tier} onChange={value => {
+            setTier(value); setCohort(''); setOrder(null)
+          }} />}
           <div className="chip-row" role="group" aria-label="strategy stage">
           <button
             type="button"
@@ -377,10 +387,10 @@ export function StrategyBoardView({
 
       {activeOrder !== null && <p className="board-disclosure">
         Observed {sortOptions.find(o => o.key === activeOrder)?.label} · {activeOrder === 'std_window_sharpe' ? 'ascending' : 'descending'}
-        {' · '}NONPIT/current-survivor proxy · {ordered.length} strategies · historical research only
+        {' · '}{tier === 'synthetic_fixture' ? FIXTURE_LABEL : 'NONPIT/current-survivor proxy'} · {ordered.length} strategies · historical research only
       </p>}
       <div className="row-list">
-        {visible.length === 0 ? <div className="panel board-filter-empty">no strategies match this stage and family</div>
+        {visible.length === 0 ? <div className="panel board-filter-empty">no strategies match this stage and family / data tier</div>
           : [...ordered, ...remaining].map((row, index) => <Fragment key={row.strategy_id}>
             {activeOrder !== null && index === ordered.length &&
               <h3 className="micro-label">Other cohorts and unranked</h3>}
@@ -446,6 +456,7 @@ function BoardRow({
             <PassMark passed={gateRun.passed} />
           </div>
         )}
+        {declaredTier(row) === 'synthetic_fixture' && <div className="board-disclosure">{FIXTURE_LABEL}</div>}
         <BoardEvidence row={row} evidenceSchema={evidenceSchema} compact evidence={evidence} />
       </Link>
     )
@@ -478,6 +489,7 @@ function BoardRow({
         <span>age UNKNOWN</span>
       </div>
       {gate === null && <div className="dim-note">no usable {Object.hasOwn(row, 'latest_research') ? 'WF research' : 'gate'} evidence</div>}
+      {declaredTier(row) === 'synthetic_fixture' && <div className="board-disclosure">{FIXTURE_LABEL}</div>}
       <BoardEvidence row={row} evidenceSchema={evidenceSchema} compact={false} evidence={evidence} />
     </Link>
   )
@@ -708,7 +720,8 @@ export function parseEvidence(value: unknown, gate: Pick<StrategyBoardGate, 'run
       c.oos.n_bars !== oos.value.n_bars || parseSnapshot(c.source) === null ||
       contextKey(c.source) !== contextKey(snapshot.value) ||
       c.windows[0].start < snapshot.value.coverage_start || c.oos.end > snapshot.value.coverage_end ||
-      snapshot.value.data_tier !== 'pilot_real_proxy')) return null
+      !['pilot_real_proxy', 'synthetic_fixture'].includes(snapshot.value.data_tier) ||
+      c.data_tier !== snapshot.value.data_tier)) return null
   return {
     run_id: gate.run_id,
     evaluation,
@@ -848,7 +861,7 @@ export function BoardEvidence({
       </div>}
       <div className="board-evidence-comparison">
         {evidence.comparison.status === 'COMPARABLE' && evidence.comparison.context !== null ? <>
-          Research cohort {evidence.comparison.cohort_id?.slice(0, 8)} · NONPIT/current-survivor proxy
+          Research cohort {evidence.comparison.cohort_id?.slice(0, 8)} · {evidence.comparison.context.data_tier === 'synthetic_fixture' ? FIXTURE_LABEL : 'NONPIT/current-survivor proxy'}
           <div>{evidence.comparison.context.protocol === 'continuous_portfolio_public_windows'
             ? 'In-sample / selection / pre-holdout windows; not independent OOS'
             : 'Continuous portfolio tail holdout'} · {evidence.comparison.context.windows.length} windows

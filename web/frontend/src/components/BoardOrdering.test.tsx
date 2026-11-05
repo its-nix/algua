@@ -243,3 +243,44 @@ it('refuses compact historical tail sparklines without relabeling', () => {
   expect(screen.getByText('unsupported_schema')).toBeTruthy()
   expect(screen.queryAllByRole('img', { name: /WF research/i })).toHaveLength(0)
 })
+
+
+it.each([false, true])('requires explicit synthetic tier choice and labels fixture full/compact evidence (%s)', compact => {
+  const fixtures = [row(1, -2), row(2, 0)]
+  for (const r of fixtures) {
+    const source = { ...r.evidence.snapshot_provenance.value, data_tier: 'synthetic_fixture',
+      provider: 'fixture', universe_method: 'synthetic/v1', limitations: ['synthetic_not_market_data'] }
+    Object.assign(r.evidence.snapshot_provenance.value, source)
+    Object.assign(r.evidence.comparison.context, { data_tier: 'synthetic_fixture', source })
+  }
+  mount([row(3, 1, 'b'.repeat(64)), ...fixtures], false, null, compact)
+  expect(names()).toEqual(['strategy_3'])
+  expect(screen.getByText(/1 of 3 strategies/)).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: /board controls/i }))
+  fireEvent.change(screen.getByRole('combobox', { name: 'data tier' }), {
+    target: { value: 'synthetic_fixture' },
+  })
+  expect(names()).toEqual(['strategy_1', 'strategy_2'])
+  expect(screen.getByText(/2 of 3 strategies/)).toBeTruthy()
+  expect(screen.getAllByText(/synthetic fixture.*not market data.*not qualification/i).length).toBeGreaterThan(0)
+  const link = screen.getAllByTestId('board-row')[0]
+  expect(link.getAttribute('href')).toBe('/strategy/1')
+  if (!compact) {
+    fireEvent.change(screen.getByRole('combobox', { name: 'comparison cohort' }), {
+      target: { value: 'a'.repeat(64) },
+    })
+    const sort = screen.getByRole('button', { name: 'oos sharpe' })
+    expect(sort.hasAttribute('disabled')).toBe(false)
+    link.focus()
+    fireEvent.click(sort)
+    expect(names()).toEqual(['strategy_2', 'strategy_1'])
+    expect(screen.getAllByTestId('board-row')[1]).toBe(link)
+    expect(document.activeElement).toBe(link)
+    expect(screen.queryByText(/NONPIT\/current-survivor proxy/)).toBeNull()
+  }
+  fireEvent.change(screen.getByRole('combobox', { name: 'data tier' }), {
+    target: { value: 'pilot_real_proxy' },
+  })
+  expect(names()).toEqual(['strategy_3'])
+  expect(screen.getByText(/1 of 3 strategies/)).toBeTruthy()
+})

@@ -81,6 +81,9 @@ for (const { route, width } of cases) {
     await page.getByRole('button', { name: 'Gate OOS', exact: true }).click()
     await page.getByText(/latest gate run each/).waitFor()
     await page.waitForLoadState('networkidle')
+    // Synthetic demo evidence is deliberately hidden until its tier is explicitly selected.
+    await page.getByRole('button', { name: /board controls/i }).click()
+    await page.getByRole('combobox', { name: 'data tier', exact: true }).selectOption('synthetic_fixture')
   }
 
   const m = await page.evaluate((currentRoute) => {

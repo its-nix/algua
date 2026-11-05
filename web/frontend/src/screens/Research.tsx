@@ -7,11 +7,12 @@ import EvidenceStatus from '../components/EvidenceStatus'
 import RetainedExperiments from '../components/RetainedExperiments'
 import { ScatterISOOSView } from '../components/ScatterISOOS'
 import StaleNotice from '../components/StaleNotice'
-import {
+import StrategyBoard, {
   isBoardPayload,
+  parseEvidence,
   STRATEGY_BOARD_EVIDENCE_URL,
-  StrategyBoardView,
 } from '../components/StrategyBoard'
+import { contextKey } from '../components/boardComparison'
 import { utcDate, utcDateTime } from '../format'
 import type {
   ApiEnvelope,
@@ -76,6 +77,7 @@ export default function Research() {
   const ideas = useFetch<IdeasResponse>('/api/ideas')
   const board = useFetch<ApiEnvelope<StrategyBoardPayload>>(STRATEGY_BOARD_EVIDENCE_URL)
   const gateRuns = useFetch<ApiEnvelope<RunsListPayload>>(runsUrl({ kind: 'gate' }))
+  const gateBoard = useFetch<ApiEnvelope<StrategyBoardPayload>>('/api/strategy-board?include_evidence=true')
   const setFetchedAt = useSetFetchedAt()
 
   const fetchedAt = strategies.data?.fetched_at ?? null
@@ -84,6 +86,35 @@ export default function Research() {
     return () => setFetchedAt(null)
   }, [fetchedAt, setFetchedAt])
 
+  // Raw run metadata cannot establish a tier. Only independently bound gate evidence admits
+  // real-proxy observations; fixture exploration stays in the explicitly labeled board.
+  const validated = gateBoard.data?.ok === true && !gateBoard.data.stale && gateBoard.error === null &&
+    isBoardPayload(gateBoard.data.data) && gateBoard.data.data.evidence_schema_version === 'strategy-board-evidence/v2'
+    ? gateBoard.data.data.rows.flatMap(row => {
+      const gate = row.latest_gate
+      if (gate === null) return []
+      const comparison = parseEvidence(row.evidence, gate, row.recorded_provenance)?.comparison
+      return comparison?.status === 'COMPARABLE' && comparison.context !== null && comparison.cohort_id !== null
+        ? [{ strategyId: row.strategy_id, gate, tier: comparison.context.data_tier,
+          cohort: comparison.cohort_id, context: contextKey(comparison.context) }] : []
+    }) : []
+  const contexts = new Map<string, string>()
+  const conflicting = new Set<string>()
+  for (const observation of validated) {
+    if (contexts.has(observation.cohort) && contexts.get(observation.cohort) !== observation.context) {
+      conflicting.add(observation.cohort)
+    }
+    contexts.set(observation.cohort, observation.context)
+  }
+  const scatterRuns = (gateRuns.data?.data.runs ?? []).filter(run => {
+    const matches = validated.filter(value => value.tier === 'pilot_real_proxy' &&
+      !conflicting.has(value.cohort) && value.strategyId === run.strategy_id && value.gate.run_id === run.id)
+    return run.kind === 'gate' && matches.length === 1 &&
+      run.mean_window_sharpe === matches[0].gate.mean_window_sharpe && run.sharpe_oos === matches[0].gate.sharpe_oos
+  })
+  const scatterQuery = { ...gateRuns, data: gateRuns.data === undefined ? undefined : {
+    ...gateRuns.data, data: { ...gateRuns.data.data, runs: scatterRuns, count: scatterRuns.length },
+  } }
   const records = strategies.data?.data.data ?? []
   const byStage = new Map<string, number>()
   for (const rec of records) byStage.set(rec.stage, (byStage.get(rec.stage) ?? 0) + 1)
@@ -150,10 +181,13 @@ export default function Research() {
         )}
         </section>
 
-        <ScatterISOOSView query={gateRuns} />
+        {gateRuns.data !== undefined && gateRuns.data.data.runs.length > 0 && scatterRuns.length === 0
+          ? <EvidenceStatus title="is vs oos" state="incomplete"
+            detail="No validated real-proxy gate observations. Synthetic and unvalidated runs are omitted; explore fixtures in the labeled board." />
+          : <ScatterISOOSView query={scatterQuery} />}
       </div>
 
-      <StrategyBoardView query={board} compact />
+      <StrategyBoard compact />
 
       <RetainedExperiments />
 

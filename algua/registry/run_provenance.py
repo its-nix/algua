@@ -1,43 +1,18 @@
 """Recorded input disclosure for a gate's explicitly linked walk-forward evaluation."""
 from __future__ import annotations
 
-import json
 import math
 import sqlite3
 from typing import Any
 
 from algua.data.board_provenance import project_snapshot_record
+from algua.provenance.json_record import decode_json as decode_json
 from algua.registry.store import SqliteStrategyRepository
 
 _CANONICAL_IDENTITIES = ("config_hash", "dependency_hash")
 _CONTEXT = ("strategy_id", "snapshot_id", "data_source", "timeframe", "seed",
             "period_start", "period_end", "universe_name", "fundamentals_snapshot",
             "news_snapshot", "delisting_snapshot")
-
-
-def _unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate JSON key")
-        result[key] = value
-    return result
-
-
-def _bad_constant(value: str) -> Any:
-    raise ValueError(f"nonfinite JSON constant: {value}")
-
-
-def _finite_float(raw: str) -> float:
-    value = float(raw)
-    if not math.isfinite(value):
-        raise ValueError("nonfinite JSON number")
-    return value
-
-
-def decode_json(raw: str) -> Any:
-    return json.loads(raw, object_pairs_hook=_unique, parse_constant=_bad_constant,
-                      parse_float=_finite_float)
 
 
 def _wrapper(status: str, reason: str | None, value: dict[str, Any] | None) -> dict[str, Any]:
