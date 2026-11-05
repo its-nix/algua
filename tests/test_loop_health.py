@@ -58,6 +58,25 @@ def test_non_zero_exit_is_failing(tmp_path) -> None:
     assert _status(tmp_path)["loops"]["research"]["health"] == "failing"
 
 
+def test_completed_qualification_failure_counts_as_executed_not_crashed(tmp_path) -> None:
+    record = _run(finished_at=NOW.isoformat(), research_cycle_id="fixture", exit_code=1,
+                  worker_exit_code=0, trailer_parse_error=False, idea_ids=[8], controller={
+                      "research_cycle_id": "fixture", "phase": "completed",
+                      "attempts_total": 1, "terminal_count": 1, "unfinished_count": 0,
+                      "invalid_count": 0, "error_count": 1, "ok_count": 0,
+                      "write_error_count": 0, "idea_ids": [8],
+                      "outcome_counts": {"integrity_fail": 1}})
+    _digest(tmp_path, [record])
+    research = _status(tmp_path)["loops"]["research"]
+    assert research["health"] == "ok"
+    assert research["consecutive_failures"] == 0
+    assert research["last_ok_at"] == NOW.isoformat()
+    record.pop("research_cycle_id")
+    record["controller"].pop("research_cycle_id")
+    _digest(tmp_path, [record])
+    assert _status(tmp_path)["loops"]["research"]["health"] == "failing"
+
+
 def test_timeout_is_failing_even_with_a_zero_exit_code(tmp_path) -> None:
     _digest(tmp_path, [_run(finished_at=NOW.isoformat(), exit_code=0, timed_out=True)])
     research = _status(tmp_path)["loops"]["research"]

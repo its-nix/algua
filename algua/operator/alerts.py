@@ -19,6 +19,7 @@ from hashlib import sha256
 
 from algua.observability import get_logger
 from algua.operator.loop_health import _digest_stamp
+from algua.operator.research_cycle_results import completed_research_execution
 
 __all__ = ["emit_alert", "research_incidents"]
 
@@ -39,6 +40,8 @@ def research_fault(record: dict) -> str | None:
         return outcome
     if outcome == "driver_failed":
         return "worker_failed"
+    if completed_research_execution(record):
+        return None
     if type(record.get("exit_code")) is int:
         return "worker_failed" if record["exit_code"] != 0 else None
     return None

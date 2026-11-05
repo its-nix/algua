@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from algua.contracts.types import SessionSpanCalendar
+from algua.operator.research_cycle_results import completed_research_execution
 
 __all__ = [
     "LOOPS",
@@ -115,11 +116,13 @@ def _read_digest_tail(
 def _run_failed(record: dict) -> bool:
     """A digest record that did not complete cleanly.
 
-    ``exit_code`` is authoritative; ``timed_out`` is carried separately because the driver records
-    a timeout with its own flag and the exit code of the killed process.
+    Final exit is authoritative except for an explicit completed qualification-only record.
+    Timeout remains separate from the exit code of the killed process.
     """
     if bool(record.get("timed_out")):
         return True
+    if completed_research_execution(record):
+        return False
     code = record.get("exit_code")
     return not (isinstance(code, int) and code == 0)
 
