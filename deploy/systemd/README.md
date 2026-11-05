@@ -113,6 +113,120 @@ per-invocation-path, not per-command: a HUMAN running `paper merge-back` directl
 `paper merge-back` while a paper tick may fire (every 20 minutes; in practice, the hours right
 after the US close, when the session is newly complete and the tick has not yet recorded it).
 
+## Operator-invoked paper release (deployment contract requires owner review)
+
+`deploy/scripts/release-paper.py` consumes **already materialized, operator-approved** application
+releases. It does not build packages, merge/push Git, run intake, enable units, or grant deployment
+permission. This is a paper-only supervisor release entry, distinct from a strategy's frozen planner
+manifest. The account/path/unit contract below must be reviewed and installed by the owner before
+use; adding this script does not activate it or establish production acceptance.
+
+Required installation:
+
+- Run the trusted, separately installed operator entry with a root-controlled Python 3.12 interpreter
+  using `-I -S`. The entry, its `algua` helpers and every control-path parent must be root-owned and
+  nonwritable by the runtime. Never run the administrative entry from the mutable research checkout.
+- Both materialized releases, including their Git metadata and `.venv`, must be root-controlled and
+  nonwritable by the runtime. They must be clean independent Git checkouts on `main`, with no `.env`,
+  symlinks or special files. Full file checksums exclude `.git`; commit and locked-dependency hashes
+  are checked separately. Only `.git/operator.lock` and `.git/merge_back.lock` are runtime-owned
+  `0600` operational files; absent lock files are created with those permissions, never artifact
+  files repaired or ownership changed into approval.
+- `current` is an existing root-owned symlink beneath root-controlled parents, used **only for paper**.
+  The paper service's `WorkingDirectory` is that literal path. Its canonical `ExecStart` is
+  `/usr/bin/env <bindings-below> <current>/.venv/bin/algua operator run --job paper -- algua paper run-all --refresh`.
+- The drainer uses a **separate mutable authority checkout**, with `WorkingDirectory` equal to its
+  literal configured path and
+  `ExecStart=/usr/bin/env <bindings-below> <authority>/.opencode/scripts/drain-mergeback-queue.sh`.
+  Both services explicitly declare the same nonroot `User`, matching `runtime_user`. The existing
+  installer renders both services against one physical checkout and therefore does **not** satisfy
+  this release contract. Mismatches refuse; this entry never rewrites units or the installer.
+- The database, shared artifact/data store and root-controlled evidence location stay outside the
+  immutable releases. Existing financial permissions and credentials remain configured separately;
+  verification receives no inherited credentials. No live/research unit may follow this paper selector.
+
+Both unit commands must start with the root-controlled `/usr/bin/env` and these assignments in
+this order, before the executable. `BASE` is the literal `current` path for paper or
+`authority_checkout` for the drainer; `CACHE` is `<data_dir>/paper-runtime/paper` or
+`<data_dir>/paper-runtime/drainer`. The owner must provision these external cache directories for
+the configured runtime user. The prefix overrides conflicting `EnvironmentFile` values and binds
+the inner bare `algua` command and Python imports to the same program checked for release.
+
+```text
+PATH=BASE/.venv/bin:/usr/local/bin:/usr/bin:/bin PYTHONPATH=BASE
+ALGUA_DB_PATH=<database> ALGUA_DATA_DIR=<data_dir>
+PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1
+XDG_CACHE_HOME=CACHE/cache NUMBA_CACHE_DIR=CACHE/numba MPLCONFIGDIR=CACHE/matplotlib TMPDIR=CACHE/tmp
+GIT_OPTIONAL_LOCKS=0
+```
+
+For paper, append `GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=safe.directory
+GIT_CONFIG_VALUE_0=<previous.path> GIT_CONFIG_KEY_1=safe.directory
+GIT_CONFIG_VALUE_1=<target.path>`. For the drainer, append `GIT_CONFIG_COUNT=1
+GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=<authority_checkout>`. These are exact approved
+physical roots; the selector alias alone does not satisfy Git ownership checks. Release paths use
+the same plain absolute path vocabulary as the other configured unit paths.
+
+These are one argv prefix, not shell commands or variable-expansion instructions. Existing
+financial credentials remain supplied through the already configured service environment.
+Private verification similarly sets `PYTHONPATH` to the exact physical approved release and uses
+its own private registry/cache paths; editable imports outside that release cannot supply its core.
+
+Supply a root-owned regular JSON request, not group/other writable, with these exact keys:
+
+```text
+schema: "algua-paper-release/v1"
+approval_ref: owner's release approval reference
+current, authority_checkout, database, data_dir, evidence: absolute configured paths
+systemd_scope: "system" or "user" (the already configured manager)
+runtime_user: existing nonroot User declared by both services
+target, previous: {path, commit, lock_sha256, files, digest}
+compatibility: {schema_sha256, target_digest, previous_digest, rollback_approved, approval_ref}
+frozen_manifests: complete nonempty list of active frozen PAPER/FORWARD_TESTED manifest digests
+```
+
+`files` maps **every regular release file except `.git/**`** to its SHA-256. `lock_sha256` equals
+the `uv.lock` checksum. `digest` is SHA-256 of UTF-8 JSON containing `commit`, `lock_sha256` and
+`files`, with sorted keys, compact separators and no nonfinite numbers. This is an operational
+application checksum, not a replacement for strategy identity or planner provenance. The request
+is bounded to 16 MiB. `previous` is the currently selected approved release, not an inferred ancestor.
+
+The compatibility approval binds **both application digests** and the observed schema fingerprint:
+SHA-256 of compact sorted-key JSON `[user_version, rows]`, where rows are
+`SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name`. The fingerprint detects drift;
+its equality is **not proof of compatibility**. The owner must separately review compatibility and
+explicitly set `rollback_approved` for the known-good previous release. No version-number inference,
+registry restore, epoch rewrite or trigger removal is performed.
+
+After those prerequisites, an operator may invoke the trusted installed entry:
+
+```sh
+/root-controlled/python3 -I -S /root-controlled/operator/deploy/scripts/release-paper.py /root-controlled/request.json
+# Explicit recovery of an interrupted invocation using the SAME approved request and receipt:
+/root-controlled/python3 -I -S /root-controlled/operator/deploy/scripts/release-paper.py /root-controlled/request.json --recover
+```
+
+The entry holds the existing operator and merge-back locks on the paper releases and authority
+checkout, stops only paper/drainer timers and refuses an active service without killing it. It records
+and fsyncs selection intent, atomically selects the approved release, then runs existing
+`deployment verify`, `fleet health` and `ops machine-health` as the configured nonroot runtime User.
+These checks use a private consistent registry copy: their existing migration paths cannot alter the
+real registry, and a schema change on the copy refuses. Private DB/cache ownership is prepared for
+the runtime; its environment contains only the explicit data paths and local execution/cache settings.
+Private checks trust only their exact approved physical release path through a per-command Git
+`safe.directory` setting; branch/cleanliness checks remain active. Active legacy, working-tree or unmigrated paper
+tenants refuse this frozen-paper release entry; it does not migrate or reactivate them.
+The paper loop must be observed `ok`/`idle`; unrelated research incidents do not veto this paper check.
+Existing fleet and frozen-content checks remain binding. No order or broker/account call is launched.
+
+Only timers that were already active are restarted after healthy verification. An ordinary failed
+release returns nonzero even after successful, explicitly compatible recovery. Unknown compatibility
+or failed recovery never resumes scheduling. A failed stop or unverifiable quiescence is not reported
+as a stopped lane: its durable incomplete phase requires operator attention. An already running
+service is never killed by this entry. `--recover` uses the original request-bound
+receipt and rechecks the previous release before resuming. Do not treat a successful fixture run as
+paper trading, elapsed forward evidence, an automatic merger, or live authorization.
+
 ## Schema v48 (Story 1.3d) is forward-only
 
 Story 1.3d's registry schema (v48) adds the append-only `frozen_invocations` table, the
