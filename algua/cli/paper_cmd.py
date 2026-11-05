@@ -596,13 +596,13 @@ def merge_back(
             promote=promote, passing_gate_by_token=passing_gate_by_token,
             gate_exists_by_token=gate_exists_by_token,
             intake=intake, target_allocated=target_allocated, audit_log=audit_log)
-    # A completed cycle is a successful invocation regardless of the promote outcome: emit ok() with
-    # the terminal status (gate_failed/promote_failed/diff_policy_rejected carry honest statuses).
+    # Pending publication is an observation, never promotion/intake authority.
     emit(ok({
         'strategy': strategy, 'branch': branch, 'status': result.status,
         'merged': result.merged, 'reverted': result.reverted,
         'promoted': result.promoted, 'intake': result.intake,
         'attempt_token': result.attempt_token, 'gate_id': result.gate_id,
+        'publication': result.publication,
     }))
 
 

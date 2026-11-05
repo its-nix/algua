@@ -543,7 +543,26 @@ JSON file alone establishes neither. The checked-tree attestation producer is no
 
 Missing evidence stays operationally pending without burning queue retry budgets. Old direct-main
 journals require owner recovery. A failed strict promotion remains in history with
-`reviewed_revert_pending`; no automatic rollback publication occurs. Actual PR creation, a trusted
-autonomous merger, artifact-producing CI and reviewed-revert completion remain gaps. Current
+`reviewed_revert_pending`; no automatic rollback publication occurs. A trusted autonomous merger, artifact-producing CI and reviewed-revert completion remain gaps. Current
 repository CI remains manual, and this platform-delivery waiver never supplies strategy CI proof.
 All new safety/recovery behavior requires human review before merge or activation.
+
+### Draft publication phase (default off)
+
+`ALGUA_MERGEBACK_PUBLISH_PR=1` permits the existing merge-back entry/drainer to publish one
+allowlisted candidate to `its-nix/algua`, base `main`, on `algua-research/<full-head-SHA>`.
+Every unpublished commit must be linear and allowlisted, with a 128-commit cap; reverted protected
+edits refuse before publication. An empty-expected ref lease is create-only CAS, never permission
+to replace an existing ref. New PRs are drafts with a fixed body; worker text, claims and provider
+errors are not copied into them. No strategy is imported or executed by this phase.
+
+Strictly matched creation/reuse returns a non-authoritative `publication` observation in CLI JSON
+and queue `last_result`, without writing an admission journal or consuming retry budgets. Closed
+unmerged PRs, identity mismatches and races remain pending. Publication never supplies review,
+CI, checked-tree or Task4 proof; the separate admission requirements above remain mandatory.
+
+Remote refs/base can move after observations. This phase is not a base-CAS merger and assumes no
+strict server checks or merge queue. Trusted immutable operator/Git/GitHub CLI/host configuration
+and a separately scoped publication credential are deployment prerequisites; none is installed or
+issued here. The one additive protected CLI JSON field and these new workflow semantics require
+human review of this dependent draft before merge/activation; prior PR788 review does not cover it.

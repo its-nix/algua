@@ -52,7 +52,7 @@ def _descriptor() -> dict:
 
 def _api(repository: str, suffix: str) -> Any:
     result = subprocess.run(
-        ["gh", "api", f"repos/{repository}/{suffix}"], check=True,
+        ["gh", "api", f"repos/{repository}/{suffix}", "--hostname", "github.com"], check=True,
         capture_output=True, timeout=15,
     )
     if len(result.stdout) > 4 * 1024 * 1024:
