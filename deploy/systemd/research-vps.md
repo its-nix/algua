@@ -18,6 +18,10 @@ CPU limit 1200 seconds and `TimeoutStartSec=25min`. All three share `algua-resea
 which caps combined memory at 6 GiB with zero swap.
 Research gets 20 minutes, one hypothesis and one worker. Forage/leap get 15 minutes and
 at most three notes/ideas respectively. These limits do not imply a monetary-cost cap.
+The root-owned `zz-numerical-memory.conf` overrides `deployment.conf`'s research command to
+add only `--choose-campaign` ([#780](https://github.com/its-nix/algua/pull/780)); budgets,
+timers and isolation stay unchanged. Campaign defaults carry bounded recent public numerical
+context to the chooser and primary prompt. Installation itself started no service/model call.
 The private environment's research settings are memory 16384 MB (virtual AS, not RSS),
 CPU 1200 seconds, one hypothesis and one worker. `MLFLOW_DISABLE_TELEMETRY=true`
 disables anonymous usage telemetry, not experiment tracking.
@@ -71,6 +75,10 @@ Check `$ALGUA_DATA_DIR/research-cycles/<cycle>.result.json` and the
 retained public memory, not the service exit alone. Actual numerical rows and a durable outcome
 are required to count an empirical cycle. A missing evaluation is not a negative economic result.
 Timeout, setup failure, provider error and native-worker crash remain infrastructure failures.
+A post-reload firing, `20261105-174703-e6b11958f24f`, exited 0 with `pool_empty`,
+zero attempts/unfinished/selected and no write errors; its context carried six observations
+from two receipts. No worker/model ran, so it adds no empirical cycle or demonstrated learning.
+See the [acceptance limits](../../docs/acceptance/2026-10-30-algua-machine-acceptance.md).
 
 The pilot is `pilot_real_proxy`, not verified PIT. Preserve all seven limitations:
 vendor-revisable adjusted prices, unverified corporate actions, missing delisted symbols,
