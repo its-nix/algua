@@ -10,11 +10,17 @@ import os
 import signal
 import subprocess
 import time
+import uuid
 from collections.abc import Sequence
+from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from types import FrameType
 
 from algua.operator.research_cycle import CycleLimits, duration_seconds
+
+RESEARCH_DRIVER = Path(__file__).resolve().parents[2] / ".opencode/scripts/run-research-loop.sh"
+RECOVERY_SECONDS = 120
 
 
 def _subreaper(value: int | None = None) -> int:
@@ -98,6 +104,42 @@ def run_bounded(command: Sequence[str], limits: CycleLimits, *, grace_seconds: f
             signal.signal(sig, handler)
 
 
+def run_driver(arguments: Sequence[str], limits: CycleLimits) -> int:
+    """Stop/reap the entire worker first, then allow only trusted failure finalization.
+
+    This allowance cannot accept late reports or restart inference. It keeps the same cycle,
+    resource caps and original failure exit; a failed recovery leaves scratch for inspection.
+    """
+    if "--recover-timeout" in arguments:
+        raise ValueError("recovery cannot enter the worker supervisor again")
+    previous = os.environ.get("ALGUA_RESEARCH_CYCLE_ID")
+    os.environ["ALGUA_RESEARCH_CYCLE_ID"] = previous or (
+        datetime.now(UTC).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:12])
+    command = ["bash", str(RESEARCH_DRIVER), *arguments]
+    try:
+        code = run_bounded(command, limits)
+        # This is the driver's existing routing, without importing possibly stalled settings.
+        # Before its immutable checkpoint exists there is no claimed cycle to finalize.
+        root = RESEARCH_DRIVER.parents[2]
+        data = Path(os.environ.get("ALGUA_DATA_DIR", str(root / "data")))
+        if not data.is_absolute():
+            data = root / data
+        checkpoint = data / "research-cycles" / f"{os.environ['ALGUA_RESEARCH_CYCLE_ID']}.json"
+        if code in (124, 130, 137, 143) and checkpoint.is_file():
+            # run_bounded's finally has already killed/reaped every owned descendant.
+            try:
+                run_bounded([*command, "--recover-timeout", str(code)],
+                            replace(limits, max_wall_seconds=RECOVERY_SECONDS))
+            except (ValueError, OSError):
+                print("trusted timeout recovery could not start; retaining scratch", flush=True)
+        return code
+    finally:
+        if previous is None:
+            os.environ.pop("ALGUA_RESEARCH_CYCLE_ID", None)
+        else:
+            os.environ["ALGUA_RESEARCH_CYCLE_ID"] = previous
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timeout", required=True)
@@ -106,6 +148,7 @@ def main() -> int:
     parser.add_argument("--cpu-seconds", type=int, default=2700)
     parser.add_argument("--memory-mb", type=int, default=16384)
     parser.add_argument("--file-mb", type=int, default=512)
+    parser.add_argument("--research-driver", action="store_true")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     try:
@@ -114,6 +157,10 @@ def main() -> int:
                              worker_limit=args.workers, cpu_seconds=args.cpu_seconds,
                              memory_mb=args.memory_mb, file_mb=args.file_mb)
         command = args.command[1:] if args.command[:1] == ["--"] else args.command
+        if args.research_driver:
+            if command[:2] != ["bash", str(RESEARCH_DRIVER)]:
+                raise ValueError("recovery is restricted to the trusted research driver")
+            return run_driver(command[2:], limits)
         return run_bounded(command, limits)
     except (ValueError, OSError) as exc:
         parser.exit(2, f"research cycle refused: {exc}\n")

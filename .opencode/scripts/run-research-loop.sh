@@ -94,6 +94,7 @@ PUBLIC_MEMORY_CONTEXT=0
 RESEARCH_PUBLIC_MEMORY_CONTEXT=0
 RESEARCH_PUBLIC_MEMORY_JSON=""
 CYCLE_CAMPAIGN=""
+RECOVER_WORKER_EXIT=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -109,6 +110,7 @@ while [[ $# -gt 0 ]]; do
     --choose-campaign) CHOOSE_CAMPAIGN=1; shift ;;
     --public-memory-context) PUBLIC_MEMORY_CONTEXT=1; shift ;;
     --research-public-memory-context) RESEARCH_PUBLIC_MEMORY_CONTEXT=1; shift ;;
+    --recover-timeout) RECOVER_WORKER_EXIT="$2"; shift 2 ;;
     --dry-run)    DRY_RUN=1; shift ;;
     -h|--help)    sed -n '2,55p' "$0"; exit 0 ;;   # through the Usage: block
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -138,6 +140,7 @@ if [[ "${ALGUA_CYCLE_SUPERVISED:-0}" != 1 ]]; then
   exec "${PYTHON}" -m algua.operator.research_cycle_worker \
     --timeout "${TIMEOUT}" --hypotheses "${N_HYPOTHESES:-40}" --workers "${WORKER_LIMIT}" \
     --cpu-seconds "${CPU_SECONDS}" --memory-mb "${MEMORY_MB}" --file-mb "${FILE_MB}" \
+    --research-driver \
     -- bash "${REPO_ROOT}/.opencode/scripts/run-research-loop.sh" "${ORIGINAL_ARGS[@]}"
 fi
 
@@ -650,6 +653,9 @@ PY
 cleanup_setup() {
   local ec=$?
   trap - EXIT
+  # The supervisor must stop/reap workers before capture. Do not spend the append-only
+  # outcome token here: its bounded recovery continuation captures evidence first.
+  if [[ "${CYCLE_PHASE}" == driver_interrupted ]]; then exit "${ec}"; fi
   if [[ "${CYCLE_PHASE}" == setup_failed && -n "${WORKTREE:-}" ]]; then
     remove_retained_worktree "${WORKTREE}" "${STAMP}" || true
   fi
@@ -659,6 +665,67 @@ cleanup_setup() {
   append_digest "${CYCLE_PHASE}"
   exit "${ec}"
 }
+
+recover_interrupted_cycle() {
+  # Recovery never claims, creates a worker, reads a report or calls the runtime seam.
+  case "${RECOVER_WORKER_EXIT}" in 124|130|137|143) ;; *) exit 2 ;; esac
+  mkdir -p "${REPO_ROOT}/data"
+  exec 9>"${REPO_ROOT}/data/research-loop.lock"
+  flock -n 9 || exit "${RECOVER_WORKER_EXIT}"
+  CYCLE_ACTIVE=1
+  CYCLE_RESULT="${AUTH_DATA_DIR}/research-cycles/${STAMP}.result.json"
+  rc="${RECOVER_WORKER_EXIT}"
+  WORKER_EXIT="${rc}"
+  [[ "${rc}" != 124 ]] || timed_out=1
+  DIGEST_BRANCH="$(git -C "${WORKTREE}" branch --show-current 2>/dev/null || true)"
+  local capture_ok=0
+  # Preserve baseline changes, including tracked methodology, without attributing them
+  # to the claimed source. Scratch KB and new reports need no baseline exception.
+  if git -C "${WORKTREE}" diff --quiet --diff-filter=DMRTUXB HEAD -- .; then
+    local additions=() additions_file
+    if additions_file="$(mktemp)"; then
+      if git -C "${WORKTREE}" ls-files --others --exclude-standard -z \
+           -- ':(glob)algua/strategies/**/*.py' > "${additions_file}" &&
+         git -C "${WORKTREE}" diff --cached --diff-filter=A --name-only -z \
+           -- ':(glob)algua/strategies/**/*.py' >> "${additions_file}" &&
+         sort -zu "${additions_file}" -o "${additions_file}"; then
+        mapfile -d '' -t additions < "${additions_file}"
+        if [[ "${#additions[@]}" -eq 0 ]] || {
+          git -C "${WORKTREE}" add -- "${additions[@]}" &&
+          git -C "${WORKTREE}" commit --only -q \
+            -m "research-run ${STAMP}: interrupted authored strategies" -- "${additions[@]}";
+        }; then
+          capture_research_memory && capture_ok=1
+        fi
+      fi
+      rm -f -- "${additions_file}"
+    fi
+  fi
+  if [[ "${capture_ok}" != 1 ]]; then
+    echo "timeout recovery could not verify source/archive; retaining all scratch." >&2
+  fi
+  # The existing controller refuses late success and never rewrites terminal outcomes.
+  # Its expected false-ok exit is retained; this firing remains a failure either way.
+  local finish_phase=driver_failed
+  [[ "${rc}" != 124 ]] || finish_phase=wall_time_exhausted
+  record_outcomes "" "${finish_phase}" || true
+  # A retry may verify the same receipt, but must not append a second firing denominator.
+  if ! "${PYTHON}" - "${AUTH_DIGEST}" "${STAMP}" <<'PY'
+import json,sys
+from pathlib import Path
+path=Path(sys.argv[1])
+try:
+    found=any(json.loads(line).get("research_cycle_id")==sys.argv[2]
+              for line in path.read_text().splitlines() if line.strip())
+except (OSError,ValueError,AttributeError):
+    found=False
+raise SystemExit(0 if found else 1)
+PY
+  then append_digest driver_failed; fi
+  exit "${rc}"
+}
+
+if [[ -n "${RECOVER_WORKER_EXIT:-}" ]]; then recover_interrupted_cycle; fi
 
 # Lock BEFORE any claim. A losing firing has no authority tokens to clean up.
 if [[ "${DRY_RUN}" -eq 0 ]]; then
@@ -675,8 +742,8 @@ if [[ "${DRY_RUN}" -eq 0 ]]; then
   CYCLE_ACTIVE=1
   # Armed BEFORE the claim subprocess: even a lost stdout after COMMIT is recoverable by ID.
   trap cleanup_setup EXIT
-  trap 'exit 143' TERM
-  trap 'exit 130' INT
+  trap 'CYCLE_PHASE=driver_interrupted; exit 143' TERM
+  trap 'CYCLE_PHASE=driver_interrupted; exit 130' INT
 fi
 
 # Claim this run's ideas AUTHORITY-SIDE (spec 2026-09-08 §7), BEFORE the scratch registry is
