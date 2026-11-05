@@ -132,13 +132,15 @@ if [ "$SANDBOX" = "bwrap" ]; then
   # and carries on half-initialised. Measured in the first live smoke run. These three paths are
   # the runtime's; everything else outside the worktree stays read-only.
   mkdir -p "${HOME}/.local/share/opencode" "${HOME}/.local/state/opencode" "${HOME}/.cache"
-  WRAP=(bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp
+  # A fresh PID namespace keeps host-process references out of /proc; a fresh session prevents
+  # the agent from inheriting the caller's terminal. Provider networking stays unchanged.
+  WRAP=(bwrap --unshare-pid --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp
         --bind "$WORKDIR" "$WORKDIR"
         --bind "${HOME}/.local/share/opencode" "${HOME}/.local/share/opencode"
         --bind "${HOME}/.local/state/opencode" "${HOME}/.local/state/opencode"
         --bind "${HOME}/.cache" "${HOME}/.cache"
         --bind "$XDG_DIR" "$XDG_DIR"
-        --die-with-parent)
+        --new-session --die-with-parent)
 elif [ "$SANDBOX" != "none" ]; then
   die "unknown ALGUA_AGENT_SANDBOX: $SANDBOX (expected auto|bwrap|none)"
 fi

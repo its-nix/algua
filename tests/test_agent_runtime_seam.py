@@ -93,7 +93,7 @@ def test_the_baseline_config_does_not_decide_web_access_globally():
     assert "webfetch" not in config["permission"]
 
 
-def test_the_kernel_write_wall_is_requested_when_available():
+def test_the_kernel_write_wall_requests_process_and_session_isolation():
     """Tool-level permissions are not a filesystem wall.
 
     OpenCode's `edit` permission does not stop `bash` from opening an absolute path, and the
@@ -101,10 +101,10 @@ def test_the_kernel_write_wall_is_requested_when_available():
     via `-s workspace-write`; the seam re-imposes one with bwrap so the migration does not quietly
     trade a kernel guarantee for a prompt-level one.
     """
-    if not __import__("shutil").which("bwrap"):
-        pytest.skip("bwrap not installed; the seam falls back to ALGUA_AGENT_SANDBOX=none")
-    out = _dry("research")
+    out = _dry("research", ALGUA_AGENT_SANDBOX="bwrap")
     assert "bwrap" in out
+    assert "--unshare-pid" in out, "host process references must stay outside the sandbox"
+    assert "--new-session" in out, "the agent must not inherit the caller's terminal session"
     assert "--ro-bind / /" in out, "everything outside the worktree must be read-only"
     assert f"--bind {REPO} {REPO}" in out, "the worktree itself must stay writable"
     assert "--tmpfs /tmp" in out, "a private /tmp closes the hole the Codex sandbox left open"
