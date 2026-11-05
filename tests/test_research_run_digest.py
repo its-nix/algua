@@ -21,24 +21,19 @@ from pathlib import Path
 
 import pytest
 
+from tests._research_driver_source import command_python, function_python
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = REPO_ROOT / ".opencode" / "scripts" / "run-research-loop.sh"
-_HEREDOC_RE = re.compile(r"<<'PY'[^\n]*\n(.*?)\n^PY$", re.DOTALL | re.MULTILINE)
-
-
-def _heredocs() -> list[str]:
-    return _HEREDOC_RE.findall(LAUNCHER.read_text(encoding="utf-8"))
-
-
-# Heredoc 0 = append_digest's trailer parser + branch rename + enqueue; heredoc 1 = record_outcomes'
-# per-claimed-idea `research idea record-outcome` loop (ideation engine); heredoc 2 = the anti-dup
-# reader; heredoc 3 = the sqlite consistent-backup snippet (not tested here); heredoc 4 = the
-# end-of-run enqueued-candidate counter (runs-worktree lifecycle, #555). Keep these indices in
-# sync when adding a heredoc to the launcher.
-_APPEND_DIGEST_SRC = _heredocs()[0]
-_RECORD_OUTCOMES_SRC = _heredocs()[1]
-_ANTI_DUP_SRC = _heredocs()[2]
-_COUNT_ENQUEUED_SRC = _heredocs()[4]
+_LAUNCHER_TEXT = LAUNCHER.read_text(encoding="utf-8")
+_APPEND_DIGEST_SRC = function_python(_LAUNCHER_TEXT, "append_digest")
+_RECORD_OUTCOMES_SRC = function_python(_LAUNCHER_TEXT, "record_outcomes")
+_ANTI_DUP_SRC = command_python(_LAUNCHER_TEXT, '  ANTI_DUP_TITLES="$(python3 - "${AUTH_DIGEST}"')
+_COUNT_ENQUEUED_SRC = command_python(
+    _LAUNCHER_TEXT,
+    'N_ENQUEUED="$(python3 - "${AUTH_QUEUE}" "${AUTH_QUEUE_LOCK}" "${FINAL_BRANCH}" "${QUEUE_MOD}"')
+_SCRATCH_BACKUP_SRC = command_python(
+    _LAUNCHER_TEXT, '  python3 - "${AUTH_DB}" "${ALGUA_DB_PATH}"')
 
 
 def _fence(payload: dict) -> str:
@@ -761,7 +756,7 @@ def test_rename_respects_the_name_cap(tmp_path):
     assert set(items) == {f"{n}@{final}" for n in names}
 
 
-# --- end-of-run enqueued-candidate counter (heredoc 3): the zero-candidate removal signal ---------
+# --- end-of-run enqueued-candidate counter: the zero-candidate removal signal -------------------
 
 
 def _run_count_enqueued(queue_path: Path, lock_path: Path, branch: str) -> str:
@@ -998,7 +993,7 @@ def test_merge_back_without_an_idea_id_enqueues_unbound(tmp_path):
     assert item["idea_id"] is None and item["claim_token"] is None
 
 
-# --- record_outcomes (heredoc 1): one `research idea record-outcome` per CLAIMED idea -------------
+# --- record_outcomes: one `research idea record-outcome` per CLAIMED idea ------------------------
 
 
 def _fake_uv(tmp_path: Path) -> tuple[Path, Path]:
@@ -1228,7 +1223,7 @@ def test_claim_projection_drops_the_token_and_keeps_the_work_fields():
 def test_scratch_seed_scrubs_the_claim_credentials_from_the_agents_copy(tmp_path):
     # The scratch copy carries this run's claim rows on purpose (the agent must see its ideas as
     # claimed) — but not the TOKEN, which is the driver's authority credential.
-    seed_src = _heredocs()[3]
+    seed_src = _SCRATCH_BACKUP_SRC
     auth = tmp_path / "auth.db"
     conn = sqlite3.connect(auth)
     with conn:
@@ -1248,7 +1243,7 @@ def test_scratch_seed_scrubs_the_claim_credentials_from_the_agents_copy(tmp_path
 
 
 def test_scratch_seed_survives_a_cold_start_with_no_ideas_table(tmp_path):
-    seed_src = _heredocs()[3]
+    seed_src = _SCRATCH_BACKUP_SRC
     auth = tmp_path / "auth.db"
     sqlite3.connect(auth).close()
     proc = subprocess.run([sys.executable, "-", str(auth), str(tmp_path / "scratch.db")],

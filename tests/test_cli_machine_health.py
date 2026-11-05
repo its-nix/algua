@@ -208,6 +208,26 @@ def test_stale_session_cannot_be_hidden_by_fresh_marker_write(tmp_path, monkeypa
     assert json.loads(result.stdout)["loops"]["paper"] == "stale"
 
 
+@pytest.mark.parametrize("rc_key", ["rc", "last_rc"])
+@pytest.mark.parametrize("rc,session,expected", [
+    (1, "2026-01-02", "failing"), (1, "2026-10-30", "failing"),
+    (0, "2026-01-02", "stale"), (0, "2026-10-30", "ok"),
+])
+def test_paper_failure_precedence_preserves_cause_and_readonly_contract(
+        tmp_path, monkeypatch, rc_key, rc, session, expected):
+    _seed(tmp_path, monkeypatch, [_run(hypotheses=[{"outcome": "holdout_negative"}])])
+    (tmp_path / "operator_sessions.json").write_text(json.dumps({"paper": {
+        rc_key: rc, "session": session, "recorded_at": NOW.isoformat()}}))
+    before = _tree(tmp_path)
+    result = _invoke()
+    payload = json.loads(result.stdout)
+    assert payload["loops"] == {"research": "ok", "paper": expected, "mergeback": "idle"}
+    assert result.exit_code == int(expected != "ok")
+    assert payload["ok"] is (expected == "ok")
+    assert payload["incidents"] == [] and payload["evidence_mode"] == "FIXTURE"
+    assert _tree(tmp_path) == before
+
+
 @pytest.mark.parametrize("name", [
     "research-runs.jsonl", "operator_sessions.json", "mergeback-queue.json",
 ])
@@ -330,6 +350,34 @@ def test_explicit_failure_outcome_with_zero_exit_never_healthy(tmp_path, monkeyp
     result = _invoke()
     assert result.exit_code == 1
     assert json.loads(result.stdout)["loops"]["research"] == "failing"
+
+
+@pytest.mark.parametrize("exit_code", [0, None, "missing"])
+def test_explicit_driver_failure_preserves_incident_without_failed_exit(
+    tmp_path, monkeypatch, exit_code,
+):
+    records = [_run(minutes, outcome="driver_failed", exit_code=exit_code,
+                    prompt="private-driver-prompt", error="private-driver-error")
+               for minutes in (60, 0)]
+    if exit_code == "missing":
+        for record in records:
+            record.pop("exit_code")
+    _seed(tmp_path, monkeypatch, records)
+    before = _tree(tmp_path)
+
+    result = _invoke()
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["loops"]["research"] == "failing"
+    assert len(payload["incidents"]) == 1
+    incident = payload["incidents"][0]
+    assert incident["cause"] == "worker_failed"
+    assert incident["reproduction"] == {"method": "distinct_cycles", "observations": 2}
+    assert incident["status"] == "open"
+    assert incident["recovery"] == "unverified"
+    assert "private-driver" not in result.stdout
+    assert _tree(tmp_path) == before
 
 
 def test_pool_empty_driver_error_is_systemic_not_negative_economics(tmp_path, monkeypatch):

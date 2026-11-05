@@ -1,5 +1,7 @@
 # tests/test_features_catalogue.py
+import importlib
 import inspect
+import os
 import sys
 from pathlib import Path
 
@@ -166,6 +168,54 @@ def test_transactional_failed_import_preserves_prior_registry():
             _drop_module("tmp_bad_mod", bad)
     finally:
         _drop_module("tmp_good_mod", good)
+
+
+@pytest.mark.parametrize("fails", [False, True], ids=["new-factor", "failing-module"])
+def test_discovery_refreshes_modules_with_unchanged_directory_timestamp(
+    tmp_path, monkeypatch, fails,
+):
+    monkeypatch.setattr(_featpkg, "__path__", [str(tmp_path)])
+    prior_stem = "tmp_cache_prior"
+    new_stem = "tmp_cache_new"
+    (tmp_path / f"{prior_stem}.py").write_text(
+        "from algua.features.catalogue import factor\n"
+        "@factor(summary='prior')\n"
+        "def prior_fac(x):\n"
+        "    return x\n",
+    )
+    try:
+        prior = load_all_factors()
+        assert set(prior) == {"prior_fac"}
+        name = f"algua.features.{new_stem}"
+        with pytest.raises(ModuleNotFoundError) as missing:
+            importlib.import_module(name)
+        assert missing.value.name == name
+
+        # FileFinder's negative directory cache stays valid on coarse-timestamp filesystems.
+        directory_stat = tmp_path.stat()
+        (tmp_path / f"{new_stem}.py").write_text(
+            "raise RuntimeError('boom')\n" if fails else
+            "from algua.features.catalogue import factor\n"
+            "@factor(summary='new')\n"
+            "def new_fac(x):\n"
+            "    return x\n",
+        )
+        os.utime(tmp_path, ns=(directory_stat.st_atime_ns, directory_stat.st_mtime_ns))
+
+        if fails:
+            with pytest.raises(RuntimeError, match="boom"):
+                load_all_factors()
+            assert _cat._REGISTRY is prior
+            assert all_factors_names() == {"prior_fac"}
+        else:
+            discovered = load_all_factors()
+            assert set(discovered) == {"prior_fac", "new_fac"}
+            assert discovered["new_fac"].module == name
+    finally:
+        for stem in (new_stem, prior_stem):
+            sys.modules.pop(f"algua.features.{stem}", None)
+            vars(_featpkg).pop(stem, None)
+        sys.path_importer_cache.pop(str(tmp_path), None)
 
 
 def test_get_factor_unknown_raises():

@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -86,11 +87,55 @@ _ALLOWED_KEYS: dict[str, frozenset[str]] = {
 }
 
 
+_PARAMETER_TYPES: dict[str, type] = {
+    **dict.fromkeys(("demo", "register", "assume_terminal_last_close", "allow_holdout_reuse",
+                    "allow_non_pit"), bool),
+    **dict.fromkeys(("start", "end", "snapshot", "universe", "fundamentals_snapshot",
+                    "news_snapshot", "delistings", "emit_series", "rank_by", "actor",
+                    "new_family"), str),
+    **dict.fromkeys(("windows", "top", "n_combos"), int),
+    **dict.fromkeys(("holdout_frac", "min_holdout_sharpe", "min_holdout_return",
+                    "min_pct_positive", "min_window_sharpe"), float),
+    "param": list,
+}
+_NULLABLE = frozenset({
+    "snapshot", "universe", "fundamentals_snapshot", "news_snapshot", "delistings",
+    "emit_series", "new_family", "n_combos", "param",
+})
+_TYPE_NAMES = {bool: "boolean", str: "string", int: "integer",
+               float: "finite number", list: "array of strings"}
+
+
+def _valid_parameter(key: str, value: Any) -> bool:
+    if value is None:
+        return key in _NULLABLE
+    expected = _PARAMETER_TYPES[key]
+    if expected is list:
+        return type(value) is list and all(type(item) is str for item in value)
+    if expected is float:
+        try:
+            return type(value) in (int, float) and math.isfinite(value)
+        except OverflowError:
+            return False
+    # bool subclasses int in Python, but a JSON boolean is never a numeric CLI option.
+    return type(value) is expected
+
+
+def _unique_fields(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"tasks file has duplicate field {key!r}")
+        result[key] = value
+    return result
+
+
 def _validate_tasks(raw: Any) -> list[dict[str, Any]]:
     """Structurally validate the parsed tasks file BEFORE running any task. A malformed file fails
     the WHOLE batch (a clean JSON error envelope), rather than surfacing as inconsistent per-task
     markers. Requires a JSON array of objects, each with a known `action` and a string `name`, and
-    only allowed per-action keys (unknown keys — including `track`/`summary` — are rejected)."""
+    only allowed per-action keys and their JSON types (no truthiness or numeric coercion).
+    Unknown keys — including `track`/`summary` — are rejected."""
     if not isinstance(raw, list):
         raise ValueError("tasks file must be a JSON array of task objects")
     if not raw:
@@ -100,7 +145,7 @@ def _validate_tasks(raw: Any) -> list[dict[str, Any]]:
         if not isinstance(item, dict):
             raise ValueError(f"task {i} is not an object")
         action = item.get("action")
-        if action not in _DISPATCH:
+        if not isinstance(action, str) or action not in _DISPATCH:
             raise ValueError(
                 f"task {i} has unknown action {action!r}; expected one of {sorted(_DISPATCH)}")
         name = item.get("name")
@@ -112,6 +157,12 @@ def _validate_tasks(raw: Any) -> list[dict[str, Any]]:
                 f"task {i} ({action} {name}) has unsupported keys {sorted(extra)}; "
                 f"allowed: {sorted(_ALLOWED_KEYS[action])} (note: `track`/`summary` are "
                 f"single-command-only and rejected in a batch)")
+        for key, value in item.items():
+            if key not in ("action", "name") and not _valid_parameter(key, value):
+                expected = _TYPE_NAMES[_PARAMETER_TYPES[key]]
+                nullable = " or null" if key in _NULLABLE else ""
+                raise ValueError(f"task {i} ({action} {name}) parameter {key!r} "
+                                 f"must be a JSON {expected}{nullable}")
         tasks.append(item)
     return tasks
 
@@ -127,7 +178,10 @@ def run_all(
 
     ``--tasks`` is a JSON array; each object is ``{"action": "backtest"|"sweep"|"promote",
     "name": "<strategy>", ...params}`` where params mirror the single command's flags (`track` and
-    `summary` are single-command-only and rejected here). Tasks run IN FILE ORDER and share the
+    `summary` are single-command-only and rejected here). Duplicate fields and invalid JSON
+    parameter types reject the whole file before any task runs. Use booleans such as ``false``,
+    never strings such as ``"false"``; numeric options require finite JSON numbers.
+    Tasks run IN FILE ORDER and share the
     funnel-breadth / FDR / holdout-burn ledgers EXACTLY as running them back-to-back as separate
     processes would (a promote task sees breadth a sibling sweep just recorded). Each task is
     fault-isolated: a task-domain failure becomes an ``{"ok": false, ..., "code": ...}`` marker and
@@ -135,7 +189,7 @@ def run_all(
     non-zero when any task erred (meaningful-exit-code convention)."""
     path = Path(tasks)
     try:
-        raw = json.loads(path.read_text())
+        raw = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_fields)
     except FileNotFoundError as exc:
         raise ValueError(f"tasks file not found: {tasks}") from exc
     except json.JSONDecodeError as exc:

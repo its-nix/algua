@@ -181,6 +181,9 @@ def simulate_portfolio(
     expected = calendar.sessions_in_range(dates[0].date(), dates[-1].date())
     if list(dates.date) != expected or any(t != t.normalize() for t in dates):
         raise BacktestError("portfolio replay requires consecutive daily session bars")
+    # Valid in-window session labels must cover both boundaries of the requested grid too.
+    if len(dates) != requested_sessions:
+        raise BacktestError("portfolio replay requires complete requested daily session coverage")
     for t in dates:
         rows = bars.loc[bars.index == t]
         if sorted(rows.symbol) != symbols:

@@ -4,9 +4,26 @@
 captures the existing deterministic menu, asks the output-only chooser once, validates the reply,
 and passes that selection to the existing controller and attempt CAS. The caller must hold the
 existing research-loop lock. This command claims selected ideas; it does not launch strategy work.
-The research driver is unchanged and has no automatic chooser default. Supplied `--campaign`
-files, `--menu-only` and legacy callers retain their existing channels; they cannot mix with
-`--choose`. Capture, choice, claims and terminal outcomes remain separate evidence.
+The research driver accepts an explicit `--choose-campaign` opt-in:
+
+```sh
+.opencode/scripts/run-research-loop.sh --choose-campaign --hypotheses 3
+```
+
+It passes `--choose --choice-dir <data_dir>/research-cycles/<cycle_id>.choice` to the existing
+`cycle-start` command while holding its existing research-loop lock. The directory is private and
+must be new; reusing a cycle never spends another chooser call or claims replacement work. The
+controller's returned campaign determines fenced digest/queue publication. Provider failures,
+invalid choices or changed feedback stop the cycle without falling back to legacy selection.
+For a fresh mutating chooser start, the complete request and unused cycle/private directory are
+checked before reconciling older interrupted controller cycles through their existing fenced
+outcomes. Memory capture and menu construction follow that recovery, so it cannot invalidate the
+new choice's feedback. Failed recovery stops before archive/model work or new claims. Read-only
+menus and supplied manual campaigns keep their existing behavior and stale-feedback checks.
+`--choose-campaign` and `--campaign FILE` are mutually exclusive. Supplied campaign files,
+`--menu-only` and legacy callers retain their existing channels. There is no automatic chooser
+default, schedule change or additional initiator. Capture, choice, claims and terminal outcomes
+remain separate evidence.
 
 The chooser is configured in `.opencode/opencode.json` and launched only by
 `.opencode/scripts/run_agent.sh`. Its effective primary-agent configuration must expose zero tools,

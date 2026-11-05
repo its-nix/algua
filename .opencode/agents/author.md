@@ -31,16 +31,21 @@ Follow the `author-a-strategy` skill precisely:
 - Scaffold with `uv run algua strategy new <name> --family <slug>` first (creates the module and
   the KB doc). The file lands at `algua/strategies/<family>/<name>.py`. Never edit or overwrite an
   existing strategy file (especially algua/strategies/momentum/cross_sectional_momentum.py).
-- The module must expose `CONFIG` (a StrategyConfig with name/universe/execution/params) and a pure,
-  cross-sectional `target_weights(view, params)` that never looks ahead.
-- Start the file with `GENERATED_BY = "agent"`.
+- The default module exposes `CONFIG` and a pure, cross-sectional `signal(view, params)` returning
+  scores. Named construction policies turn scores into weights; do not author `target_weights`.
+- For the implemented multimodal interface, follow the skill's `context_v1` guidance: expose
+  `score(context)` exclusively, with the required input declarations and exact model pin, if used.
+- Include `GENERATED_BY = "agent"` after imports, preserving any `__future__` import ordering.
 
-After writing, verify it loads and runs: `uv run algua backtest run <name> --demo` must emit metrics
-JSON, not an error. If it errors, fix the module until it runs.
+After writing, verify it loads and runs with the caller's exact snapshot, interval and required
+sidecars: `uv run algua backtest run <name> <data-options>` must emit metrics JSON. Use `--demo`
+only for an explicitly synthetic run. If required data or a pinned model is unavailable, report
+that limitation; do not substitute demo data, a different signal or a fabricated pin.
 
-Do NOT register, backtest-to-completion, promote, or change any registry state — that is the
-primary agent's job. Do NOT touch human-owned files (algua/registry/store/,
+`strategy new` itself registers the initial idea in the scratch registry. Do not register it a
+second time, use `backtest --register`, promote it, or make additional lifecycle changes — those
+are the primary agent's job. Do NOT touch human-owned files (algua/registry/store/,
 algua/contracts/lifecycle.py, algua/backtest/engine.py, algua/research/gates.py).
 
-Report back: the strategy name, the file path, the params you chose, and confirmation that
-`backtest run --demo` ran cleanly.
+Report back: the strategy name, file path, chosen params/interface, exact smoke command and its
+result, or the specific missing input that prevented evaluation.
