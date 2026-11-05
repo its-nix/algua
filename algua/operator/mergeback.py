@@ -104,6 +104,7 @@ class CycleResult:
     branch_tip: str | None = None
     attempt_token: str | None = None
     gate_id: int | None = None
+    publication: dict | None = None
 
 
 def _run_merge_back_saga(  # noqa: PLR0912, PLR0913, PLR0915 — a saga state machine; each branch is a step
@@ -618,11 +619,7 @@ def run_merge_back(  # noqa: PLR0913
     target_allocated: Callable[[str], bool], audit_log: Callable[[dict], None] | None = None,
     base_ref: str = _MAIN,
 ) -> CycleResult:
-    """DRAFT verified-existing-PR admission; missing evidence never imports or promotes.
-
-    Direct main/revert publication is disabled. PR creation, a trusted autonomous
-    merger and artifact CI are not implemented by this increment.
-    """
+    """Draft PR publication/admission; missing proof never imports or promotes."""
     from algua.operator.pr_admission import verify_and_adopt
 
     arguments = dict(locals())
@@ -638,7 +635,9 @@ def run_merge_back(  # noqa: PLR0913
         raise ValueError("verified PR admission requires clean main")
     proof = verify_and_adopt(git, tip, codeowners_text)
     if proof is None:
-        return pending("awaiting_pr_admission")
+        from algua.operator.pr_publication import publish_candidate
+        return replace(pending("awaiting_pr_admission"),
+                       publication=publish_candidate(git, branch, tip, codeowners_text))
     number, merge, original_base = proof
     if record is None:
         journal.append(MergeBackRecord(
