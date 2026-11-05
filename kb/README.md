@@ -9,6 +9,10 @@ notes. There's no graph database and no graph-rendering code; Obsidian renders i
 Because links resolve across the whole vault, a note in one domain can link straight to a note
 in another, and they connect in a single graph.
 
+## Cross-platform asset links
+
+See [Drive assets and source-of-truth boundary](drive-assets.md) for the Algua Drive folder, the private [Nix company KB](https://github.com/its-nix/knowledgebase/blob/main/START-HERE.md) and the safe handoff rules. This map is hand-maintained; it does not alter generated strategy notes or the Obsidian graph.
+
 ## Domains
 
 The vault is organised by domain. Each domain is a subdirectory:
