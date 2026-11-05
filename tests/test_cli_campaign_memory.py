@@ -12,9 +12,53 @@ from algua.config.settings import Settings
 from algua.registry.db import connect, migrate
 from tests.campaign_fixtures import add_idea
 from tests.test_campaign_choice_producer import fake_runtime as fake_runtime
+from tests.test_research_memory import memory_case as memory_case
 
 ROOT = Path(__file__).resolve().parents[1]
 runner = CliRunner()
+
+
+def test_new_family_admission_receives_recent_negative_archive_without_changing_choice_refs(
+    memory_case, fake_runtime, tmp_path, monkeypatch,
+):
+    from algua.operator.research_memory_checkpoint import canonical
+    from algua.operator.research_prompt_memory import decode_admitted_memory, render_research_goal
+    from tests.test_campaign_public_memory import _finish
+    from tests.test_research_memory import _explore
+
+    authority, prior, worker, source, archive, memory = memory_case
+    _explore(source)
+    receipt = memory.capture(worker, worker_exit=0, source_commit="b" * 40)
+    _finish(prior, worker, receipt)
+    directory = prior.directory.parent / "research-cycles"
+    prior.directory.rename(directory)
+    fresh = add_idea(authority, "Fresh cross-family hypothesis", family="fresh-family")
+    database = authority.execute("PRAGMA database_list").fetchone()[2]
+    monkeypatch.setenv("ALGUA_DB_PATH", database)
+    monkeypatch.setenv("ALGUA_DATA_DIR", str(prior.directory.parent))
+    monkeypatch.setenv("ALGUA_TRACKING_BACKEND", "mlflow-sqlite")
+    monkeypatch.setenv("ALGUA_MLFLOW_TRACKING_URI", archive.tracking_uri)
+    result, response = invoke("cycle-start", "--run", "fresh-with-negative-context", "--limit", "1",
+        "--category", fresh.category, "--choose", "--choice-dir", str(tmp_path / "choice"),
+        "--public-memory-context")
+    assert result.exit_code == 0, result.output
+    menu = response["campaign"]["menu"]
+    assert menu["choices"][0]["prior_evidence_ids"] == [f"ideas:{fresh.id}"]
+    assert response["campaign"]["selection"]["choices"][0]["prior_evidence_ids"] == [
+        f"ideas:{fresh.id}"]
+    snapshot = menu["request"]["context"]["public_research_memory"]
+    assert snapshot["observations"][0]["metrics"]["total_return_is"] == -0.3
+    assert snapshot["receipts"][0]["attempt_evidence_ids"] == ["idea_attempts:1"]
+    assert snapshot["selection_protocol"] == "recent_completed_attempts_desc/v1"
+    assert snapshot["authority"] == "none" and snapshot["association"] == "cycle_only"
+    checkpoint = json.loads((directory / "fresh-with-negative-context.json").read_text())
+    assert checkpoint["request"]["context"]["public_research_memory"] == snapshot
+    wrapper = decode_admitted_memory(canonical(response), cycle_id="fresh-with-negative-context",
+                                     database=database)
+    goal = render_research_goal("Fixture primary task", wrapper)
+    assert canonical(wrapper).decode() in goal
+    assert wrapper["snapshot"] == snapshot and "author/interpret" in goal
+    assert menu["scorecard"]["totals"]["economic_rejected"] == 1
 
 
 @pytest.fixture
@@ -46,6 +90,37 @@ def invoke(*args):
 def menu(run="manual"):
     return invoke("cycle-start", "--run", run, "--limit", "3", "--menu-only",
                   "--public-memory-context")
+
+
+def test_existing_controller_empty_campaign_already_returns_clean_idle(public_pool):
+    from algua.operator.research_cycle import CycleLimits, ResearchCycle
+
+    conn, data, _ = public_pool
+    cycle = ResearchCycle(conn, data / "research-cycles", "existing-empty-selection")
+    args = {"limits": CycleLimits(max_hypotheses=1), "context": {}, "ttl_minutes": 1440,
+            "category": "empty-category"}
+    captured = cycle.campaign_menu(**args)
+    assert captured["choices"] == []
+    campaign = {"menu": captured, "selection": {"menu_id": captured["menu_id"], "choices": []}}
+    claimed, result = cycle.start(**args, campaign=campaign)
+    assert claimed == [] and result["ok"] is True and result["phase"] == "pool_empty"
+    assert conn.execute("SELECT COUNT(*) FROM idea_attempts").fetchone()[0] == 0
+
+
+def test_empty_campaign_cli_admits_idle_without_chooser_or_new_attempts(
+    public_pool, fake_runtime, tmp_path,
+):
+    conn, data, tracking = public_pool
+    directory = tmp_path / "empty-choice"
+    result, payload = invoke("cycle-start", "--run", "empty-campaign", "--limit", "1",
+        "--category", "empty-category", "--choose", "--choice-dir", str(directory),
+        "--public-memory-context")
+    assert result.exit_code == 0, result.output
+    assert payload["ok"] is True and payload["phase"] == "pool_empty" and payload["claimed"] == []
+    assert payload["campaign"]["selection"]["choices"] == []
+    assert conn.execute("SELECT COUNT(*) FROM idea_attempts").fetchone()[0] == 0
+    assert not directory.exists() and not fake_runtime.exists() and not tracking.exists()
+    assert (data / "research-cycles/empty-campaign.json").exists()
 
 
 def write_campaign(tmp_path, captured):

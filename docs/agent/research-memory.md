@@ -166,10 +166,21 @@ unsupported schemas/inputs and resource bounds. No fixture result is market evid
 `research idea cycle-start --public-memory-context` adds a bounded view of retained public
 evaluations to the existing hashed `request.context.public_research_memory`. It is default-off
 and requires `--menu-only`, `--campaign FILE` or `--choose --choice-dir PATH`. Manual menu capture
-and admission must both opt in. The research driver forwards this switch only alongside
-`--campaign FILE` or `--choose-campaign`; dry runs perform no archive/model/claim operations.
+and admission must both opt in. The driver enables capture and primary forwarding by default in
+`--campaign FILE` or `--choose-campaign` mode. `--no-public-memory-context` disables both and
+excludes explicit memory flags. Ordinary noncampaign operation remains unchanged and does not
+supply numerical archives. Dry runs perform no archive/model/claim operations.
+Manual menus captured without public context must use `--no-public-memory-context`; for an
+enabled manual workflow, first capture its menu with `--public-memory-context`. Immutable menu
+identity is never silently rewritten to add evidence.
 The normal schedule, runtime seam and model choices are unchanged. This flag alone does not
 forward memory into the primary research prompt.
+
+The source research service includes `--choose-campaign`; existing installed ExecStart overrides
+must retain that flag on reviewed deployment to receive the campaign defaults. An empty captured
+menu uses the existing empty-selection admission and records `pool_empty` without a chooser or
+research worker call. Nonempty menus still require a nonempty valid chooser reply. This source
+change does not update an installed VPS override by itself.
 
 ```bash
 uv run algua research idea cycle-start --run ID --limit 3 --menu-only --public-memory-context
@@ -187,12 +198,17 @@ negative values survive when recorded. Missing information and unrecorded varian
 remain unknown. A cycle's attempt list does not identify which idea produced each evaluation;
 never infer per-family negative alpha or alter gate/search/FDR counts from this view.
 
-The adapter resolves terminal attempt rows from the union of the offered choices' existing
-`prior_evidence_ids`. It inspects the first 64 by descending actual attempt ID, deduplicates cycles
-and selects at most two canonical memory receipts in that order. Conflicting archive references
+New captures sample terminal attempt rows across families, including history with no reference
+from a fresh offered choice. They use `recent_completed_attempts_desc/v1`: inspect the first 64
+by descending actual attempt ID, deduplicate cycles, and select at most two canonical memory
+receipts in that order. Conflicting archive references
 for a cycle refuse. Legacy absent/non-memory references are explicit unavailable coverage;
 selected missing, corrupt or incompatible evidence refuses the operation. Selection never uses
 the sign or value of a metric. Within each selected cycle, records use ascending source run ID.
+Offered choice reference lists and reply grammar stay unchanged. Reasons may cite broader
+snapshot sources without claiming an evaluation belongs to that idea or family. A run_error is
+an infrastructure/workflow outcome, not negative alpha. Old `relevant_attempts_desc/v1` snapshots
+remain valid; their revalidation retains the original offered-reference selection semantics.
 
 View bounds and deterministic omission are:
 
@@ -249,9 +265,9 @@ experiments, three unattended cycles, paper readiness or profitable alpha.
 
 ## Optional primary research prompt
 
-The driver has a separate default-off `--research-public-memory-context` flag. It requires both
-`--public-memory-context` and an explicit `--choose-campaign` or `--campaign FILE`; it enables
-neither prerequisite implicitly. For example:
+Campaign-mode driver runs enable both public capture and primary forwarding by default.
+`--research-public-memory-context` remains accepted explicitly; `--no-public-memory-context`
+restores campaign operation without either transport. For example:
 
 ```bash
 .opencode/scripts/run-research-loop.sh --choose-campaign --public-memory-context --research-public-memory-context
@@ -280,7 +296,7 @@ replace the claimed hypothesis. The primary instruction asks existing author/int
 receive the same wrapper unchanged when relevant. Actual author task receipt and use require
 separate real session evidence; fixture prompt tests prove only the deterministic primary input.
 
-With the flag off, the GOAL bytes are unchanged and neither forwarding helper runs. Dry runs do
+With the transport opted out, the GOAL bytes are unchanged and neither forwarding helper runs. Dry runs do
 not claim, query archives, write a prompt or launch research. Empty/restarted cycles keep their
 existing behavior. The original worker pipeline exit, trailer grammar, gates, resources,
 retention and publication paths are unchanged. This opt-in adds no third memory read batch,

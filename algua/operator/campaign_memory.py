@@ -12,6 +12,8 @@ from typing import Any
 from algua.operator.campaign_memory_schema import (
     ATTEMPT,
     CYCLE,
+    RECENT_SELECTION_PROTOCOL,
+    SELECTION_PROTOCOLS,
     MemoryContextError,
     exact,
     integer,
@@ -50,9 +52,11 @@ def validate_public_memory_snapshot(value: object) -> dict:
     return validate_snapshot(value)
 
 
-def select_cycles(menu: dict) -> tuple[list[dict], dict]:
-    """Resolve ALL offered prior attempts before the fixed64-row window and cycle dedup."""
+def select_cycles(menu: dict, *, protocol: str = RECENT_SELECTION_PROTOCOL,
+                  ) -> tuple[list[dict], dict]:
+    """Bound recent terminal history across families; preserve old captured relevance semantics."""
     try:
+        require(protocol in SELECTION_PROTOCOLS, "request_invalid")
         choices, rows = menu["choices"], menu["scorecard"]["attempts"]
         require(isinstance(choices, list) and isinstance(rows, list), "request_invalid")
         refs: set[str] = set()
@@ -67,7 +71,8 @@ def select_cycles(menu: dict) -> tuple[list[dict], dict]:
                     "request_invalid")
             by_id[row["id"]] = row
         require(all(int(ref.split(":")[1]) in by_id for ref in refs), "request_invalid")
-        relevant = [by_id[int(ref.split(":")[1])] for ref in refs]
+        relevant = (list(by_id.values()) if protocol == RECENT_SELECTION_PROTOCOL else
+                    [by_id[int(ref.split(":")[1])] for ref in refs])
         relevant = sorted((r for r in relevant if r["outcome"] is not None),
                           key=lambda row: row["id"], reverse=True)[:64]
         grouped: dict[str, list[dict]] = {}
@@ -123,10 +128,16 @@ def capture_public_memory(menu: dict, *, cycle_directory: Path, tracking_uri: st
     """One20s work/result-acceptance deadline; blocking full teardown may overhang it."""
     deadline = time.monotonic() + 20.0
     require(phase in ("capture", "revalidate"), "request_invalid")
-    cycles, coverage = select_cycles(menu)
+    protocol = RECENT_SELECTION_PROTOCOL
+    if phase == "revalidate":
+        previous = menu.get("request", {}).get("context", {}).get("public_research_memory")
+        if previous is not None:
+            protocol = validate_public_memory_snapshot(previous)["selection_protocol"]
+    cycles, coverage = select_cycles(menu, protocol=protocol)
     try:
         rows = menu["scorecard"]["attempts"]
         request = {"schema_version": "campaign-public-memory-request/v1", "phase": phase,
+            "selection_protocol": protocol,
             "database": menu["request"]["database"],
             "cycle_directory": str(cycle_directory.resolve()),
             "tracking_uri": tracking_uri, "tracking_backend": tracking_backend,
@@ -152,6 +163,7 @@ def capture_public_memory(menu: dict, *, cycle_directory: Path, tracking_uri: st
             require(len(result.stdout) <= 25 * 1024, "worker_output_exceeded")
             try:
                 snapshot = _wire(result.stdout)
+                require(snapshot["selection_protocol"] == protocol, "worker_result_invalid")
             except Exception:
                 require(time.monotonic() < deadline, "read_deadline_exceeded")
                 raise

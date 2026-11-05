@@ -125,13 +125,16 @@ def _run(tmp_path, case, *, enabled=True, snapshot_change=None, goal_padding="",
     return result, delivered, calls
 
 
-@pytest.mark.parametrize("args", [[], ["--choose-campaign"], ["--public-memory-context"]])
-def test_prompt_memory_requires_both_explicit_prerequisites_before_any_claim(tmp_path, args):
+@pytest.mark.parametrize("args,expected", [([], 2), (["--choose-campaign"], 0),
+    (["--public-memory-context"], 2), (["--choose-campaign", "--no-public-memory-context"], 2)])
+def test_prompt_memory_requires_campaign_and_respects_explicit_optout(tmp_path, args, expected):
     command = driver._preamble(tmp_path) + "set -- " + shlex.join(
         [*args, "--research-public-memory-context"]) + "\n" + _parser()
     result = subprocess.run(["bash", "-c", command], capture_output=True, text=True)
-    assert result.returncode == 2
-    assert "--research-public-memory-context requires --public-memory-context" in result.stderr
+    assert result.returncode == expected
+    if expected:
+        assert ("requires --public-memory-context" in result.stderr
+                or "excludes explicit memory flags" in result.stderr)
     assert not (tmp_path / "data").exists()
 
 

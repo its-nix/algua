@@ -31,6 +31,9 @@ COVERAGE = {"candidate_attempts_considered", "candidate_cycles", "selected_cycle
 VIEW_FIELDS = {"source_ref", "archive_ref", "kind", "strategy_name", "parent_refs", "model_refs",
                "provenance", "inputs", "metrics", "extra_metrics"}
 CYCLE = r"[A-Za-z0-9][A-Za-z0-9_-]{0,95}"
+LEGACY_SELECTION_PROTOCOL = "relevant_attempts_desc/v1"
+RECENT_SELECTION_PROTOCOL = "recent_completed_attempts_desc/v1"
+SELECTION_PROTOCOLS = frozenset({LEGACY_SELECTION_PROTOCOL, RECENT_SELECTION_PROTOCOL})
 ATTEMPT = re.compile(r"idea_attempts:([1-9][0-9]*)\Z")
 SOURCE = re.compile(rf"scratch:({CYCLE}):runs:([1-9][0-9]*)\Z")
 REFERENCE = re.compile(r"mlflow:(.+)/public-evidence\.json#sha256=([0-9a-f]{64})\Z", re.DOTALL)
@@ -178,7 +181,7 @@ def validate_snapshot(value: Any) -> dict:
         require(value["schema_version"] == "campaign-public-memory/v1"
                 and value["evidence_mode"] == "UNVERIFIED_WORKER" and value["authority"] == "none"
                 and value["association"] == "cycle_only"
-                and value["selection_protocol"] == "relevant_attempts_desc/v1")
+                and value["selection_protocol"] in SELECTION_PROTOCOLS)
         require(integer(value["scorecard_attempt_cutoff"]))
         require(isinstance(value["archive_store_sha256"], str)
                 and re.fullmatch(r"[0-9a-f]{64}", value["archive_store_sha256"]))

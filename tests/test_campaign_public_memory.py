@@ -127,6 +127,45 @@ def test_relevance_union_terminal_window_and_cycle_order():
     assert coverage["candidate_cycles"] == 64
 
 
+def test_recent_sample_is_cross_family_but_legacy_relevance_stays_explicit():
+    from algua.operator.campaign_memory import select_cycles
+
+    rows = [_attempt(1, "completed-negative", _reference()),
+            _attempt(2, "unfinished", _reference(), outcome=None),
+            _attempt(3, "errored", None, outcome="run_error")]
+    menu = _selection_menu(rows, [["ideas:99"]])
+    selected, coverage = select_cycles(menu)
+    assert [c["research_cycle_id"] for c in selected] == ["completed-negative"]
+    assert coverage["candidate_attempts_considered"] == 2
+    assert coverage["cycles_without_receipt"] == 1
+    legacy, coverage = select_cycles(menu, protocol="relevant_attempts_desc/v1")
+    assert legacy == [] and coverage["candidate_attempts_considered"] == 0
+
+
+def test_old_protocol_actual_archive_roundtrip_keeps_original_selection(memory_case):
+    from algua.operator.campaign_memory import select_cycles
+    from algua.operator.campaign_memory_admission import revalidate_memory_context
+    from algua.operator.campaign_memory_worker import read_batch
+
+    authority, cycle, worker, source, archive, memory = memory_case
+    _explore(source)
+    receipt = memory.capture(worker, worker_exit=0, source_commit="b" * 40)
+    _finish(cycle, worker, receipt)
+    menu = _next_menu(authority, cycle)
+    cycles, coverage = select_cycles(menu, protocol="relevant_attempts_desc/v1")
+    request = {"schema_version": "campaign-public-memory-request/v1", "phase": "capture",
+        "database": menu["request"]["database"], "cycle_directory": str(cycle.directory),
+        "tracking_uri": archive.tracking_uri, "tracking_backend": "mlflow-sqlite",
+        "cutoff": 1, "cycles": cycles, "coverage": coverage}
+    old = read_batch(request)  # Existing requests without a protocol field keep their old meaning.
+    assert old["selection_protocol"] == "relevant_attempts_desc/v1"
+    menu["request"]["context"]["public_research_memory"] = old
+    before = list(authority.iterdump())
+    assert revalidate_memory_context(cycle, menu, tracking_uri=archive.tracking_uri,
+                                     tracking_backend="mlflow-sqlite") == old
+    assert list(authority.iterdump()) == before
+
+
 def test_conflict_in_unselected_cycle_is_not_hidden():
     from algua.operator.campaign_memory import select_cycles
 
@@ -341,6 +380,7 @@ def test_two_actual_cycles_release_full_payload_before_opening_the_next(memory_c
 
     monkeypatch.setattr(LocalResearchArchive, "read", observed)
     actual = read_batch({"schema_version": "campaign-public-memory-request/v1", "phase": "capture",
+        "selection_protocol": "recent_completed_attempts_desc/v1",
         "database": menu["request"]["database"], "cycle_directory": str(first.directory),
         "tracking_uri": archive.tracking_uri, "tracking_backend": "mlflow-sqlite", "cutoff": 2,
         "cycles": cycles, "coverage": coverage})

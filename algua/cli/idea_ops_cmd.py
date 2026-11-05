@@ -114,9 +114,11 @@ def cycle_start(
         if campaign is not None and not isinstance(adoption["campaign"], dict):
             raise ValueError("--campaign requires a menu and selection JSON object")
         if choose:
-            adoption = {"campaign": choose_campaign(
-                cycle, menu=captured_menu if captured_menu is not None
-                else cycle.campaign_menu(**args), directory=choice_dir, **args)}
+            offered = captured_menu if captured_menu is not None else cycle.campaign_menu(**args)
+            selected = (choose_campaign(cycle, menu=offered, directory=choice_dir, **args)
+                if offered["choices"] else {"menu": offered, "selection": {
+                    "menu_id": offered["menu_id"], "choices": []}})
+            adoption = {"campaign": selected}
             if public_memory_context:
                 assert captured_menu is not None
                 repeated = revalidate_memory_context(
