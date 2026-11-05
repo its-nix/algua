@@ -1,12 +1,13 @@
-# VPS research-only operations
+# VPS research and read-only monitor operations
 
 Status (2026-11-05): the three research timers are enabled. The startup timer fired at
 10:59 UTC and launched the worker as `algua`; that run's outcome remains separately recorded.
+The one-time startup drop-in has since been removed; research now uses only its calendar.
 Research scheduling does not establish full-goal, verified-PIT, paper or live acceptance.
 
 ## Installed profile
 
-Only `algua-{research,forage,leap}.{service,timer}` are in scope: three root-managed pairs.
+The research profile uses `algua-{research,forage,leap}.{service,timer}`: three root-managed pairs.
 Services run as `algua:algua`, HOME `/home/algua`, in `/home/algua/Projects/algua`.
 They load `/home/algua/.config/algua/research.env` (owner algua, mode 0600).
 PATH starts with `/usr/local/libexec/algua` for the admitted private bwrap, then the user's
@@ -31,17 +32,35 @@ tracking: checkout `mlruns.db` and `mlruns.artifacts/` (configured prefix `mlrun
 pinned pilot data: `/home/algua/datasets/pilot-2026-11-03/data`.
 Preserve these stores, retained research branches and runtime archives during maintenance.
 
+## Localhost read-only monitor
+
+Separately, the enabled, root-owned `algua-web.service` runs as `algua` (UID 1001), listening
+only on `127.0.0.1:8787`. Nine health/static/API checks passed with fresh responses and all
+73 production assets verified; no fixture content was installed. This adds no Tailscale/public
+exposure, firewall, auth or trading changes. From the viewer's machine:
+
+```bash
+ssh -N -L 127.0.0.1:18797:127.0.0.1:8787 vps
+```
+
+Open `http://localhost:18797`. The VPS service runs independently of that client tunnel.
+The retained list has seven **attempt references**, not seven completed cycles; the selected
+fourth-cycle archive has seven evaluations. [Acceptance scope](../../docs/acceptance/2026-10-30-algua-machine-acceptance.md).
+
 ## Cadence
 
 | Timer | UTC schedule |
 |---|---|
-| Research | 00:00, 06:00, 12:00, 18:00; also `OnActiveSec=1min` after timer activation |
+| Research | 00:00, 06:00, 12:00, 18:00 |
 | Forage | Daily 03:00 |
 | Leap | Every two hours at :30; pool-depth gated |
 
 `Persistent=true` is retained. Missed firings may catch up together; each driver's own
 nonblocking lock prevents same-driver overlap, not overlap between stages. The shared slice
-bounds their combined memory. Enabling research can start a job after one minute.
+bounds their combined memory.
+The research timer's obsolete `startup.conf` drop-in (`OnActiveSec=1min`) was backed up and removed
+after a reload rearmed it and triggered the 18:32 UTC firing. Calendar bytes and persistence
+were unchanged; all three timers remain enabled/active. Removal launched no research/model call.
 
 ## Operate from the existing admin SSH session
 
@@ -79,6 +98,9 @@ A post-reload firing, `20261105-174703-e6b11958f24f`, exited 0 with `pool_empty`
 zero attempts/unfinished/selected and no write errors; its context carried six observations
 from two receipts. No worker/model ran, so it adds no empirical cycle or demonstrated learning.
 See the [acceptance limits](../../docs/acceptance/2026-10-30-algua-machine-acceptance.md).
+The separate 18:32 firing failed setup with `invalid_input`, no worker/claim and no retained
+choice directory; the underlying cause is UNKNOWN. Its failed service state is preserved;
+timer cleanup and recovered monitor reads do not establish a later successful research run.
 
 The pilot is `pilot_real_proxy`, not verified PIT. Preserve all seven limitations:
 vendor-revisable adjusted prices, unverified corporate actions, missing delisted symbols,
