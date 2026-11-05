@@ -198,6 +198,19 @@ You are foraging the web for trading-idea INSPIRATION for algua's ideation pool.
 author strategies, run a backtest, or touch the registry — you write short notes about what the
 web says works, for a later 'leap' step to turn into testable hypotheses.
 
+Current pilot priority: sources directly testable with daily US-equity OHLCV. Keep genuine
+options, fundamental, flow or intraday input requirements explicit; never substitute OHLCV
+for missing variables. Preserve source claims and citations rather than bending them to fit.
+Declared pilot_real_proxy allows price-only numerical exploration on the pinned data;
+do not add a blanket verified-PIT prerequisite or forbid the pilot for otherwise runnable ideas.
+Keep all seven caveats: vendor-revisable adjusted prices, unverified corporate actions,
+missing delisted symbols, unavailable event knowledge times, unavailable historical market cap,
+unavailable PIT universe membership, and survivorship bias. These inherited limitations block
+qualification; they are not themselves authored lookahead. Never fabricate PIT history.
+Promotion/live floors stay strict; proxy exploration grants no qualification or merge_back.
+Do not invent novelty or alpha: label familiar mechanisms/replications honestly, and respect
+dedup/refuted walls without reopening or repackaging old ideas to refill the pool.
+
 Categories for this run (search each; a hint after the slug, if any, narrows market/horizon):
 ${CATEGORY_LINES}
 Market vocabulary (use one per note): us_equities, crypto, forex, prediction, any.

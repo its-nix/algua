@@ -50,6 +50,19 @@ A note says "X works". `X works` is not a hypothesis — it is the note. Leap fr
 
 ## What the platform can actually build
 
+For this pilot, prioritize daily `us_equities` ideas whose exploratory test needs only `ohlcv`.
+`algua/data/capabilities.py` remains the eligibility authority. Keep genuinely missing option,
+fundamental, flow or intraday inputs explicit; do not relabel them as OHLCV proxies.
+Declared `pilot_real_proxy` permits numerical exploration, not qualification. Preserve all seven
+caveats: vendor-revisable adjusted prices, unverified corporate actions, missing delisted symbols,
+unavailable event knowledge times, unavailable historical market cap, unavailable PIT universe
+membership, and survivorship bias. These inherited caveats alone are not
+`lookahead_by_construction`; reject authored future information, full-sample fitting, impossible
+same-bar fills and fabricated PIT claims instead. Do not add a blanket verified-PIT prerequisite
+or forbid the declared pilot for otherwise price-only tests. Promotion/live floors stay strict;
+never claim proxy qualification or enqueue `merge_back`. Keep novelty/alpha claims honest, and
+respect dedup/refuted walls without reopening or repackaging old ideas for pool depth.
+
 A hypothesis algua cannot express is not a hypothesis, it is a wasted research cycle. It is claimed,
 authored against, fails, and — until the attempt cap retires it — gets claimed again. On 2026-09-14
 three such ideas had four failed attempts each and six consecutive research runs produced no
@@ -101,7 +114,7 @@ Every field is required for `--source-type inspiration`:
 | `inspirations` | `id\|venue\|obscurity` per cited note, repeated |
 | `family` | an existing family slug, or a proposed new one (lowercase, hyphens — `a-z0-9-`) |
 
-A worked example:
+A worked example (requires index-event and float data; not runnable on the current OHLCV pilot):
 
 - **title**: `Post-index-add reversal in the low-float tail`
 - **hypothesis**: Index-add front-running is well known, so the add-day print is crowded; the
@@ -125,7 +138,7 @@ research run later. Reject when any of these hold:
 | `reason_kind` | reject when |
 |---|---|
 | `beta_in_disguise` | it is market beta, or a known factor (size, value, momentum, low-vol, carry), repackaged — with no mechanism distinct from the factor's own |
-| `lookahead_by_construction` | it uses information that would not be known at decision time: a full-sample statistic, a restated fundamental, a survivorship-filtered universe, an "at the close" signal that needs the close |
+| `lookahead_by_construction` | the authored test adds future information: a full-sample statistic, a future-restated fundamental, membership selected using future observations, or a same-bar fill requiring the close; inherited declared pilot caveats alone are not this rejection |
 | `paraphrase_of_refuted` | it restates an idea in the refuted list, or a dead end in the negative-result log, without changing the mechanism — a new title is not a new idea |
 | `untestable` | it cannot be evaluated with the data this system has or could get, and it is not worth parking as `needs_data` |
 | `vacuous_falsification` | its falsification statement cannot fail ("refuted if it doesn't work"), or is so weak that any result survives it |
@@ -160,7 +173,7 @@ uv run algua research idea add \
   --category event_driven \
   --market us_equities \
   --horizon event \
-  --required-data ohlcv \
+  --required-data ohlcv,fundamentals \
   --falsification "Refuted if the top-decile-pressure basket's 5-session forward return is not negative relative to the cohort." \
   --family index-flow \
   --inspiration "2026-09-07-index-add-crowding|reddit/algotrading|niche"
