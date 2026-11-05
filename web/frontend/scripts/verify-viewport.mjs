@@ -71,9 +71,11 @@ if (externalBase !== undefined) {
         assert.equal(await row.getAttribute('href'), `/strategy/${i + 1}`)
         assert.equal((await row.locator('.stage-chip').innerText()).toLowerCase(), 'backtested')
         assert.equal((await row.locator('.board-tags .pass-mark').innerText()).toLowerCase(), 'fail')
-        assert.match(await row.innerText(), /synthetic_not_market_data/)
-        assert.match(await row.innerText(), /Research cohort/)
-        assert.match(await row.innerText(), /not payload or PIT proof/)
+        const entry = row.locator('..')
+        await entry.locator('.board-evidence-disclosure > summary').click()
+        assert.match(await entry.innerText(), /synthetic_not_market_data/)
+        assert.match(await entry.innerText(), /Research cohort/)
+        assert.match(await entry.innerText(), /not payload or PIT proof/)
       }
       assert.equal(await rows.count(), 2)
       const order = page.getByRole('button', { name: 'oos sharpe', exact: true })
@@ -114,6 +116,7 @@ if (externalBase !== undefined) {
       await page.getByRole('link', { name: 'Research', exact: true }).click()
       const retained = page.locator('#retained-experiments')
       await retained.getByText('No retained archive references recorded.', { exact: true }).waitFor()
+      await retained.getByText('Unverified research', { exact: true }).click()
       assert.match(await retained.innerText(), /UNVERIFIED_WORKER · authority: none · cycle-only association/)
       await layout('research', width)
       console.log(`ok native Enter ${target}; retained index empty; distinct-family exclusion and populated archive not exercised`)
@@ -138,7 +141,7 @@ const ROUTE_CONTENT = {
   '/now': 'cross_horizon_low_vol', // TRIAGE.items[0].title after the worst-first sort
   '/fleet': 'liquid10_adj_momentum', // a real "every strategy" row (FLEET.data.rows)
   '/money': 'liquid10_adj_momentum', // BOOK.data.slices[0].strategy
-  '/research': 'liquid10_adj_momentum', // RUNS.data.runs[0].strategy_name
+  '/research': 'Turn-of-month seasonal drift, liquid10', // Actual default idea-pool fixture.
   '/strategy/1': 'Cross-sectional momentum over the liquid10 universe', // ID resolver -> detail
   '/s/liquid10_adj_momentum': 'Cross-sectional momentum over the liquid10 universe', // registry.description
 }
@@ -187,7 +190,7 @@ for (const { route, width } of cases) {
   if (route === '/') {
     // Public is the default mode. Its demo has no ordinary WF records; do not manufacture
     // gate-backed public windows to satisfy the separate gate-ledger checks below.
-    await page.getByText(/in-sample.*selection.*pre-holdout windows, not independent OOS/i).waitFor()
+    await page.getByText('In-sample research · not independent OOS', { exact: true }).waitFor()
     const publicWidth = await page.evaluate(() => document.documentElement.scrollWidth)
     if (publicWidth > width) failures.push(`${route} public WF: scrollWidth=${publicWidth} vw=${width}`)
     console.log(`ok   / public WF vw=${width} scrollWidth=${publicWidth}`)
@@ -197,6 +200,11 @@ for (const { route, width } of cases) {
     // Synthetic demo evidence is deliberately hidden until its tier is explicitly selected.
     await page.getByRole('button', { name: /board controls/i }).click()
     await page.getByRole('combobox', { name: 'data tier', exact: true }).selectOption('synthetic_fixture')
+    // The redesigned rows disclose complete methodology beside their native navigation link.
+    // Open every disclosure before retaining the existing visible-warning/limitation checks.
+    for (const summary of await page.locator('.board-evidence-disclosure > summary').all()) {
+      await summary.click()
+    }
   }
 
   const m = await page.evaluate((currentRoute) => {

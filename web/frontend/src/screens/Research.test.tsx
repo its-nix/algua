@@ -5,6 +5,14 @@ import { clearFetchCache } from '../api'
 import { parseEvidence } from '../components/StrategyBoard'
 import Research from './Research'
 
+function renderExpanded() {
+  const view = render(<MemoryRouter><Research /></MemoryRouter>)
+  const disclosure = view.container.querySelector<HTMLDetailsElement>('.research-diagnostics')!
+  disclosure.open = true
+  fireEvent(disclosure, new Event('toggle'))
+  return view
+}
+
 const strategies = {
   ok: true,
   fetched_at: '2026-08-15T17:04:00Z',
@@ -113,11 +121,7 @@ function renderResearch() {
       ok: true, status: 200, json: async () => routeBody(url),
     })) as unknown as typeof fetch,
   )
-  return render(
-    <MemoryRouter>
-      <Research />
-    </MemoryRouter>,
-  )
+  return renderExpanded()
 }
 
 function renderResearchWithOps(opsResponse: unknown) {
@@ -129,20 +133,12 @@ function renderResearchWithOps(opsResponse: unknown) {
       json: async () => url.startsWith('/api/ops') ? opsResponse : routeBody(url),
     })) as unknown as typeof fetch,
   )
-  return render(
-    <MemoryRouter>
-      <Research />
-    </MemoryRouter>,
-  )
+  return renderExpanded()
 }
 
 it('shows loading rather than inventing a blocked decision before required reads finish', () => {
   vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})) as unknown as typeof fetch)
-  const { container } = render(
-    <MemoryRouter>
-      <Research />
-    </MemoryRouter>,
-  )
+  const { container } = renderExpanded()
   expect(container.querySelector('.decision-state')?.textContent).toBe('loading')
   expect(screen.getByText(/no current decision yet/i)).toBeTruthy()
   const inventory = screen.getByRole('region', { name: /lifecycle inventory/i })
@@ -164,7 +160,7 @@ it('labels an empty cached registry response as stale rather than authoritative 
       json: async () => url.startsWith('/api/strategies') ? staleEmptyStrategies : routeBody(url),
     })) as unknown as typeof fetch,
   )
-  render(<MemoryRouter><Research /></MemoryRouter>)
+  renderExpanded()
   const inventory = await screen.findByRole('region', { name: /lifecycle inventory/i })
   const status = within(inventory).getByTestId('evidence-status')
   expect(status.getAttribute('data-state')).toBe('stale')
@@ -191,7 +187,7 @@ it('encodes lifecycle counts proportionally without inflating small stages to a 
       json: async () => url.startsWith('/api/strategies') ? skewed : routeBody(url),
     })) as unknown as typeof fetch,
   )
-  const view = render(<MemoryRouter><Research /></MemoryRouter>)
+  const view = renderExpanded()
   await screen.findByRole('region', { name: /lifecycle inventory/i })
   const widths = [...view.container.querySelectorAll<HTMLElement>('.funnel-track span')]
     .map((node) => node.style.width)
@@ -371,7 +367,7 @@ function renderScatterResearch(rows: ReturnType<typeof scatterRow>[], options: {
         url.startsWith('/api/runs') ? { ...runs, data: { count: raw.length, runs: raw } } : routeBody(url),
   }))
   vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
-  render(<MemoryRouter><Research /></MemoryRouter>)
+  renderExpanded()
   return fetchMock
 }
 
@@ -432,4 +428,25 @@ it.each(['missing', 'unknown', 'malformed', 'cost', 'stale', 'unsupported_schema
   await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === '/api/strategy-board?include_evidence=true')).toBe(true))
   await waitFor(() => expect(screen.queryAllByTestId('scatter-point')).toHaveLength(
     ['stale', 'unsupported_schema', 'cohort_conflict'].includes(damage) ? 0 : 1))
+})
+
+
+it('opens on results and defers diagnostic API reads until requested', async () => {
+  const fetch = vi.fn(async (url: string) => ({
+    ok: true, status: 200, json: async () => routeBody(url),
+  }))
+  vi.stubGlobal('fetch', fetch)
+  const { container } = render(<MemoryRouter><Research /></MemoryRouter>)
+  await screen.findByRole('heading', { name: 'Research' })
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+  expect(fetch.mock.calls.map(([url]) => url).sort()).toEqual([
+    '/api/ideas', '/api/research-memory?limit=20',
+  ])
+  expect(screen.queryByRole('heading', { name: /research decision/i })).toBeNull()
+  const disclosure = container.querySelector<HTMLDetailsElement>('.research-diagnostics')!
+  expect(disclosure.open).toBe(false)
+  disclosure.open = true
+  fireEvent(disclosure, new Event('toggle'))
+  expect(await screen.findByRole('heading', { name: /research decision/i })).toBeTruthy()
+  expect(fetch.mock.calls.some(([url]) => url === '/api/ops')).toBe(true)
 })

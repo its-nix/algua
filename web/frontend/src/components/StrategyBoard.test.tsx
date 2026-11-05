@@ -5,6 +5,11 @@ import { clearFetchCache, useFetch } from '../api'
 import type { ApiEnvelope, StrategyBoardGate, StrategyBoardPayload, StrategyBoardRow } from '../types'
 import { SORT_OPTIONS, StrategyBoardView } from './StrategyBoard'
 
+// Evidence is disclosed beside its native navigation link, never nested inside it.
+function withinEntry(element: HTMLElement) {
+  return within(element.closest<HTMLElement>('.board-entry') ?? element)
+}
+
 function gate(overrides: Partial<StrategyBoardGate> & { run_id: number }): StrategyBoardGate {
   return {
     created_at: '2026-10-15T12:00:00+00:00',
@@ -166,7 +171,7 @@ it('renders exactly one row per registered strategy, including ones with no gate
   expect(await screen.findAllByTestId('board-row')).toHaveLength(rows.length)
   expect(names()).toEqual(rows.map((r) => r.name))
   const bare = screen.getAllByTestId('board-row')[0]
-  expect(within(bare).getByText(/no usable gate evidence/i)).toBeTruthy()
+  expect(withinEntry(bare).getByText(/no usable gate evidence/i)).toBeTruthy()
   expect(bare.querySelector('svg')).toBeNull()
 })
 
@@ -253,7 +258,7 @@ it('shows the latest observed OOS scalars without inferring legacy comparison me
   mockBoard(populated)
   renderBoard()
   await screen.findAllByTestId('board-row')
-  const measured = within(screen.getAllByTestId('board-row')[1])
+  const measured = withinEntry(screen.getAllByTestId('board-row')[1])
   expect(measured.getByText((_, node) => node?.textContent === 'sharpe1.42')).toBeTruthy()
   expect(measured.getByText((_, node) => node?.textContent === 'return20.0%')).toBeTruthy()
   expect(measured.getByText((_, node) => node?.textContent === 'drawdown-30.0%')).toBeTruthy()
@@ -270,7 +275,7 @@ it('opts into and renders metadata-bound evaluation, OOS, snapshot coverage, and
   renderBoard()
 
   const measuredRow = (await screen.findAllByTestId('board-row'))[1]
-  const measured = within(measuredRow)
+  const measured = withinEntry(measuredRow)
   expect(fetchMock).toHaveBeenCalledWith(
     '/api/strategy-board?include_evidence=true',
     { headers: { accept: 'application/json' } },
@@ -296,7 +301,7 @@ it('opts into and renders metadata-bound evaluation, OOS, snapshot coverage, and
 it('distinguishes an absent legacy extension from malformed extension claims', async () => {
   mockBoard(populated)
   renderBoard()
-  const legacy = within((await screen.findAllByTestId('board-row'))[1])
+  const legacy = withinEntry((await screen.findAllByTestId('board-row'))[1])
   expect(legacy.getByText(/evidence extension unavailable.*no inference/i)).toBeTruthy()
 
   cleanup()
@@ -306,7 +311,7 @@ it('distinguishes an absent legacy extension from malformed extension claims', a
     data: { ...metadataBound.data, evidence_schema_version: 'strategy-board-evidence/v3' },
   })
   renderBoard()
-  const unsupported = within((await screen.findAllByTestId('board-row'))[1])
+  const unsupported = withinEntry((await screen.findAllByTestId('board-row'))[1])
   expect(unsupported.getByText(/evidence INVALID.*unsupported evidence schema/i)).toBeTruthy()
 
   cleanup()
@@ -315,7 +320,7 @@ it('distinguishes an absent legacy extension from malformed extension claims', a
   orphan.data.rows[0] = { ...orphan.data.rows[1], latest_gate: null }
   mockBoard(orphan)
   renderBoard()
-  const withoutGate = within((await screen.findAllByTestId('board-row'))[0])
+  const withoutGate = withinEntry((await screen.findAllByTestId('board-row'))[0])
   expect(withoutGate.getByText(/evidence INVALID.*without a latest gate/i)).toBeTruthy()
 })
 
@@ -324,7 +329,7 @@ it('invalidates evidence/schema/member incoherence while preserving a truly lega
   delete (evidenceWithoutSchema.data as Record<string, unknown>).evidence_schema_version
   mockBoard(evidenceWithoutSchema)
   renderBoard()
-  let measured = within((await screen.findAllByTestId('board-row'))[1])
+  let measured = withinEntry((await screen.findAllByTestId('board-row'))[1])
   expect(measured.getByText(/evidence INVALID.*schema missing/i)).toBeTruthy()
   expect(measured.queryByText(/extension unavailable/i)).toBeNull()
 
@@ -335,7 +340,7 @@ it('invalidates evidence/schema/member incoherence while preserving a truly lega
   delete memberRows[1].evidence
   mockBoard(memberMissing)
   renderBoard()
-  measured = within((await screen.findAllByTestId('board-row'))[1])
+  measured = withinEntry((await screen.findAllByTestId('board-row'))[1])
   expect(measured.getByText(/evidence INVALID.*member missing/i)).toBeTruthy()
 
   cleanup()
@@ -384,7 +389,7 @@ it.each([
     fireEvent.click(screen.getByRole('button', { name: /board controls/i }))
     fireEvent.change(screen.getByRole('combobox', { name: 'data tier' }), { target: { value: 'synthetic_fixture' } })
   }
-  const measured = within(screen.getByRole('link', { name: /View mined_above strategy details/i }))
+  const measured = withinEntry(screen.getByRole('link', { name: /View mined_above strategy details/i }))
   expect(measured.getByText(/snapshot provenance/i).parentElement?.textContent).toContain(
     'INVALID · malformed response',
   )
@@ -407,7 +412,7 @@ it('keeps malformed, INVALID, and UNAVAILABLE wrappers atomic with no fallback i
   mockBoard(malformed)
   renderBoard()
 
-  const measured = within((await screen.findAllByTestId('board-row'))[1])
+  const measured = withinEntry((await screen.findAllByTestId('board-row'))[1])
   expect(measured.getByText(/requested evaluation/i).parentElement?.textContent).toContain(
     'INVALID · malformed response',
   )
@@ -431,7 +436,7 @@ it('invalidates contradictory OOS counts and non-allowlisted evidence fields', a
   oos.value.n_bars = 999
   mockBoard(contradictory)
   renderBoard()
-  let measured = within((await screen.findAllByTestId('board-row'))[1])
+  let measured = withinEntry((await screen.findAllByTestId('board-row'))[1])
   expect(measured.getByText(/lineage-valid OOS/i).parentElement?.textContent).toContain(
     'INVALID · count mismatch',
   )
@@ -444,7 +449,7 @@ it('invalidates contradictory OOS counts and non-allowlisted evidence fields', a
   extra.data.rows[1].evidence.snapshot_id = 'forbidden-in-extension'
   mockBoard(extra)
   renderBoard()
-  measured = within((await screen.findAllByTestId('board-row'))[1])
+  measured = withinEntry((await screen.findAllByTestId('board-row'))[1])
   expect(measured.getByText(/evidence INVALID.*run-bound response malformed/i)).toBeTruthy()
   expect(measured.queryByText(/pilot_real_proxy/)).toBeNull()
 })
@@ -477,14 +482,14 @@ it('isolates evidence by stable strategy and run identity even when names are re
   const rendered = await screen.findAllByTestId('board-row')
   expect(rendered).toHaveLength(1)
   expect(rendered[0].getAttribute('href')).toBe('/strategy/2')
-  expect(within(rendered[0]).getByText(/yfinance/)).toBeTruthy()
-  expect(within(rendered[0]).queryByText(/fixture_generator/)).toBeNull()
+  expect(withinEntry(rendered[0]).getByText(/yfinance/)).toBeTruthy()
+  expect(withinEntry(rendered[0]).queryByText(/fixture_generator/)).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: /board controls/i }))
   fireEvent.change(screen.getByRole('combobox', { name: 'data tier' }), { target: { value: 'synthetic_fixture' } })
   const fixtureRow = screen.getAllByTestId('board-row')[0]
   expect(fixtureRow.getAttribute('href')).toBe('/strategy/77')
-  expect(within(fixtureRow).getByText(/fixture_generator/)).toBeTruthy()
-  expect(within(fixtureRow).queryByText(/yfinance/)).toBeNull()
+  expect(withinEntry(fixtureRow).getByText(/fixture_generator/)).toBeTruthy()
+  expect(withinEntry(fixtureRow).queryByText(/yfinance/)).toBeNull()
 
 })
 
@@ -498,7 +503,7 @@ it('refuses a VALID verified_pit metadata claim when no independent PIT verifier
   mockBoard(unverifiedPit)
   renderBoard()
 
-  const measured = within((await screen.findAllByTestId('board-row'))[1])
+  const measured = withinEntry((await screen.findAllByTestId('board-row'))[1])
   expect(measured.getByText(/snapshot provenance/i).parentElement?.textContent).toContain(
     'INVALID · PIT verifier unavailable',
   )
@@ -508,8 +513,8 @@ it('refuses a VALID verified_pit metadata claim when no independent PIT verifier
 it('shows a directed empty state for an empty registry, not an error', async () => {
   mockBoard(env({ schema_version: 'strategy-board/v1', count: 0, rows: [] }))
   renderBoard()
-  expect(await screen.findByText(/no strategies registered/i)).toBeTruthy()
-  expect(screen.getByText(/registry add/i)).toBeTruthy()
+  expect(await screen.findByText(/no registered strategies yet/i)).toBeTruthy()
+  expect(screen.getByText(/Research results are available below/i)).toBeTruthy()
   expect(screen.queryByText(/fetch failed/i)).toBeNull()
 })
 
@@ -522,7 +527,7 @@ it('never presents a stale empty registry as current', async () => {
   renderBoard()
   expect(await screen.findByText('stale data')).toBeTruthy()
   expect(screen.getByText(/last error cli_timeout/i)).toBeTruthy()
-  expect(screen.getByText(/no strategies registered/i)).toBeTruthy()
+  expect(screen.getByText(/no registered strategies yet/i)).toBeTruthy()
 })
 
 it('shows the error treatment with retry on a backend failure — never a false empty board', async () => {
@@ -558,7 +563,8 @@ it('exposes no action that mutates state', async () => {
   mockBoard(populated)
   const { container } = renderBoard()
   await screen.findAllByTestId('board-row')
-  expect(container.querySelector('form, input, select, textarea')).toBeNull()
+  expect(container.querySelector('form, textarea')).toBeNull()
+  expect(screen.getByRole('searchbox', { name: 'Search strategies' })).toBeTruthy()
   const labels = screen.getAllByRole('button').map((b) => b.textContent ?? '')
   expect(labels.join(' ')).not.toMatch(/promote|retire|allocate|trade|approve/i)
 })

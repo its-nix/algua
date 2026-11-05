@@ -72,20 +72,34 @@ function statusCounts(stats: IdeasResponse['stats']): Record<string, number> {
  * registered strategy and its latest gate run), then the idea pool.
  */
 export default function Research() {
-  const strategies = useFetch<ApiEnvelope<ListPayload<StrategyRecord>>>('/api/strategies')
-  const ops = useFetch<ApiEnvelope<OpsPayload>>('/api/ops', { ttlMs: 30_000 })
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const ideas = useFetch<IdeasResponse>('/api/ideas')
-  const board = useFetch<ApiEnvelope<StrategyBoardPayload>>(STRATEGY_BOARD_EVIDENCE_URL)
-  const gateRuns = useFetch<ApiEnvelope<RunsListPayload>>(runsUrl({ kind: 'gate' }))
-  const gateBoard = useFetch<ApiEnvelope<StrategyBoardPayload>>('/api/strategy-board?include_evidence=true')
   const setFetchedAt = useSetFetchedAt()
-
-  const fetchedAt = strategies.data?.fetched_at ?? null
+  const fetchedAt = ideas.data?.fetched_at ?? null
   useEffect(() => {
     setFetchedAt(fetchedAt)
     return () => setFetchedAt(null)
   }, [fetchedAt, setFetchedAt])
+  return <div className="decision-page research-page">
+    <header className="page-heading">
+      <h1>Research</h1>
+    </header>
+    <RetainedExperiments />
+    <details className="research-diagnostics" open={diagnosticsOpen}
+      onToggle={event => setDiagnosticsOpen(event.currentTarget.open)}>
+      <summary>Research diagnostics <span>Pipeline, sources & registry</span></summary>
+      {diagnosticsOpen && <ResearchDiagnostics ideas={ideas} />}
+    </details>
+    <IdeaPool query={ideas} />
+  </div>
+}
 
+function ResearchDiagnostics({ ideas }: { ideas: UseFetchResult<IdeasResponse> }) {
+  const strategies = useFetch<ApiEnvelope<ListPayload<StrategyRecord>>>('/api/strategies')
+  const ops = useFetch<ApiEnvelope<OpsPayload>>('/api/ops', { ttlMs: 30_000 })
+  const board = useFetch<ApiEnvelope<StrategyBoardPayload>>(STRATEGY_BOARD_EVIDENCE_URL)
+  const gateRuns = useFetch<ApiEnvelope<RunsListPayload>>(runsUrl({ kind: 'gate' }))
+  const gateBoard = useFetch<ApiEnvelope<StrategyBoardPayload>>('/api/strategy-board?include_evidence=true')
   // Raw run metadata cannot establish a tier. Only independently bound gate evidence admits
   // real-proxy observations; fixture exploration stays in the explicitly labeled board.
   const validated = gateBoard.data?.ok === true && !gateBoard.data.stale && gateBoard.error === null &&
@@ -124,9 +138,8 @@ export default function Research() {
   ]
 
   return (
-    <main className="decision-page research-page">
+    <div className="research-diagnostics-content">
       {strategies.data !== undefined && <StaleNotice env={strategies.data} />}
-
       <ResearchDecision
         strategies={strategies}
         ops={ops}
@@ -188,11 +201,7 @@ export default function Research() {
       </div>
 
       <StrategyBoard compact />
-
-      <RetainedExperiments />
-
-      <IdeaPool query={ideas} />
-    </main>
+    </div>
   )
 }
 
@@ -301,7 +310,7 @@ function ResearchDecision({
     <section className="decision-report" data-state={state} aria-labelledby="research-decision-heading">
       <div className="decision-report-head">
         <div>
-          <h1 id="research-decision-heading" className="micro-label">research decision</h1>
+          <h2 id="research-decision-heading" className="micro-label">research decision</h2>
           <div className="decision-state">{state}</div>
         </div>
         <div className="decision-consequence">{consequence}</div>

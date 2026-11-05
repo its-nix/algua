@@ -283,6 +283,11 @@ export function resolveFixture(url: string): unknown | undefined {
   const path = url.split('?')[0]
 
   switch (path) {
+    case '/api/research-memory': return envelope({
+      schema_version: 'retained-research-index/v1', metadata_verified: false,
+      evidence_mode: 'UNVERIFIED_WORKER', authority: 'none', association: 'cycle_only',
+      count: 0, has_more: false, limit: 20, attempts: [],
+    })
     case '/api/triage':      return TRIAGE
     case '/api/fleet':       return FLEET
     case '/api/book':        return BOOK
