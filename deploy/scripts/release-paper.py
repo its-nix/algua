@@ -116,7 +116,13 @@ def release(spec: dict[str, Any], uid: int) -> Path:
     require(set(spec) == {"path", "commit", "lock_sha256", "files", "digest"}, "release_shape")
     root = Path(spec["path"])
     controlled(root)
-    require(root.is_absolute() and root.resolve() == root and root.is_dir(), "release_path")
+    require(
+        root.is_absolute()
+        and root.resolve() == root
+        and root.is_dir()
+        and re.fullmatch(r"/[A-Za-z0-9/._-]+", str(root)),
+        "release_path",
+    )
     payload = {key: value for key, value in spec.items() if key not in {"path", "digest"}}
     require(digest(canonical(payload)) == spec["digest"], "release_digest_mismatch")
     require(isinstance(spec["files"], dict) and spec["files"], "release_inventory")
@@ -276,7 +282,31 @@ def show(request: dict[str, Any], unit: str) -> dict[str, str]:
     )
 
 
+def unit_environment(request: dict[str, Any], base: str, role: str) -> dict[str, str]:
+    cache = request["data_dir"] + "/paper-runtime/" + role
+    values = {
+        "PATH": base + "/.venv/bin:/usr/local/bin:/usr/bin:/bin",
+        "PYTHONPATH": base,
+        "ALGUA_DB_PATH": request["database"],
+        "ALGUA_DATA_DIR": request["data_dir"],
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "XDG_CACHE_HOME": cache + "/cache",
+        "NUMBA_CACHE_DIR": cache + "/numba",
+        "MPLCONFIGDIR": cache + "/matplotlib",
+        "TMPDIR": cache + "/tmp",
+        "GIT_OPTIONAL_LOCKS": "0",
+    }
+    roots = [request["previous"]["path"], request["target"]["path"]] if role == "paper" else [base]
+    values["GIT_CONFIG_COUNT"] = str(len(roots))
+    for index, root in enumerate(roots):
+        values[f"GIT_CONFIG_KEY_{index}"] = "safe.directory"
+        values[f"GIT_CONFIG_VALUE_{index}"] = root
+    return values
+
+
 def unit_contract(request: dict[str, Any]) -> dict[str, bool]:
+    controlled(Path("/usr/bin/env"))
     current = request["current"]
     for unit in SERVICES:
         state = show(request, unit)
@@ -292,11 +322,16 @@ def unit_contract(request: dict[str, Any]) -> dict[str, bool]:
             if unit == SERVICES[0]
             else ""
         )
+        role = "paper" if unit == SERVICES[0] else "drainer"
+        prefix = " ".join(
+            f"{key}={value}" for key, value in unit_environment(request, base, role).items()
+        )
+        argv = "/usr/bin/env " + prefix + " " + argv
         require(
             state.get("LoadState") == "loaded"
             and state.get("User") == request["runtime_user"]
             and state.get("WorkingDirectory") == base
-            and state.get("ExecStart", "").startswith(f"{{ path={command} ; argv[]={argv} ;")
+            and state.get("ExecStart", "").startswith(f"{{ path=/usr/bin/env ; argv[]={argv} ;")
             and state["ExecStart"].count("{ path=") == 1,
             "unit_paths_must_follow_current_symlink",
         )
@@ -340,6 +375,7 @@ def checks(request: dict[str, Any], root: Path) -> None:
         os.chown(copy, account.pw_uid, account.pw_gid)
         env = {
             "PATH": str(root / ".venv/bin") + ":/usr/local/bin:/usr/bin:/bin",
+            "PYTHONPATH": str(root),
             "HOME": directory,
             "XDG_CACHE_HOME": directory + "/cache",
             "XDG_CONFIG_HOME": directory + "/config",

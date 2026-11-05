@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
+import shlex
 import shutil
 import sqlite3
 import subprocess
@@ -96,6 +98,20 @@ if args[0]=='show':
   suffix='.venv/bin/algua' if paper else '.opencode/scripts/drain-mergeback-queue.sh'
   exe=str(current/suffix)
   argv=exe+(' operator run --job paper -- algua paper run-all --refresh' if paper else '')
+  if not s.get('old_contract'):
+   data=str(p.parent/'data'); cache=data+'/paper-runtime/'+('paper' if paper else 'drainer')
+   values=['PATH='+str(current/'.venv/bin')+
+           ':/usr/local/bin:/usr/bin:/bin', 'PYTHONPATH='+str(current),
+           'ALGUA_DB_PATH='+data+'/registry.db', 'ALGUA_DATA_DIR='+data,
+           'PYTHONNOUSERSITE=1', 'PYTHONDONTWRITEBYTECODE=1',
+           'XDG_CACHE_HOME='+cache+'/cache', 'NUMBA_CACHE_DIR='+cache+'/numba',
+           'MPLCONFIGDIR='+cache+'/matplotlib', 'TMPDIR='+cache+'/tmp',
+           'GIT_OPTIONAL_LOCKS=0']
+   roots=[str(p.parent/'previous'),str(p.parent/'target')] if paper else [str(current)]
+   values+=['GIT_CONFIG_COUNT='+str(len(roots))]
+   for i,root in enumerate(roots):
+    values+=['GIT_CONFIG_KEY_'+str(i)+'=safe.directory','GIT_CONFIG_VALUE_'+str(i)+'='+root]
+   argv='/usr/bin/env '+' '.join(values)+' '+argv; exe='/usr/bin/env'
   print('LoadState=loaded\\nActiveState='+s.get('service_state','inactive'))
   print('User='+s.get('runtime_user','nobody'))
   print('WorkingDirectory='+s.get('working_directory',str(current)))
@@ -118,6 +134,19 @@ import json,os,sqlite3,subprocess,sys,time
 from datetime import datetime,timezone
 from pathlib import Path
 p=Path(STATE_PATH); s=json.loads(p.read_text())
+if sys.argv[1:3]==['operator','run']:
+ child=subprocess.run(sys.argv[sys.argv.index('--')+1:],capture_output=True,text=True)
+ print(child.stdout,end=''); print(child.stderr,end='',file=sys.stderr); sys.exit(child.returncode)
+if sys.argv[1:3]==['paper','run-all']:
+ import algua
+ git=subprocess.run(['git','status','--porcelain','--untracked-files=no'],
+                    capture_output=True,text=True)
+ if git.returncode: print(git.stderr,file=sys.stderr); sys.exit(git.returncode)
+ print(json.dumps({'executable':sys.argv[0], 'module':algua.__file__,
+                   'database':os.environ['ALGUA_DB_PATH'], 'data_dir':os.environ['ALGUA_DATA_DIR'],
+                   'no_user_site':sys.flags.no_user_site,
+                   'no_bytecode':sys.dont_write_bytecode}))
+ sys.exit(0)
 s['calls'].append(['algua',str(Path.cwd()),*sys.argv[1:],os.environ['ALGUA_DB_PATH']])
 s.setdefault('runtime_uids',[]).append(os.getuid())
 s['runtime_env_keys']=sorted(os.environ)
@@ -133,6 +162,8 @@ with sqlite3.connect(os.environ['ALGUA_DB_PATH']) as c:
 bad=Path.cwd().name in s['bad']
 response={'ok':not bad,'verified':True}
 if sys.argv[1:3]==['fleet','health']:
+ import algua
+ response['ok']=response['ok'] and algua.RELEASE_MARKER==Path.cwd().name
  branch=subprocess.run(['git','branch','--show-current'],capture_output=True,text=True)
  clean=subprocess.run(['git','status','--porcelain','--untracked-files=no'],
                       capture_output=True,text=True)
@@ -151,6 +182,7 @@ sys.exit(int(not response['ok']))
             ).replace("STATE_PATH", repr(str(state)))
         )
         cli.chmod(0o755)
+        (root / "algua.py").write_text("RELEASE_MARKER = " + repr(name) + "\n")
         (root / "uv.lock").write_text("fixture locked dependencies\n")
         subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True)
         subprocess.run(["git", "-C", str(root), "add", "."], check=True)
@@ -501,3 +533,59 @@ def test_unmigrated_paper_tenant_is_not_silently_ignored(world):
     assert json.loads(result.stdout)["phase"] == "halted"
     assert not any(json.loads(state.read_text())["timers"].values())
     assert Path(request["current"]).resolve() == Path(request["previous"]["path"])
+
+
+def test_unit_prefix_binds_inner_command_imports_and_data_despite_environment_file(world):
+    _, request, state = world
+    _state(world, old_contract=True)
+    refused = _run(world)
+    assert refused.returncode == 1
+    assert json.loads(refused.stdout).get("code") == "unit_paths_must_follow_current_symlink"
+    assert not any(call[0] == "algua" for call in json.loads(state.read_text())["calls"])
+    _state(world, old_contract=False)
+    released = _run(world)
+    assert released.returncode == 0, released.stdout
+    shown = subprocess.run(
+        ["systemctl", "--user", "show", "algua-paper.service"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    command = shlex.split(re.search(r"argv\[\]=(.*?) ;", shown.stdout).group(1))
+    authority = Path(request["authority_checkout"])
+    (authority / ".venv/bin").mkdir(parents=True)
+    fallback = authority / ".venv/bin/algua"
+    fallback.write_text('#!/usr/bin/env python3\nraise SystemExit("WRONG_AUTHORITY_PROGRAM")\n')
+    fallback.chmod(0o755)
+    (authority / "algua.py").write_text('RELEASE_MARKER = "WRONG_AUTHORITY_IMPORT"\n')
+    home = authority / "runtime-home"
+    home.mkdir()
+    os.chown(home, 65534, 65534)
+    wrong = {
+        "PATH": request["authority_checkout"] + "/.venv/bin:/usr/local/bin:/usr/bin:/bin",
+        "PYTHONPATH": request["authority_checkout"],
+        "ALGUA_DB_PATH": "WRONG_DATABASE",
+        "ALGUA_DATA_DIR": "WRONG_DATA",
+        "PYTHONNOUSERSITE": "",
+        "PYTHONDONTWRITEBYTECODE": "",
+        "HOME": str(home),
+    }
+    inner = subprocess.run(
+        command,
+        cwd=request["current"],
+        env=wrong,
+        user=65534,
+        group=65534,
+        extra_groups=[],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert inner.returncode == 0, inner.stderr
+    payload = json.loads(inner.stdout)
+    assert (
+        Path(payload["executable"]).resolve() == Path(request["target"]["path"]) / ".venv/bin/algua"
+    )
+    assert Path(payload["module"]).resolve() == Path(request["target"]["path"]) / "algua.py"
+    assert payload["database"] == request["database"] and payload["data_dir"] == request["data_dir"]
+    assert payload["no_user_site"] == 1 and payload["no_bytecode"] is True

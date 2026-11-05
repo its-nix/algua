@@ -133,16 +133,44 @@ Required installation:
   `0600` operational files; absent lock files are created with those permissions, never artifact
   files repaired or ownership changed into approval.
 - `current` is an existing root-owned symlink beneath root-controlled parents, used **only for paper**.
-  The paper service's `WorkingDirectory` is that literal path and its canonical `ExecStart` is
-  `<current>/.venv/bin/algua operator run --job paper -- algua paper run-all --refresh`.
+  The paper service's `WorkingDirectory` is that literal path. Its canonical `ExecStart` is
+  `/usr/bin/env <bindings-below> <current>/.venv/bin/algua operator run --job paper -- algua paper run-all --refresh`.
 - The drainer uses a **separate mutable authority checkout**, with `WorkingDirectory` equal to its
-  literal configured path and `ExecStart=<authority>/.opencode/scripts/drain-mergeback-queue.sh`.
+  literal configured path and
+  `ExecStart=/usr/bin/env <bindings-below> <authority>/.opencode/scripts/drain-mergeback-queue.sh`.
   Both services explicitly declare the same nonroot `User`, matching `runtime_user`. The existing
   installer renders both services against one physical checkout and therefore does **not** satisfy
   this release contract. Mismatches refuse; this entry never rewrites units or the installer.
 - The database, shared artifact/data store and root-controlled evidence location stay outside the
   immutable releases. Existing financial permissions and credentials remain configured separately;
   verification receives no inherited credentials. No live/research unit may follow this paper selector.
+
+Both unit commands must start with the root-controlled `/usr/bin/env` and these assignments in
+this order, before the executable. `BASE` is the literal `current` path for paper or
+`authority_checkout` for the drainer; `CACHE` is `<data_dir>/paper-runtime/paper` or
+`<data_dir>/paper-runtime/drainer`. The owner must provision these external cache directories for
+the configured runtime user. The prefix overrides conflicting `EnvironmentFile` values and binds
+the inner bare `algua` command and Python imports to the same program checked for release.
+
+```text
+PATH=BASE/.venv/bin:/usr/local/bin:/usr/bin:/bin PYTHONPATH=BASE
+ALGUA_DB_PATH=<database> ALGUA_DATA_DIR=<data_dir>
+PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1
+XDG_CACHE_HOME=CACHE/cache NUMBA_CACHE_DIR=CACHE/numba MPLCONFIGDIR=CACHE/matplotlib TMPDIR=CACHE/tmp
+GIT_OPTIONAL_LOCKS=0
+```
+
+For paper, append `GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=safe.directory
+GIT_CONFIG_VALUE_0=<previous.path> GIT_CONFIG_KEY_1=safe.directory
+GIT_CONFIG_VALUE_1=<target.path>`. For the drainer, append `GIT_CONFIG_COUNT=1
+GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=<authority_checkout>`. These are exact approved
+physical roots; the selector alias alone does not satisfy Git ownership checks. Release paths use
+the same plain absolute path vocabulary as the other configured unit paths.
+
+These are one argv prefix, not shell commands or variable-expansion instructions. Existing
+financial credentials remain supplied through the already configured service environment.
+Private verification similarly sets `PYTHONPATH` to the exact physical approved release and uses
+its own private registry/cache paths; editable imports outside that release cannot supply its core.
 
 Supply a root-owned regular JSON request, not group/other writable, with these exact keys:
 
@@ -185,8 +213,8 @@ and fsyncs selection intent, atomically selects the approved release, then runs 
 These checks use a private consistent registry copy: their existing migration paths cannot alter the
 real registry, and a schema change on the copy refuses. Private DB/cache ownership is prepared for
 the runtime; its environment contains only the explicit data paths and local execution/cache settings.
-Git trusts only the exact approved root-owned release path through a per-command `safe.directory`
-setting; branch/cleanliness checks remain active. Active legacy, working-tree or unmigrated paper
+Private checks trust only their exact approved physical release path through a per-command Git
+`safe.directory` setting; branch/cleanliness checks remain active. Active legacy, working-tree or unmigrated paper
 tenants refuse this frozen-paper release entry; it does not migrate or reactivate them.
 The paper loop must be observed `ok`/`idle`; unrelated research incidents do not veto this paper check.
 Existing fleet and frozen-content checks remain binding. No order or broker/account call is launched.
