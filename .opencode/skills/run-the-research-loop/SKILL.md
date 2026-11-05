@@ -57,6 +57,14 @@ as an executed gate or a provenance limitation as numerical refutation of the hy
 
 ## The loop (repeat for each claimed idea, then stop)
 
+For a bootstrap replication with specified parameters, evaluate exactly that configuration.
+Run the registered backtest, one walk-forward and a singleton sweep of the same declared values;
+do not add neighboring parameter values or optional robustness searches. Reuse completed result
+JSON rather than recomputing it to change presentation. This does not waive costs, integrity,
+breadth recording or qualification gates, and a singleton trial establishes no parameter
+robustness. Other research ideas may run their predeclared grid within the assigned budget.
+Keep incomplete and failed trials explicit; never report an unexecuted grid as measured breadth.
+
 For each claimed idea:
 
 1. **Work the claimed ideas.** Your goal names them (`idea_id`, title, hypothesis, category,
