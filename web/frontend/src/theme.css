@@ -1447,6 +1447,12 @@ details[open] > .stage-summary::before { content: '▾'; }
   min-width: 0;
 }
 
+/* Retained inputs can contain long hashes, paths and whole parameter grids. Keep
+   their complete text available without letting intrinsic widths grow the page. */
+#retained-experiments { min-width: 0; overflow-wrap: anywhere; }
+#retained-experiments pre { max-width: 100%; overflow-x: auto; }
+#retained-experiments select { max-width: 100%; }
+
 .decision-report {
   --decision-color: var(--electric);
   position: relative;
