@@ -91,6 +91,9 @@ mkdir -p "${XDG_DIR}/opencode"
 
 ENVV=(
   "XDG_CONFIG_HOME=${XDG_DIR}"
+  # Usage telemetry writes generated JSON under this source-pinned XDG tree; experiment
+  # tracking is separate and remains enabled.
+  "MLFLOW_DISABLE_TELEMETRY=true"
   "OPENCODE_DISABLE_EXTERNAL_SKILLS=1"
   "OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1"
 )
