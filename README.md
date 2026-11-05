@@ -9,6 +9,7 @@ See `docs/agent/` for operating docs. Dated material in `docs/superpowers/` pres
 Brand assets and usage guidance live in [`docs/brand/`](docs/brand/README.md).
 
 ## Quickstart
+
 ```
 uv sync
 uv run algua doctor
@@ -43,6 +44,29 @@ uv run algua data ingest-universe core \
 uv run algua data inspect
 uv run algua data inspect --summary
 ```
+
+### Current-collected fundamentals
+
+Current quarterly fundamentals can be acquired without preparing a CSV:
+
+```sh
+uv run algua data fetch-fundamentals --symbols AAPL,MSFT
+uv run algua data query-fundamentals --snapshot-id <returned-id>
+```
+
+This uses the existing yfinance dependency and immutable fundamentals store for revenue, diluted
+EPS and net income. Every row becomes knowable at actual collection completion; fiscal period
+labels are not filing/availability timestamps. The snapshot records library/version, clocks,
+metric mapping and limitations. Vendor history can be restated, historical availability is UNKNOWN,
+and currency/units are not independently verified. No `--as-of` override backdates the collection.
+Before collection time, the existing as-of serving path returns none of these rows. This supplies
+current-collected research inputs, not a historical PIT dataset or evidence of news/combined alpha.
+Missing/invalid data for any requested issuer refuses before any snapshot is published. Existing
+`ingest-fundamentals --from-file` remains available for explicitly sourced local data.
+
+News ingestion still requires a sourced local file: the free yfinance news endpoint returned a
+provider-unavailable error during this slice's live check. No replacement news or historical
+knowledge timestamps were fabricated.
 
 ## Containerized research-loop runs (local-first)
 
