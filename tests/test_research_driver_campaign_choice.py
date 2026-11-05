@@ -183,6 +183,51 @@ def test_rejected_driver_choice_never_claims_or_falls_back(driver_pool, tmp_path
     assert driver_pool.execute('SELECT COUNT(*) FROM idea_attempts').fetchone()[0] == 0
 
 
+def test_driver_preserves_failed_chooser_error_envelope(driver_pool, tmp_path, monkeypatch):
+    monkeypatch.setenv('FIXTURE_CASE', 'provider')
+    result = _driver_start(tmp_path, '--choose-campaign')
+    assert result.returncode != 0
+    envelope = json.loads(next(line for line in result.stderr.splitlines()
+                               if line.startswith('{')))
+    assert envelope == {'ok': False,
+                        'error': 'chooser runtime failed (exit 3); see private artifacts',
+                        'code': 'invalid_input', 'retryable': False, 'phase': 'cycle_start'}
+    assert result.stdout == ''
+    assert driver_pool.execute('SELECT COUNT(*) FROM idea_attempts').fetchone()[0] == 0
+
+
+@pytest.mark.parametrize('kind', ['envelope', 'malformed', 'wrong_status',
+                                  'wrong_types', 'retryable'])
+def test_failed_start_diagnostics_never_echo_claims_or_free_text(
+        driver_pool, tmp_path, monkeypatch, kind):
+    secret = 'SYNTHETIC_FIXTURE_PRIVATE_TOKEN'
+    payload = {'ok': False, 'error': secret, 'code': 'invalid_input', 'retryable': False,
+               'phase': secret, 'claimed': [{'id': 3, 'claim_token': secret}], 'token': secret}
+    if kind == 'wrong_status':
+        payload['ok'] = True
+    if kind == 'wrong_types':
+        payload.update(code=secret, retryable=secret)
+    if kind == 'retryable':
+        payload.update(code='db_unavailable', retryable=True)
+    raw = secret if kind == 'malformed' else json.dumps(payload)
+    monkeypatch.setitem(globals(), 'FIXTURE_CLI',
+                        f'import sys; sys.stdout.write({raw!r}); raise SystemExit(1)')
+    result = _driver_start(tmp_path, '--choose-campaign')
+    assert result.returncode != 0
+    assert secret not in result.stdout + result.stderr
+    envelope = json.loads(next(line for line in result.stderr.splitlines()
+                               if line.startswith('{')))
+    assert set(envelope) == {'ok', 'error', 'code', 'retryable', 'phase'}
+    assert envelope['ok'] is False and envelope['retryable'] is (kind == 'retryable')
+    expected_code = ('db_unavailable' if kind == 'retryable' else
+                     'invalid_input' if kind == 'envelope' else 'cycle_start_failed')
+    assert envelope['code'] == expected_code
+    assert envelope['phase'] == 'cycle_start'
+    assert result.stdout == ''
+    assert not _calls(tmp_path)
+    assert driver_pool.execute('SELECT COUNT(*) FROM idea_attempts').fetchone()[0] == 0
+
+
 def test_driver_restart_never_calls_chooser_or_claims_twice(driver_pool, tmp_path):
     _started(_driver_start(tmp_path, '--choose-campaign'))
     before = list(driver_pool.execute('SELECT id, claim_token FROM idea_attempts'))
