@@ -13,6 +13,7 @@ from algua.cli.errors import json_errors
 from algua.config.settings import get_settings
 from algua.operator.research_cycle import ResearchCycle
 from algua.operator.research_memory import ResearchMemory
+from algua.operator.research_memory_index import list_retained_research, read_retained_research
 from algua.registry.db import registry_conn
 from algua.tracking.research_archive import LocalResearchArchive
 
@@ -62,9 +63,18 @@ def capture(
 @json_errors
 def show(run: str = typer.Option(..., "--run")) -> None:
     """Read and verify retained public evidence, including after the worker is removed."""
-    with _memory(run) as memory:
-        payload = memory.read()
+    settings = get_settings()
+    payload = read_retained_research(
+        run, database=settings.db_path, data_dir=settings.data_dir,
+        tracking_uri=settings.mlflow_tracking_uri, tracking_backend=settings.tracking_backend)
     emit(ok(payload))
+
+
+@memory_app.command("list")
+@json_errors
+def list_(limit: int = typer.Option(20, "--limit", min=1, max=100)) -> None:
+    """List unverified terminal attempt references without opening or migrating authority."""
+    emit(ok(list_retained_research(get_settings().db_path, limit=limit)))
 
 
 @memory_app.command("cleanup-check")

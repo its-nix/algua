@@ -37,6 +37,7 @@ from backend.params import (
     validate_actor,
     validate_family,
     validate_lane,
+    validate_research_cycle,
     validate_run_ids,
     validate_run_kind,
     validate_since,
@@ -294,6 +295,17 @@ def create_app() -> FastAPI:
         if sort is not None:
             args.append(f"--sort={validate_sort(sort)}")
         return await run_cli(*args, ttl_s=60.0)
+
+    @app.get("/api/research-memory")
+    async def retained_research(
+        limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    ) -> dict[str, Any]:
+        return await run_cli("research", "memory", "list", f"--limit={limit}", ttl_s=30.0)
+
+    @app.get("/api/research-memory/{cycle_id}")
+    async def retained_research_detail(cycle_id: str) -> dict[str, Any]:
+        return await run_cli("research", "memory", "show",
+                             f"--run={validate_research_cycle(cycle_id)}", ttl_s=30.0)
 
     @app.get("/api/strategy-board")
     async def strategy_board(

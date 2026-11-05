@@ -4,6 +4,7 @@ import type { UseFetchResult } from '../api'
 import { useSetFetchedAt } from '../App'
 import EvidenceDisclosure from '../components/EvidenceDisclosure'
 import EvidenceStatus from '../components/EvidenceStatus'
+import RetainedExperiments from '../components/RetainedExperiments'
 import { ScatterISOOSView } from '../components/ScatterISOOS'
 import StaleNotice from '../components/StaleNotice'
 import {
@@ -153,6 +154,8 @@ export default function Research() {
       </div>
 
       <StrategyBoardView query={board} compact />
+
+      <RetainedExperiments />
 
       <IdeaPool query={ideas} />
     </main>
