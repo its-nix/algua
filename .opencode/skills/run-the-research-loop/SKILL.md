@@ -31,6 +31,30 @@ synthetic experiment, and report it as synthetic. Never fall back to demo when r
 missing. If the selected interface cannot run a required evaluation, record `run_error` with the
 actual refusal; do not replace the hypothesis, strip a required model or relax a gate.
 
+### Declared real-data pilot
+
+`pilot_real_proxy` permits exploratory backtests, chronological walk-forward windows and sweeps
+on the pinned real snapshot. Missing historical membership or as-of adjustment history does not
+by itself prevent these calculations. Use `adj_close` for price signals; keep the declared
+snapshot, dates, costs, configuration and seed. Use the static-universe backtest path when genuine
+historical membership is unavailable; never manufacture a PIT universe from today's members.
+Tell both author and interpret that this is proxy exploration before delegating.
+
+Preserve all seven pilot limitations in the report: vendor-revisable adjusted prices, unverified
+corporate actions, missing delisted symbols, unavailable event knowledge times, unavailable
+historical market cap, unavailable PIT universe membership and survivorship bias. Previously
+examined pilot windows are not an untouched holdout. Numerical results can test implementation
+and proxy behavior; they establish neither PIT correctness nor an investable edge.
+
+Run the empirical steps below before judging the proxy's observed behavior, unless the actual
+CLI refuses or a required input is missing. Report those failures honestly; never fabricate
+metrics. Qualification remains separate: a known-ineligible proxy must not reach candidate or
+enqueue `merge_back`. A strict preview may record the gate's actual refusal, without relaxation
+flags; otherwise record the known provenance preflight limit with `preview_gate: null`. Keep the
+existing `integrity_fail` outcome for that qualification limit and assess the economic
+falsification only as far as the recorded proxy evidence supports. Do not describe an unrun gate
+as an executed gate or a provenance limitation as numerical refutation of the hypothesis.
+
 ## The loop (repeat for each claimed idea, then stop)
 
 For each claimed idea:
