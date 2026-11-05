@@ -121,6 +121,30 @@ permission. This is a paper-only supervisor release entry, distinct from a strat
 manifest. The account/path/unit contract below must be reviewed and installed by the owner before
 use; adding this script does not activate it or establish production acceptance.
 
+### Draft unprivileged application builder
+
+`deploy/scripts/build-paper-release.py` prepares an **untrusted** artifact, never an approval:
+
+```sh
+python deploy/scripts/build-paper-release.py --repository /trusted/source --commit <exact-40-hex-commit> \
+  --output /owned/application --descriptor /owned/application-spec.json
+```
+
+Run Python 3.12 as a nonroot user in a disposable build environment with `uv` available. The
+descriptor is a sidecar outside the application, using the existing `target`/`previous` shape
+documented below. The new application profile fetches only the selected commit, uses a clean `main` sparse
+checkout omitting only the seven enumerated non-runtime `.claude/skills` aliases, installs with
+`uv sync --locked --no-editable`, and inventories the materialized runtime after copying interpreter
+links. Fresh Git export and a replacement build environment do not copy local untracked `.env`,
+credentials, runtime databases or caches. Build hooks execute only as the unprivileged builder.
+
+`application-runtime.json` records the builder, interpreter and external standard-library source
+identity. This is **not** the protected frozen-planner environment profile or a self-contained OS/
+stdlib closure. Executable wheel startup shims remain locked/inventory-bound code, not statically
+certified safe. The consumer does not verify external base-runtime state; the owner must separately
+adopt a compatible trusted base and root-controlled artifact. No ownership repair, authority DB
+migration, signing, selection, activation or compatibility approval is performed by the builder.
+
 Required installation:
 
 - Run the trusted, separately installed operator entry with a root-controlled Python 3.12 interpreter
