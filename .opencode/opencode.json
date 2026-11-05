@@ -78,7 +78,7 @@
     "research":  { "model": "openai/gpt-6-astra",              "variant": "low" },
     "author":    { "model": "openai/gpt-6-astra",              "variant": "low" },
     "interpret": { "model": "openai/gpt-5.6-sol",             "variant": "low" },
-    "leap":      { "model": "openai/gpt-6-astra",             "variant": "high" },
+    "leap":      { "model": "openai/gpt-6-astra",             "variant": "low" },
     "forage":    { "model": "openai/gpt-5.6-sol-fast" }
   }
 }
