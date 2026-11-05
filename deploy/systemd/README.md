@@ -145,6 +145,24 @@ certified safe. The consumer does not verify external base-runtime state; the ow
 adopt a compatible trusted base and root-controlled artifact. No ownership repair, authority DB
 migration, signing, selection, activation or compatibility approval is performed by the builder.
 
+### Draft opt-in Actions producer (owner review required)
+
+`paper-application-artifact.yml` adds only `workflow_dispatch`, restricted to `main`. After owner
+review, dispatch it explicitly with a full source SHA; it never runs on push, PR or a schedule.
+The candidate must be an ancestor of fetched `main`. The recipe comes separately from the
+[workflow's own commit](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts),
+not candidate source. Read-only checkout credentials and runner tokens stay outside the disposable
+nonroot build container, which receives only sanitized source, read-only builder/uv and output space.
+
+The producer uploads a tar archive, the unchanged consumer descriptor, provenance and checksums.
+It ignores build-produced `.git` before traversal and reconstructs clean sparse metadata from the
+verified input, with hooks disabled and fsmonitor false. Runtime file bytes remain inventory-bound;
+archive modes preserve executability without granting ownership or approval. The tar retains these
+modes through [artifact upload](https://github.com/actions/upload-artifact#permission-loss).
+Owner adoption, compatible approved Python/OS base, release compatibility and activation remain
+separate prerequisites. Linux CI output alone proves no VPS compatibility. This dependent draft
+does not enable deployment, signing, secrets, automatic runs or any persistent-host execution.
+
 Required installation:
 
 - Run the trusted, separately installed operator entry with a root-controlled Python 3.12 interpreter
