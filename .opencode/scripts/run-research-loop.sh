@@ -732,6 +732,16 @@ try:
                              error) if isinstance(error, str) else None
         if match and int(match[1]) <= 255:
             safe["error"] = "chooser runtime failed (exit %d); see private artifacts" % int(match[1])
+        # Closed campaign_memory reader/admission vocabulary; never accept an arbitrary suffix.
+        memory_reasons = {"activation_invalid", "request_invalid", "runtime_unavailable",
+            "worker_launch_failed", "read_deadline_exceeded", "worker_output_exceeded",
+            "worker_exit_abnormal", "worker_result_invalid", "archive_store_unavailable",
+            "checkpoint_invalid", "receipt_invalid", "artifact_location_unsupported",
+            "source_bytes_exceeded", "artifact_changed", "artifact_integrity_mismatch",
+            "artifact_payload_invalid", "context_bytes_exceeded"}
+        if isinstance(error, str) and error in {
+                "public_memory_context:" + reason for reason in memory_reasons}:
+            safe["error"] = error
 except (ValueError, RecursionError):
     pass
 print(json.dumps(safe), file=sys.stderr)

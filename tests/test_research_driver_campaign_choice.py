@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from algua.operator.campaign_memory import _REASONS
 from algua.operator.research_cycle import ResearchCycle
 from algua.registry.db import connect, migrate
 from tests.campaign_fixtures import add_idea
@@ -196,8 +197,26 @@ def test_driver_preserves_failed_chooser_error_envelope(driver_pool, tmp_path, m
     assert driver_pool.execute('SELECT COUNT(*) FROM idea_attempts').fetchone()[0] == 0
 
 
-@pytest.mark.parametrize('kind', ['envelope', 'malformed', 'wrong_status',
-                                  'wrong_types', 'retryable'])
+@pytest.mark.parametrize('reason', sorted(_REASONS))
+def test_failed_start_preserves_only_closed_public_memory_reason(
+        driver_pool, tmp_path, monkeypatch, reason):
+    error = 'public_memory_context:' + reason
+    payload = {'ok': False, 'error': error, 'code': 'invalid_input', 'retryable': False}
+    raw = json.dumps(payload)
+    monkeypatch.setitem(globals(), 'FIXTURE_CLI',
+                        f'import sys; sys.stdout.write({raw!r}); raise SystemExit(1)')
+    result = _driver_start(tmp_path, '--choose-campaign')
+    assert result.returncode != 0 and result.stdout == ''
+    envelope = json.loads(next(line for line in result.stderr.splitlines()
+                               if line.startswith('{')))
+    assert envelope == {'ok': False, 'error': error, 'code': 'invalid_input',
+                        'retryable': False, 'phase': 'cycle_start'}
+    assert not _calls(tmp_path)
+    assert driver_pool.execute('SELECT COUNT(*) FROM idea_attempts').fetchone()[0] == 0
+
+
+@pytest.mark.parametrize('kind', ['envelope', 'malformed', 'wrong_status', 'wrong_types',
+                                  'retryable', 'memory_unknown', 'memory_suffix', 'memory_prefix'])
 def test_failed_start_diagnostics_never_echo_claims_or_free_text(
         driver_pool, tmp_path, monkeypatch, kind):
     secret = 'SYNTHETIC_FIXTURE_PRIVATE_TOKEN'
@@ -209,6 +228,12 @@ def test_failed_start_diagnostics_never_echo_claims_or_free_text(
         payload.update(code=secret, retryable=secret)
     if kind == 'retryable':
         payload.update(code='db_unavailable', retryable=True)
+    if kind == 'memory_unknown':
+        payload['error'] = 'public_memory_context:unrecognized_reason'
+    if kind == 'memory_suffix':
+        payload['error'] = 'public_memory_context:artifact_changed ' + secret
+    if kind == 'memory_prefix':
+        payload['error'] = secret + ' public_memory_context:artifact_changed'
     raw = secret if kind == 'malformed' else json.dumps(payload)
     monkeypatch.setitem(globals(), 'FIXTURE_CLI',
                         f'import sys; sys.stdout.write({raw!r}); raise SystemExit(1)')
@@ -219,9 +244,10 @@ def test_failed_start_diagnostics_never_echo_claims_or_free_text(
                                if line.startswith('{')))
     assert set(envelope) == {'ok', 'error', 'code', 'retryable', 'phase'}
     assert envelope['ok'] is False and envelope['retryable'] is (kind == 'retryable')
-    expected_code = ('db_unavailable' if kind == 'retryable' else
-                     'invalid_input' if kind == 'envelope' else 'cycle_start_failed')
+    expected_code = ('db_unavailable' if kind == 'retryable' else 'invalid_input'
+                     if kind == 'envelope' or kind.startswith('memory_') else 'cycle_start_failed')
     assert envelope['code'] == expected_code
+    assert envelope['error'] == 'cycle-start failed; inspect private artifacts'
     assert envelope['phase'] == 'cycle_start'
     assert result.stdout == ''
     assert not _calls(tmp_path)
