@@ -52,6 +52,8 @@ def test_every_mode_dry_runs_with_its_bounds(mode: str):
     # The prompt rides a FILE. Linux caps a single argv entry at 128 KiB and the leap prompt
     # (inspirations + pool state + refuted list) is the one that gets close to it.
     assert " -f " in out
+    # MLflow's generated XDG telemetry file must not pollute the pinned source inventory.
+    assert "MLFLOW_DISABLE_TELEMETRY=true" in out
 
 
 def test_only_forage_gets_the_web_search_backend():
