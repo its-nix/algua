@@ -11,9 +11,11 @@ from algua.cli._common import ok
 from algua.cli.app import emit
 from algua.cli.errors import json_errors
 from algua.config.settings import get_settings
+from algua.operator.campaign_memory import capture_public_memory
 from algua.operator.research_cycle import ResearchCycle
 from algua.operator.research_memory import ResearchMemory
 from algua.operator.research_memory_index import list_retained_research, read_retained_research
+from algua.registry.campaign_read import read_campaign_scorecard
 from algua.registry.db import registry_conn
 from algua.tracking.research_archive import LocalResearchArchive
 
@@ -91,3 +93,16 @@ def cleanup_check(
     if reason is not None:
         raise ValueError(f"research memory cleanup refused: {reason}; retain the worker worktree")
     emit(ok({"research_cycle_id": run, "cleanup_allowed": True}))
+
+
+@memory_app.command("prompt-context")
+@json_errors
+def prompt_context() -> None:
+    """Read bounded recent public numerical context without claiming or migrating authority."""
+    settings = get_settings()
+    menu = {"request": {"database": str(settings.db_path.resolve())}, "choices": [],
+            "scorecard": read_campaign_scorecard(settings.db_path)}
+    snapshot = capture_public_memory(
+        menu, cycle_directory=settings.data_dir / "research-cycles",
+        tracking_uri=settings.mlflow_tracking_uri, tracking_backend=settings.tracking_backend)
+    emit(ok({"public_research_memory": snapshot}))

@@ -163,6 +163,15 @@ unsupported schemas/inputs and resource bounds. No fixture result is market evid
 
 ## Optional campaign context
 
+`research memory prompt-context` reads the existing scorecard and retained public archives
+without migration, a claim or a synthetic cycle. Leap calls it once after its existing idle
+gates and supplies the validated recent snapshot as untrusted, cycle-only evidence. Reader
+limits remain unchanged. A valid `unavailable` snapshot stays explicit; read/validation errors
+produce `read_error` framing and no admitted metrics while legacy context continues, with no
+retry or new ideation gate. Dry runs/idle skips read no archives. The existing leap digest keeps
+only status, snapshot SHA, protocol/cutoff, receipt/attempt refs and coverage counts; it proves
+supplied-context identity, not model use, idea attribution, gate/trial authority or improvement.
+
 `research idea cycle-start --public-memory-context` adds a bounded view of retained public
 evaluations to the existing hashed `request.context.public_research_memory`. It is default-off
 and requires `--menu-only`, `--campaign FILE` or `--choose --choice-dir PATH`. Manual menu capture
