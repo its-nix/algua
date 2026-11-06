@@ -2,8 +2,9 @@ import { createContext, useContext, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { formatTimestamp } from './api'
 import Logo from './components/Logo'
+import NavigationIcon from './components/NavigationIcon'
 
-/** Screens push the envelope's fetched_at into the header slot through this. */
+/** Screens publish their fetched_at for the footer. */
 const FetchedAtContext = createContext<(iso: string | null) => void>(() => {})
 
 export function useSetFetchedAt() {
@@ -11,11 +12,12 @@ export function useSetFetchedAt() {
 }
 
 const PRIMARY_LINKS = [
-  { to: '/', label: 'Leaderboard', end: true },
-  { to: '/research', label: 'Research', end: false },
-  { to: '/money', label: 'Portfolio', end: false },
-  { to: '/now', label: 'System', end: false },
-]
+  { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
+  { to: '/research', label: 'Research', icon: 'research', end: false },
+  { to: '/fleet', label: 'Fleet', icon: 'fleet', end: false },
+  { to: '/money', label: 'Portfolio', icon: 'portfolio', end: false },
+  { to: '/now', label: 'System', icon: 'system', end: false },
+] as const
 
 export default function App() {
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
@@ -33,38 +35,38 @@ export default function App() {
               <button
                 type="button"
                 className="back-btn"
+                aria-label="Back"
                 onClick={() => {
                   if (window.history.length > 1) navigate(-1)
                   else navigate('/')
                 }}
               >
-                ← Back
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m14 5-7 7 7 7" /></svg>
               </button>
-            ) : (
-              <NavLink to="/" className="brand" aria-label="Algua strategy leaderboard">
-                <Logo />
-              </NavLink>
-            )}
-            {fetchedAt !== null && (
-              <span className="fetched-at">Updated {formatTimestamp(fetchedAt)}</span>
-            )}
+            ) : <span aria-hidden="true" />}
+            <div className="brand"><Logo /></div>
+            <span aria-hidden="true" />
           </div>
-          <nav className="secondary-nav" aria-label="Main navigation">
-            {PRIMARY_LINKS.map(({ to, label, end }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                className={({ isActive }) => isActive ? 'secondary-link active' : 'secondary-link'}
-              >
-                {label}
-              </NavLink>
-            ))}
-          </nav>
         </header>
         <main className="content">
           <Outlet />
         </main>
+        <footer className="app-footer" aria-label="Last updated">
+          {fetchedAt !== null && <time dateTime={fetchedAt}>Updated {formatTimestamp(fetchedAt)}</time>}
+        </footer>
+        <nav className="bottom-nav" aria-label="Main navigation">
+          {PRIMARY_LINKS.map(({ to, label, icon, end }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              className={({ isActive }) => isActive ? 'bottom-link active' : 'bottom-link'}
+            >
+              <NavigationIcon name={icon} />
+              <span>{label}</span>
+            </NavLink>
+          ))}
+        </nav>
       </div>
     </FetchedAtContext.Provider>
   )

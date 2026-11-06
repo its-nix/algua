@@ -126,9 +126,9 @@ export default function RetainedExperiments({ compact = false }: { compact?: boo
       <header className="retained-header">
         <div>
           <h2 id="retained-heading" className="retained-heading">{compact ? 'Latest research' : 'Research results'}</h2>
-          <p className="retained-caption">{compact ? 'Research only' : isIndex(payload)
+          {!compact && <p className="retained-caption">{isIndex(payload)
             ? `${payload.count} ${payload.count === 1 ? 'attempt' : 'attempts'}` : 'Attempt records'}
-            {!compact && ' · not registered strategies'}</p>
+            {' · not registered strategies'}</p>}
         </div>
       <details className="retained-disclosure retained-trust-dropdown">
         <summary className="retained-trust-badge">Unverified research</summary>
@@ -168,7 +168,6 @@ export default function RetainedExperiments({ compact = false }: { compact?: boo
               </li>
             })}
           </ul>
-          {compact && payload.attempts.length > 0 && <a className="retained-view-all" href="/research">View all research <span aria-hidden="true">→</span></a>}
           {!compact && payload.has_more && <p className="retained-caption">Showing the newest {payload.limit} attempts; more are retained.</p>}
         </>
       )}

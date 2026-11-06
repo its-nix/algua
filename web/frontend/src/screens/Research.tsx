@@ -87,7 +87,7 @@ export default function Research() {
     <RetainedExperiments />
     <details className="research-diagnostics" open={diagnosticsOpen}
       onToggle={event => setDiagnosticsOpen(event.currentTarget.open)}>
-      <summary>Research diagnostics <span>Pipeline, sources & registry</span></summary>
+      <summary>Diagnostics</summary>
       {diagnosticsOpen && <ResearchDiagnostics ideas={ideas} />}
     </details>
     <IdeaPool query={ideas} />
