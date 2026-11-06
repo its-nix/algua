@@ -1,18 +1,20 @@
-/* Content-first, adaptive surfaces. System typography and one restrained accent. */
+@import '../../../docs/brand/tokens.css';
+
+/* Adaptive surfaces use the current Drive kit without adding decorative chrome. */
 :root {
   color-scheme: light dark;
-  --ink: #f5f5f7;
-  --panel: #ffffff;
+  --ink: var(--algua-mist);
+  --panel: var(--algua-white);
   --line: rgba(0, 0, 0, .08);
   --line-2: rgba(0, 0, 0, .15);
-  --ice: #1d1d1f;
-  --text: #1d1d1f;
+  --ice: var(--algua-black);
+  --text: var(--algua-black);
   --text-dim: #5f6065;
   --text-fade: #6a6b70;
   --slate: #76767b;
-  --electric: #0066cc;
+  --electric: var(--algua-action);
   --electric-soft: #0057ad;
-  --series-focus: #0071e3;
+  --series-focus: var(--algua-action);
   --series-context: #76767b;
   --series-context-fill: rgba(118, 118, 123, .10);
   --green: #1f7a35;
@@ -20,27 +22,27 @@
   --amber: #845700;
   --amber-soft: #845700;
   --violet: #7650a6;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --sans: var(--algua-font-sans);
   --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-  --control-bg: #e9e9ed;
+  --control-bg: #dfedf8;
   --control-selected: #ffffff;
-  --header-bg: rgba(245, 245, 247, .94);
+  --header-bg: rgba(234, 244, 251, .94);
   --surface-shadow: 0 2px 12px rgba(0, 0, 0, .025);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --ink: #101012;
-    --panel: #1c1c1e;
+    --ink: var(--algua-black);
+    --panel: #14181d;
     --line: rgba(255, 255, 255, .08);
     --line-2: rgba(255, 255, 255, .16);
-    --ice: #f5f5f7;
-    --text: #f5f5f7;
+    --ice: var(--algua-white);
+    --text: var(--algua-white);
     --text-dim: #b3b3b8;
     --text-fade: #a1a1a6;
     --slate: #8e8e93;
-    --electric: #65aaff;
+    --electric: var(--algua-action);
     --electric-soft: #8abfff;
-    --series-focus: #65aaff;
+    --series-focus: var(--algua-ocean);
     --series-context: #a1a1a6;
     --series-context-fill: rgba(161, 161, 166, .12);
     --green: #65cf84;
@@ -48,9 +50,9 @@
     --amber: #e6bd62;
     --amber-soft: #e6bd62;
     --violet: #c1a2f0;
-    --control-bg: #29292d;
-    --control-selected: #45454a;
-    --header-bg: rgba(16, 16, 18, .94);
+    --control-bg: #1b2730;
+    --control-selected: #304654;
+    --header-bg: rgba(11, 11, 13, .94);
     --surface-shadow: none;
   }
 }
@@ -1850,8 +1852,8 @@ body { font-size: 15px; }
 }
 .topbar { padding: 20px 24px 4px; }
 .brand { min-height: 44px; }
-.brand-lockup { width: 104px; }
-.brand-lockup [fill="#F7F9FC"] { fill: var(--ice); }
+.brand-lockup { width: 120px; }
+.brand-lockup img { display: block; width: 100%; height: auto; }
 .content { padding: 32px 24px 48px; gap: 24px; }
 .leaderboard-page { gap: 24px; }
 .leaderboard-intro { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
@@ -1973,5 +1975,5 @@ body { font-size: 15px; }
 
 /* Secondary operational views stay attached to the information they explain. */
 a.system-strip { text-decoration: none; min-height: 44px; }
-.system-strip-chevron { margin-left: auto; font-size: 20px; line-height: 1; }
+.system-strip-chevron { color: var(--electric); margin-left: auto; font-size: 20px; line-height: 1; }
 .bottom-nav { max-width: 480px; }

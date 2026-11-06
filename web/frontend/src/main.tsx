@@ -1,4 +1,4 @@
-// Native system typography follows the user's platform without webfont downloads.
+// The Drive brand kit supplies self-hosted Lato and adaptive light/dark colors.
 import './theme.css'
 
 import { StrictMode } from 'react'
