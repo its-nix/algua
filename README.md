@@ -1,4 +1,7 @@
-![Algua — agent-first algorithmic research](docs/brand/readme-banner.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/exports/readme-banner-dark.png">
+  <img src="docs/brand/exports/readme-banner.png" alt="Algua" width="800">
+</picture>
 
 # Algua
 

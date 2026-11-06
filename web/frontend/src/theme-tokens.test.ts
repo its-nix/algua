@@ -1,4 +1,4 @@
-/** Every `var(--token)` a component references MUST be defined in theme.css.
+/** Every `var(--token)` a component references MUST be defined in theme.css or the imported brand tokens.
  *
  * An undefined custom property is not an error in CSS — the declaration is simply
  * invalid at computed-value time and the element silently inherits instead. So a
@@ -27,11 +27,12 @@ function sourceFiles(dir: string): string[] {
 
 /** Tokens defined at the top of a `:root { ... }` block in theme.css. */
 function definedTokens(): Set<string> {
-  const css = readFileSync(join(SRC, 'theme.css'), 'utf8')
+  const css = readFileSync(join(SRC, 'theme.css'), 'utf8') + '\n' +
+    readFileSync(join(process.cwd(), '../../docs/brand/tokens.css'), 'utf8')
   return new Set([...css.matchAll(/^\s*(--[\w-]+)\s*:/gm)].map((m) => m[1]))
 }
 
-it('every referenced CSS custom property is defined in theme.css', () => {
+it('every referenced CSS custom property is defined in theme.css or the imported brand tokens', () => {
   const defined = definedTokens()
   // Sanity: the regex actually found the palette, so an empty set can't pass this vacuously.
   expect(defined.has('--electric')).toBe(true)

@@ -1,125 +1,43 @@
 # Algua brand kit
 
-Algua's identity combines a narrow geometric capital **A** with a restrained water plane. The A's
-own apex carries the upward direction—there is no separate arrow. A recessed horizon sits behind
-its legs; a wider trapezoidal foreground horizon crosses the A and follows its outer slope. The
-space between them uses the same ink as the A—Obsidian on light backgrounds and Ice on dark ones—
-creating a solid water plane. The result
-is calm and assured without borrowing the usual trading vocabulary of charts, candlesticks, coins,
-or market animals.
+Current identity: the November 6, 2026 wave kit in [Google Drive](https://drive.google.com/drive/folders/1KkAKKaYL-iZTGqg_43f1qQ2UrSWcyfPp).
+The supplied A, wave, and Algua wordmark replace the previous Sea identity.
 
-## Identity
+## Assets
 
-**Sea** is the single approved treatment. Two layered horizons express calm intelligence emerging
-from uncertainty, while the steep A preserves precision and small-size legibility. Do not create or
-use alternate water treatments.
+- `sources/`: the six original Drive PNGs, preserved unchanged. `sources.json` records their Drive IDs and SHA-256 hashes.
+- `logo-horizontal.svg` and `logo-horizontal-reversed.svg`: light and dark presentation wrappers around the supplied artwork, not traced vectors.
+- `logo-mark.svg` and `logo-mark-reversed.svg`: standalone marks.
+- `exports/`: dashboard-sized wordmarks, app/avatar icons, and light/dark repository banners.
+- `tokens.css` and `fonts/`: shared palette and self-hosted Lato, with its SIL Open Font License.
+- `archive/sea/`: historical generator and mockups. Do not use them for current branding.
 
-| Asset | Use |
-|---|---|
-| `logo-horizontal.svg` | Default lockup on light backgrounds |
-| `logo-horizontal-reversed.svg` | Default lockup on dark backgrounds |
-| `logo-mark.svg` | Standalone mark on light backgrounds |
-| `logo-mark-reversed.svg` | Standalone mark on dark backgrounds |
-| `favicon.svg` | Browser icon and small square avatar |
-| `social-avatar.svg` | Social profile and community avatar |
-| `readme-banner.svg` | Repository and documentation banner |
-| `tokens.css` | Copy-ready web color and typography tokens |
-| `build_assets.py` | Deterministic source for every production SVG |
-| `exports/` | Ready-to-use PNG exports |
-| `mockups/` | Illustrative premium applications; never use as logo source files |
+The original white wordmark export has damaged transparency. Current inverse derivatives use the intact black artwork with an SVG color matrix: neutral ink becomes white, the wave remains blue, and source geometry and alpha are preserved. Source originals remain available for comparison.
 
-## Color
+## Palette and type
 
-| Token | Hex | Role |
-|---|---:|---|
-| Obsidian | `#000000` | Primary ink and dark background |
-| Electric | `#1267FF` | Both sea horizons and brand signal on light backgrounds |
-| Electric Light | `#3982FF` | Both sea horizons and brand signal on black backgrounds |
-| Ice | `#F7F9FC` | Primary light surface and reversed ink |
-| Mist | `#DCE4F0` | Dividers and quiet surfaces |
-| Slate | `#5D6675` | Secondary text on light surfaces |
-| Fog | `#A9B4C5` | Secondary text on dark surfaces |
+| Role | Light | Dark |
+|---|---|---|
+| Black | `#0B0B0D` | `#0B0B0D` |
+| White | `#FFFFFF` | `#FFFFFF` |
+| Ocean Blue | `#5CA9F8` | `#00A8FF` |
+| Ice Blue | `#A9D7FF` | `#7DD7FF` |
+| Mist | `#EAF4FB` | `#E6F5FF` |
 
-Keep the palette mostly neutral. Electric blue should behave like a signal: concentrated, decisive,
-and rare. Never use blue for the A legs; the A itself is the upward form. Both horizons use the same
-blue. The recessed horizon is drawn behind the A, while the trapezoidal foreground horizon is drawn
-in front. Preserve this layer order: it creates the mark's restrained depth without effects.
+Use Lato for product typography. Retain a monospace face for code and aligned data where useful. The wordmark is supplied artwork; do not retype it.
 
-## Typography
+Keep surfaces quiet, with blue reserved for selection, links, and meaningful data. Small interactive text on light surfaces uses a darker Ocean derivative, `#006BA6`, for contrast. Status colors retain their operational meaning. Do not add decorative wave backgrounds to data-heavy pages.
 
-- **Primary:** Inter, weights 300, 400, and 500. Use 300 for display typography.
-- **Code and data:** IBM Plex Mono, weight 400 or 500.
-- **Wordmark:** A custom-tracked Fira Sans ExtraLight drawing, supplied entirely as vector outlines.
-  It has no runtime font dependency and must not be retyped or substituted.
-- Use sentence case for product language. Reserve all-caps with generous tracking for short labels.
+Preserve artwork proportions and clear space. The dashboard lockup is 120 px wide and adapts to system appearance. Use the standalone mark for app icons and avatars. Keep maskable-icon artwork within its safe area.
 
-## Master construction
+## Regenerate
 
-Every approved asset is generated from one fill-only SVG master on a 512-unit grid. The two sea
-boundaries share one blue; their angled terminals follow the A's outer slope. The upper boundary
-sits behind the A, the lower trapezoid sits in front, and the channel between them is cut in the A's
-ink color. There are no strokes, live text, filters, masks, bevels, or raster effects in the core
-identity.
-
-Rebuild the SVG source after a deliberate master change:
-
-```bash
-uv run python docs/brand/build_assets.py
-```
-
-PNG files in `exports/` are delivery derivatives. The SVG files remain authoritative. Rebuild
-them after a master change by rasterizing each SVG at its viewBox size (logo-mark at 2x), with a
-transparent page so the rounded tile corners stay cut:
+After installing the existing frontend dependencies and Chrome:
 
 ```sh
-render() { google-chrome --headless=new --hide-scrollbars --force-device-scale-factor=1 \
-  --default-background-color=00000000 --window-size=$2,$3 \
-  --screenshot=docs/brand/exports/$4.png "file://$PWD/docs/brand/$1.svg"; }
-render favicon 512 512 favicon-512
-render logo-mark 1024 1024 logo-mark-1024
-render logo-horizontal 1100 360 logo-horizontal
-render readme-banner 1600 480 readme-banner
-render social-avatar 1024 1024 social-avatar
+node docs/brand/build_assets.mjs
 ```
 
-The images in `mockups/` demonstrate material and digital applications of the same identity. They
-are presentation imagery, not additional logo variants, and must never be used to reconstruct the
-mark or wordmark.
+This renders the supplied artwork into consistent dashboard, app-icon, README, and avatar exports. It does not redraw the logo or require an external image service. The dashboard imports generated wordmarks as fingerprinted assets and serves the font locally; it makes no Google Fonts requests at runtime.
 
-## Spacing and size
-
-Use the A leg width as the clear-space unit **x**. Keep at least **x** clear on every side of
-the mark or lockup.
-
-- Minimum digital mark: **24 px** high.
-- Minimum horizontal lockup: **120 px** wide.
-- Below 32 px, use `favicon.svg`; it preserves the master geometry on a high-contrast tile.
-
-## Usage rules
-
-Do:
-
-- Use Sea as the only identity.
-- Use the reversed assets on Obsidian or similarly dark fields.
-- Preserve the supplied proportions and clear space.
-- Use the supplied light or dark production asset without altering its construction.
-
-Do not:
-
-- Add a separate arrow or icon above the A.
-- Stretch, outline, bevel, shadow, or add gradients to the core mark.
-- Flatten or reverse the sea/A layer order in full-color assets.
-- Animate the water as a price chart.
-- Place the full-color mark on busy imagery or low-contrast blue surfaces.
-- Modify or substitute the approved Sea treatment.
-
-## Voice
-
-Algua speaks with calm certainty. Prefer short, factual language grounded in evidence.
-
-- **Precise:** say what the system measured and under which conditions.
-- **Reliable:** make constraints and safety gates visible.
-- **Bold:** state decisions directly; avoid hype, swagger, and guaranteed-outcome language.
-
-The line in `readme-banner.svg` — “Agent-first algorithmic research” — is a product descriptor,
-not a permanent tagline.
+The root README selects the light/dark banner using GitHub's appearance preference. `exports/social-avatar.png` is available for repository-related profiles; it is not an instruction to change the owner's personal GitHub avatar.
