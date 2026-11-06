@@ -1970,3 +1970,8 @@ body { font-size: 15px; }
   }
   .shell, .leaderboard-shell { padding-bottom: 100px; }
 }
+
+/* Secondary operational views stay attached to the information they explain. */
+a.system-strip { text-decoration: none; min-height: 44px; }
+.system-strip-chevron { margin-left: auto; font-size: 20px; line-height: 1; }
+.bottom-nav { max-width: 480px; }

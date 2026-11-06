@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, useFetch } from '../api'
 import { useSetFetchedAt } from '../App'
+import Fleet from './Fleet'
 import MetricTile from '../components/MetricTile'
 import StageChip from '../components/StageChip'
 import StaleNotice from '../components/StaleNotice'
@@ -17,6 +18,19 @@ function sliceReturn(row: BookSlice): number | null {
 }
 
 export default function Money() {
+  const [healthOpen, setHealthOpen] = useState(false)
+  return <div className="decision-page portfolio-page">
+    <header className="page-heading"><h1>Portfolio</h1></header>
+    <CapitalBook />
+    <details className="research-diagnostics strategy-health" open={healthOpen}
+      onToggle={event => setHealthOpen(event.currentTarget.open)}>
+      <summary>Strategy health</summary>
+      {healthOpen && <div className="research-diagnostics-content"><Fleet updateFooter={false} /></div>}
+    </details>
+  </div>
+}
+
+function CapitalBook() {
   const { data, error, loading, refetch } = useFetch<ApiEnvelope<BookPayload>>('/api/book')
   const setFetchedAt = useSetFetchedAt()
 

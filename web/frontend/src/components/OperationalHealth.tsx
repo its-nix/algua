@@ -39,7 +39,7 @@ export default function OperationalHealth({ updateHeader = false, compact = fals
     const warnings = data?.items ?? []
     const state = data === undefined && triage.loading ? 'loading' :
       unavailable || stale ? 'unknown' : warnings.length > 0 ? 'warning' : 'ok'
-    return <aside className="system-strip" data-state={state} aria-label="System status">
+    return <Link to="/now" className="system-strip" data-state={state}>
       <span className="system-indicator" aria-hidden="true" />
       <span className="system-strip-copy">
         {state === 'loading' ? 'Checking system…' :
@@ -48,7 +48,8 @@ export default function OperationalHealth({ updateHeader = false, compact = fals
         {stale && <span className="system-strip-extra"> · stale data</span>}
         {unavailable && data !== undefined && <span className="system-strip-extra"> · status incomplete</span>}
       </span>
-    </aside>
+      <span className="system-strip-chevron" aria-hidden="true">›</span>
+    </Link>
   }
 
   if (triage.data === undefined) {

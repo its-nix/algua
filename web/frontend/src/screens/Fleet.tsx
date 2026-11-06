@@ -25,7 +25,7 @@ function healthHistogram(rows: FleetRow[]): Record<string, number> {
   return counts
 }
 
-export default function Fleet() {
+export default function Fleet({ updateFooter = true }: { updateFooter?: boolean }) {
   const { data, error, loading, refetch } = useFetch<ApiEnvelope<FleetHealth>>('/api/fleet', {
     ttlMs: 10_000,
   })
@@ -33,9 +33,10 @@ export default function Fleet() {
 
   const fetchedAt = data?.fetched_at ?? null
   useEffect(() => {
+    if (!updateFooter) return
     setFetchedAt(fetchedAt)
     return () => setFetchedAt(null)
-  }, [fetchedAt, setFetchedAt])
+  }, [fetchedAt, setFetchedAt, updateFooter])
 
   if (data === undefined) {
     if (loading) return <FleetSkeleton />

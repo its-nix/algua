@@ -14,9 +14,7 @@ export function useSetFetchedAt() {
 const PRIMARY_LINKS = [
   { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
   { to: '/research', label: 'Research', icon: 'research', end: false },
-  { to: '/fleet', label: 'Fleet', icon: 'fleet', end: false },
   { to: '/money', label: 'Portfolio', icon: 'portfolio', end: false },
-  { to: '/now', label: 'System', icon: 'system', end: false },
 ] as const
 
 export default function App() {
