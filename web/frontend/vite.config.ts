@@ -66,6 +66,8 @@ export default defineConfig(({ command }) => ({
       filename: 'sw.ts',
       registerType: 'autoUpdate',
       injectRegister: false,
+      // Keep local fonts and versioned icon URLs available with the offline shell.
+      injectManifest: { globPatterns: ['**/*.{js,css,html,png,svg,ttf}'] },
       manifest: {
         name: 'Algua',
         short_name: 'Algua',
