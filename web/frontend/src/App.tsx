@@ -43,7 +43,6 @@ export default function App() {
             ) : (
               <NavLink to="/" className="brand" aria-label="Algua strategy leaderboard">
                 <Logo />
-                <span className="brand-descriptor">research desk</span>
               </NavLink>
             )}
             {fetchedAt !== null && (

@@ -91,7 +91,7 @@ function isMemory(v: unknown, selected: Attempt): v is Memory {
 }
 
 const outcomeLabels: Record<string, string> = {
-  integrity_fail: 'Qualification blocked', holdout_negative: 'Negative holdout',
+  integrity_fail: 'Not qualified', holdout_negative: 'Negative holdout',
   walkforward_refuted: 'Walk-forward refuted', sweep_unstable: 'Unstable sweep',
   candidate_preview_pass: 'Preview passed', promoted_candidate: 'Reported candidate',
   abandoned: 'Abandoned', run_error: 'Execution error',
@@ -125,10 +125,10 @@ export default function RetainedExperiments({ compact = false }: { compact?: boo
       className={`retained-results${compact ? ' retained-compact' : ''}`}>
       <header className="retained-header">
         <div>
-          <h2 id="retained-heading" className="retained-heading">Research results</h2>
-          <p className="retained-caption">{isIndex(payload)
+          <h2 id="retained-heading" className="retained-heading">{compact ? 'Latest research' : 'Research results'}</h2>
+          <p className="retained-caption">{compact ? 'Research only' : isIndex(payload)
             ? `${payload.count} ${payload.count === 1 ? 'attempt' : 'attempts'}` : 'Attempt records'}
-            {' · '}not registered strategies</p>
+            {!compact && ' · not registered strategies'}</p>
         </div>
       <details className="retained-disclosure retained-trust-dropdown">
         <summary className="retained-trust-badge">Unverified research</summary>
@@ -151,7 +151,7 @@ export default function RetainedExperiments({ compact = false }: { compact?: boo
         <>
           {payload.attempts.length === 0 && <p>No retained archive references recorded.</p>}
           <ul className="retained-list">
-            {payload.attempts.map(row => {
+            {(compact ? payload.attempts.slice(0, 3) : payload.attempts).map(row => {
               const active = selected?.evidence_id === row.evidence_id
               return <li key={row.evidence_id} className="retained-list-item">
                 <button type="button" aria-pressed={active}
@@ -159,9 +159,8 @@ export default function RetainedExperiments({ compact = false }: { compact?: boo
                   className={`retained-row${active ? ' is-selected' : ''}`} data-outcome={row.outcome}
                   onClick={() => setSelected(active ? null : row)}>
                   <span className="retained-row-main">
-                    <strong className="retained-row-title">Attempt {row.attempt_id}
-                      {active && <span className="retained-caption"> · Selected</span>}</strong>
-                    <span className="retained-row-meta">{attemptDate(row.outcome_at)} · Idea {row.idea_id}</span>
+                    <strong className="retained-row-title">{attemptDate(row.outcome_at)}</strong>
+                    <span className="retained-row-meta">Run {row.attempt_id}</span>
                   </span>
                   <span className="retained-outcome">{outcomeLabels[row.outcome] ?? row.outcome.replace(/_/g, ' ')}</span>
                 </button>
@@ -169,7 +168,8 @@ export default function RetainedExperiments({ compact = false }: { compact?: boo
               </li>
             })}
           </ul>
-          {payload.has_more && <p className="retained-caption">Showing the newest {payload.limit} attempts; more are retained.</p>}
+          {compact && payload.attempts.length > 0 && <a className="retained-view-all" href="/research">View all research <span aria-hidden="true">→</span></a>}
+          {!compact && payload.has_more && <p className="retained-caption">Showing the newest {payload.limit} attempts; more are retained.</p>}
         </>
       )}
     </section>
@@ -186,26 +186,7 @@ function RetainedDetail({ selected }: { selected: Attempt }) {
   if (!isMemory(payload, selected)) return <EvidenceStatus title="retained archive" state="failed"
     detail="Retained evidence does not match the selected attempt or supported schema." />
   const evaluation = payload.evaluations.find(row => row.source_ref === sourceRef) ?? payload.evaluations[0]
-  return (
-    <div className="retained-detail">
-      {(detail.data.stale || detail.error !== null) && <EvidenceStatus title="retained archive" state="stale"
-        detail={detail.error?.message ?? 'Showing cached verified readback.'} onRetry={detail.refetch} />}
-      {payload.evaluations.length === 0 ? <p>No retained numerical evaluations.</p> : <>
-        <header className="retained-detail-header">
-          <h3 className="retained-detail-title">{evaluation.strategy_name}</h3>
-          <p className="retained-detail-meta">{kindLabels[evaluation.kind] ?? evaluation.kind}
-            {' · '}Unverified research · not live performance</p>
-        </header>
-        <Evaluation value={evaluation}>
-        <label className="retained-evaluation-control">Evaluation{' '}
-          <select aria-label="Evaluation" value={evaluation.source_ref} onChange={event => setSourceRef(event.target.value)}>
-            {payload.evaluations.map((row, i) => <option key={row.source_ref} value={row.source_ref}>
-              {i + 1}. {row.strategy_name} · {kindLabels[row.kind] ?? row.kind}
-            </option>)}
-          </select>
-        </label>
-        </Evaluation>
-      </>}
+  const archiveDetails = (
       <details className="retained-disclosure">
         <summary>Run &amp; archive details</summary>
         <p>Worker exit: {payload.worker_exit} · attempt outcome: {selected.outcome}.</p>
@@ -214,6 +195,28 @@ function RetainedDetail({ selected }: { selected: Attempt }) {
           archive_reference: selected.archive_reference, source_commit: payload.source_commit,
           coverage: payload.coverage }, null, 2)}</pre>
       </details>
+  )
+  return (
+    <div className="retained-detail">
+      {(detail.data.stale || detail.error !== null) && <EvidenceStatus title="retained archive" state="stale"
+        detail={detail.error?.message ?? 'Showing cached verified readback.'} onRetry={detail.refetch} />}
+      {payload.evaluations.length === 0 ? <p>No retained numerical evaluations.</p> : <>
+        <header className="retained-detail-header">
+          <h3 className="retained-detail-title">{evaluation.strategy_name.replaceAll('_', ' ')}</h3>
+          <p className="retained-detail-meta">{kindLabels[evaluation.kind] ?? evaluation.kind}</p>
+        </header>
+        <Evaluation value={evaluation}>
+        <label className="retained-evaluation-control">Evaluation{' '}
+          <select aria-label="Evaluation" value={evaluation.source_ref} onChange={event => setSourceRef(event.target.value)}>
+            {payload.evaluations.map((row, i) => <option key={row.source_ref} value={row.source_ref}>
+              {i + 1}. {row.strategy_name.replaceAll('_', ' ')} · {kindLabels[row.kind] ?? row.kind}
+            </option>)}
+          </select>
+        </label>
+        {archiveDetails}
+        </Evaluation>
+      </>}
+      {payload.evaluations.length === 0 && archiveDetails}
     </div>
   )
 }
@@ -231,6 +234,8 @@ function Evaluation({ value, children }: { value: Observation; children: ReactNo
         </div>)}
         {highlights.length === 0 && <p className="retained-caption">No summary metrics recorded.</p>}
       </div>
+      <details className="retained-disclosure retained-more">
+      <summary>Details</summary>
       {children}
       <details className="retained-disclosure">
         <summary>All recorded metrics</summary>
@@ -243,12 +248,13 @@ function Evaluation({ value, children }: { value: Observation; children: ReactNo
       <details className="retained-disclosure">
         <summary>Inputs &amp; provenance</summary>
         <pre className="retained-raw">{JSON.stringify({ source_ref: value.source_ref,
-          provenance: value.provenance, inputs: value.inputs, parent_refs: value.parent_refs }, null, 2)}</pre>
+          strategy_name: value.strategy_name, provenance: value.provenance, inputs: value.inputs, parent_refs: value.parent_refs }, null, 2)}</pre>
       </details>
       <details className="retained-disclosure">
         <summary>Model references only</summary>
         <pre className="retained-raw">{JSON.stringify(value.model_refs, null, 2)}</pre>
         <p>Model bytes are not preserved by this archive.</p>
+      </details>
       </details>
     </article>
   )

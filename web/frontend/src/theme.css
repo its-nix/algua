@@ -1,65 +1,63 @@
-/* algua monitor — design tokens from the Algua brand kit (docs/brand/).
-   Dark only (committed single look). Dense, terminal-adjacent.
-
-   Everything dark is fully black — Obsidian IS #000000 in the brand kit, so
-   ground and surface share one value and a hairline Mist border is what
-   separates a panel from the page. Nothing here is allowed to be almost-black.
-   Electric is the brand SIGNAL — it marks the one active thing on a screen and
-   nothing else. Warning/failure keep their own semantic colors so blue never
-   has to mean "problem". */
-
+/* Content-first, adaptive surfaces. System typography and one restrained accent. */
 :root {
-  /* surfaces — ground and panel are the same black; the border does the work */
-  --ink:       #000000;
-  --panel:     #000000; /* Obsidian */
-  --line:      rgba(220, 228, 240, 0.11); /* Mist, held back */
-  --line-2:    rgba(220, 228, 240, 0.20);
-
-  /* ink on dark */
-  --ice:       #f7f9fc;
-  --text:      #e8edf5;
-  --text-dim:  #a9b4c5; /* Fog — the brand's secondary text on dark. 10.02:1 */
-  /* Tertiary text. NOT Slate (#5d6675): the brand kit assigns Slate to "secondary text on
-     LIGHT surfaces" and Fog to dark, and Slate on Obsidian measures 3.62:1 — below the 4.5:1
-     WCAG AA floor for the small text it was being used for (13 rules). This is the quietest
-     step along the Slate->Fog line that clears AA with headroom, so the third tier survives
-     instead of collapsing into Fog. 4.97:1 */
-  --text-fade: #727c8b;
-  --slate:     #5d6675; /* Brand Slate, for NON-TEXT only (>=3:1 covers graphical objects) */
-
-  /* brand signal */
-  --electric:      #3982ff; /* Electric Light — the on-black brand blue */
-  --electric-soft: #8ab0ff;
-
-  /* series (dataviz skill validator, run against these tokens on this true-black
-     surface — do NOT "improve" without re-running it): a 4-step neutral ramp
-     FAILS (#5d6675 vs #727c8b is dE 7.5 for normal vision, floor 15). This pair
-     PASSES lightness band, CVD separation (dE 17.6 protan / 11.1 tritan), the
-     normal-vision floor (dE 18.0), and >=3:1 contrast on black. Its one FAIL is
-     the chroma floor ("reads gray") — that's the INTENT: the chroma check governs
-     categorical peer slots, not a figure/ground pair. Two tokens only — a third
-     series hue is the small-multiples case, not this one. */
-  --series-focus:   #3982ff; /* Electric — the ONE active series */
-  --series-context: #727c8b; /* neutral context line; reads gray BY DESIGN */
-  /* `--series-context` at low alpha, for the return overlay's OOS shaded region — a translucent
-     WASH, not a peer series, so it is its own token rather than an opacity hack on the line
-     color at every use site. */
-  --series-context-fill: rgba(114, 124, 139, 0.16);
-
-  /* status */
-  --green:  #5fd38d;
-  --red:    #ff5d5d;
-  --amber:  #e8b339;
-  --amber-soft: #f0cf7a;
-  --violet: #a98bff;
-
-  --sans: Inter, ui-sans-serif, system-ui, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  color-scheme: light dark;
+  --ink: #f5f5f7;
+  --panel: #ffffff;
+  --line: rgba(0, 0, 0, .08);
+  --line-2: rgba(0, 0, 0, .15);
+  --ice: #1d1d1f;
+  --text: #1d1d1f;
+  --text-dim: #5f6065;
+  --text-fade: #6a6b70;
+  --slate: #76767b;
+  --electric: #0066cc;
+  --electric-soft: #0057ad;
+  --series-focus: #0071e3;
+  --series-context: #76767b;
+  --series-context-fill: rgba(118, 118, 123, .10);
+  --green: #1f7a35;
+  --red: #c62828;
+  --amber: #845700;
+  --amber-soft: #845700;
+  --violet: #7650a6;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --control-bg: #e9e9ed;
+  --control-selected: #ffffff;
+  --header-bg: rgba(245, 245, 247, .94);
+  --surface-shadow: 0 2px 12px rgba(0, 0, 0, .025);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #101012;
+    --panel: #1c1c1e;
+    --line: rgba(255, 255, 255, .08);
+    --line-2: rgba(255, 255, 255, .16);
+    --ice: #f5f5f7;
+    --text: #f5f5f7;
+    --text-dim: #b3b3b8;
+    --text-fade: #a1a1a6;
+    --slate: #8e8e93;
+    --electric: #65aaff;
+    --electric-soft: #8abfff;
+    --series-focus: #65aaff;
+    --series-context: #a1a1a6;
+    --series-context-fill: rgba(161, 161, 166, .12);
+    --green: #65cf84;
+    --red: #ff8585;
+    --amber: #e6bd62;
+    --amber-soft: #e6bd62;
+    --violet: #c1a2f0;
+    --control-bg: #29292d;
+    --control-selected: #45454a;
+    --header-bg: rgba(16, 16, 18, .94);
+    --surface-shadow: none;
+  }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { color-scheme: dark; }
+html { color-scheme: light dark; }
 
 body {
   background: var(--ink);
@@ -1869,4 +1867,92 @@ details[open] > .stage-summary::before { content: '▾'; }
   .retained-metric { padding: 12px 9px; }
   .retained-outcome { max-width: 95px; }
   .research-diagnostics > summary { align-items: start; justify-content: center; flex-direction: column; gap: 3px; padding: 12px 0; }
+}
+
+/* Quiet hierarchy shared by the web monitor's existing screens. */
+.shell, .leaderboard-shell { max-width: 1040px; }
+body { font-size: 15px; }
+.shell-header { background: var(--header-bg); border: 0; }
+@supports (backdrop-filter: blur(20px)) {
+  .shell-header { backdrop-filter: blur(20px); }
+}
+.topbar { padding: 20px 24px 4px; }
+.brand { min-height: 44px; }
+.brand-lockup { width: 104px; }
+.brand-lockup [fill="#F7F9FC"] { fill: var(--ice); }
+.fetched-at { font-family: var(--sans); font-size: 11px; }
+.secondary-nav { padding: 6px 12px 12px; gap: 6px; }
+.secondary-link { border: 0; border-radius: 8px; min-height: 44px; font-size: 13px; padding: 0 12px; }
+.secondary-link.active { background: var(--control-bg); color: var(--text); }
+.content { padding: 32px 24px 48px; gap: 24px; }
+.leaderboard-page { gap: 24px; }
+.leaderboard-intro { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.leaderboard-intro h1, .page-heading h1 { font-size: 32px; line-height: 1.15; letter-spacing: normal; font-weight: 650; }
+.leaderboard-intro .context-disclosure { position: static; margin: 0; }
+.leaderboard-intro .context-disclosure[open] { flex-basis: 100%; }
+.leaderboard-intro .context-disclosure > p { font-size: 13px; }
+.context-disclosure > summary { min-height: 44px; }
+.panel, .decision-report, .funnel-panel, .research-diagnostics { background: var(--panel); border-color: var(--line); border-radius: 14px; box-shadow: var(--surface-shadow); }
+.chip-row[aria-label="evidence mode"] { display: inline-flex; width: fit-content; max-width: 100%; padding: 4px; gap: 2px; border-radius: 10px; background: var(--control-bg); }
+.filter-chip { text-transform: none; letter-spacing: 0; font-family: var(--sans); font-size: 12px; border-radius: 7px; }
+.filter-chip.active { background: var(--control-selected); color: var(--text); border-color: transparent; box-shadow: 0 1px 3px var(--line-2); }
+.board-entry { background: var(--panel); border: 0; border-radius: 14px; box-shadow: var(--surface-shadow); }
+.board-row { background: var(--panel); }
+.board-entry .board-row:hover, .retained-row:hover { background: var(--control-bg); }
+.board-search input, .board-controls-toggle, .board-cohort-control select, .retained-evaluation-control select { background: var(--panel); border-radius: 8px; }
+.board-empty { background: var(--panel); }
+.retained-header { margin-bottom: 14px; align-items: center; gap: 8px; }
+.retained-heading { font-size: 20px; font-weight: 600; letter-spacing: normal; }
+.retained-caption { margin-top: 4px; font-size: 12px; }
+.retained-trust-dropdown > summary { border: 0; background: none; font-size: 11px; padding: 0 4px; min-height: 44px; }
+.retained-list { margin: 0; border: 0; background: var(--panel); border-radius: 16px; box-shadow: var(--surface-shadow); }
+.retained-row { padding: 16px 20px; min-height: 72px; }
+.retained-row.is-selected { background: transparent; box-shadow: none; }
+.retained-row.is-selected .retained-row-title { font-weight: 600; }
+.retained-row-title { font-size: 13px; font-weight: 500; }
+.retained-row-meta { font-family: var(--sans); font-size: 11px; }
+.retained-compact .retained-row-meta { display: none; }
+.retained-compact .retained-row { min-height: 60px; }
+.retained-outcome { border: 0; font-size: 11px; padding: 4px 0; color: var(--text-dim); }
+.retained-row[data-outcome="integrity_fail"] .retained-outcome { color: var(--text-dim); }
+.retained-detail { padding: 4px 20px 16px; border: 0; }
+.retained-detail-header { margin-bottom: 16px; }
+.retained-detail-title { font-size: 20px; font-weight: 600; letter-spacing: normal; text-transform: capitalize; }
+.retained-detail-meta { font-size: 11px; }
+.retained-metrics { border: 0; margin: 0 0 8px; gap: 16px; }
+.retained-metric { padding: 8px 0; }
+.retained-metric + .retained-metric { border: 0; }
+.retained-metric-label { font-size: 11px; margin-bottom: 5px; }
+.retained-metric-value { font-family: var(--sans); font-weight: 600; font-size: 28px; letter-spacing: normal; }
+.retained-more { border: 0; }
+.retained-more > summary { font-size: 12px; width: fit-content; }
+.retained-more[open] { padding-top: 6px; }
+.retained-more .retained-disclosure { font-size: 12px; }
+.retained-view-all { display: flex; align-items: center; justify-content: space-between; min-height: 48px; color: var(--electric); text-decoration: none; font-size: 13px; padding: 8px 4px; }
+.system-strip { padding: 8px 4px; background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0; margin-top: 4px; }
+.system-strip-copy { font-size: 11px; color: var(--text-dim); }
+.system-strip > a { font-size: 11px; }
+.research-diagnostics { box-shadow: none; }
+.retained-raw { background: var(--ink); }
+:where(a,button,input,select,summary):focus-visible { outline: 2px solid var(--electric); outline-offset: 3px; }
+@media (max-width: 480px) {
+  .topbar { padding: 14px 20px 0; }
+  .secondary-nav { padding: 4px 8px 10px; gap: 2px; }
+  .secondary-link { font-size: 12px; padding: 0 10px; }
+  .content { padding: 24px 20px 36px; gap: 20px; }
+  .leaderboard-intro h1 { font-size: 30px; }
+  .leaderboard-page { gap: 20px; }
+  .retained-row { padding: 14px 16px; }
+  .retained-detail { padding: 2px 16px 12px; }
+  .retained-metrics { gap: 12px; }
+  .retained-metric-value { font-size: 25px; }
+  .retained-header { flex-wrap: nowrap; }
+  .retained-trust-dropdown[open] { flex-basis: 100%; }
+  .retained-header:has(.retained-trust-dropdown[open]) { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0s !important; animation-duration: 0s !important; }
+}
+@media (forced-colors: active) {
+  .secondary-link.active, .retained-list, .filter-chip.active { border: 1px solid CanvasText; }
 }
