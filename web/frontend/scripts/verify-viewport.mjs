@@ -53,8 +53,8 @@ if (externalBase !== undefined) {
       assert.equal(state.width, width)
       assert(state.scrollWidth <= width, `${name}: horizontal overflow ${JSON.stringify(state)}`)
       assert.equal(state.bottomBars, 1, `${name}: bottom navigation missing`)
-      assert.equal(await page.locator('.bottom-nav a').count(), 5)
-      assert.equal(await page.locator('.bottom-nav svg').count(), 5)
+      assert.equal(await page.locator('.bottom-nav a').count(), 3)
+      assert.equal(await page.locator('.bottom-nav svg').count(), 3)
       await page.screenshot({ path: join(output, `${name}-${width}.png`), fullPage: true })
       console.log(`ok ${name} ${JSON.stringify(state)}`)
     }

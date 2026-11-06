@@ -18,20 +18,22 @@ function mount(path = '/') {
   </MemoryRouter>)
 }
 
-it('provides five icon destinations in bottom navigation', () => {
+it('provides three primary icon destinations in bottom navigation', () => {
   const { container } = mount()
   const nav = screen.getByRole('navigation', { name: 'Main navigation' })
   expect(nav.className).toBe('bottom-nav')
-  expect(nav.querySelectorAll('a')).toHaveLength(5)
-  expect(nav.querySelectorAll('svg')).toHaveLength(5)
-  for (const [name, href] of [['Dashboard', '/'], ['Research', '/research'], ['Fleet', '/fleet'], ['Portfolio', '/money'], ['System', '/now']]) {
+  expect(nav.querySelectorAll('a')).toHaveLength(3)
+  expect(nav.querySelectorAll('svg')).toHaveLength(3)
+  for (const [name, href] of [['Dashboard', '/'], ['Research', '/research'], ['Portfolio', '/money']]) {
     expect(screen.getByRole('link', { name }).getAttribute('href')).toBe(href)
   }
   expect(screen.getByRole('link', { name: 'Dashboard' }).getAttribute('aria-current')).toBe('page')
   expect(container.querySelector('header nav')).toBeNull()
+  expect(screen.queryByRole('link', { name: 'System' })).toBeNull()
+  expect(screen.queryByRole('link', { name: 'Fleet' })).toBeNull()
 })
 
-it.each([['Research', '/research'], ['Fleet', '/fleet'], ['Portfolio', '/money'], ['System', '/now']])('marks %s as the current section', (name, path) => {
+it.each([['Research', '/research'], ['Portfolio', '/money']])('marks %s as the current section', (name, path) => {
   mount(path)
   expect(screen.getByRole('link', { name }).getAttribute('aria-current')).toBe('page')
 })

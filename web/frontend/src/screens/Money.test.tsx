@@ -1,7 +1,8 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, expect, it, vi } from 'vitest'
-import type { ApiEnvelope, BookPayload } from '../types'
+import { clearFetchCache } from '../api'
+import type { ApiEnvelope, BookPayload, FleetHealth } from '../types'
 import Money from './Money'
 
 const book: ApiEnvelope<BookPayload> = {
@@ -34,6 +35,7 @@ const book: ApiEnvelope<BookPayload> = {
 
 afterEach(() => {
   cleanup()
+  clearFetchCache()
   vi.unstubAllGlobals()
 })
 
@@ -75,4 +77,25 @@ it('colours a positive slice return without relying on colour alone', async () =
   renderMoney()
   const row = (await screen.findByText('up')).closest('tr')!
   expect(row.textContent).toContain('5.0%')
+})
+
+
+it.each([false, true])('keeps strategy health lazy and reachable when book failure is %s', async (bookFails) => {
+  const fleet: ApiEnvelope<FleetHealth> = {
+    ok: true, fetched_at: '2026-11-06T08:00:00Z', stale: false,
+    data: { ok: true, global_halt: false, rows: [], alerting: [],
+      summary: { total: 0, alerting: 0, by_health: {} }, stale_after_sessions: 2 },
+  }
+  const fetchMock = vi.fn(async (url: string) => ({
+    ok: url !== '/api/book' || !bookFails,
+    status: url === '/api/book' && bookFails ? 503 : 200,
+    json: async () => url === '/api/fleet' ? fleet : book,
+  }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(<MemoryRouter><Money /></MemoryRouter>)
+  await screen.findByText(bookFails ? 'fetch failed' : 'up')
+  expect(fetchMock.mock.calls.some(([url]) => url === '/api/fleet')).toBe(false)
+  fireEvent.click(screen.getByText('Strategy health', { exact: true }))
+  expect(await screen.findByText(/no alerting strategies/)).toBeTruthy()
+  expect(fetchMock.mock.calls.filter(([url]) => url === '/api/fleet')).toHaveLength(1)
 })

@@ -49,7 +49,7 @@ it('leads with the strategy leaderboard while keeping stale operational warnings
   expect(await screen.findByText('paper loop stalled')).toBeTruthy()
   expect(screen.getByText(/stale data/)).toBeTruthy()
   expect(screen.getByText(/status incomplete/)).toBeTruthy()
-  expect(screen.queryByRole('link', { name: 'full ops diagnostics' })).toBeNull()
+  expect(screen.getByRole('link', { name: /paper loop stalled.*stale data/ }).getAttribute('href')).toBe('/now')
   expect((await screen.findByText('quality_momentum')).closest('a')?.getAttribute('href')).toBe('/strategy/41')
 })
 
