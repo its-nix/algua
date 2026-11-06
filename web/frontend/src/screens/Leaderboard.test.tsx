@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, expect, it, vi } from 'vitest'
 import { clearFetchCache } from '../api'
@@ -49,7 +49,7 @@ it('leads with the strategy leaderboard while keeping stale operational warnings
   expect(await screen.findByText('paper loop stalled')).toBeTruthy()
   expect(screen.getByText(/stale data/)).toBeTruthy()
   expect(screen.getByText(/status incomplete/)).toBeTruthy()
-  expect(screen.getByRole('link', { name: 'full ops diagnostics' }).getAttribute('href')).toBe('/now')
+  expect(screen.queryByRole('link', { name: 'full ops diagnostics' })).toBeNull()
   expect((await screen.findByText('quality_momentum')).closest('a')?.getAttribute('href')).toBe('/strategy/41')
 })
 
@@ -64,15 +64,12 @@ it('F1 distinguishes public in-sample windows from separate gate observations in
       url === '/api/strategy-board?include_evidence=true' ? gateBoard : board,
   })) as unknown as typeof fetch)
   render(<MemoryRouter><Leaderboard /></MemoryRouter>)
-  const intro = screen.getByRole('heading', { name: 'Leaderboard' }).closest('header')!
-  expect(intro.textContent).toMatch(/public WF windows are in-sample/i)
-  expect(intro.textContent).toMatch(/gate OOS observations are separate/i)
+  expect(await screen.findByText('In-sample research · not independent OOS')).toBeTruthy()
   expect(screen.getByRole('button', { name: 'Public WF windows' }).getAttribute('aria-pressed')).toBe('true')
   fireEvent.click(screen.getByRole('button', { name: 'Gate OOS' }))
   expect(screen.getByRole('button', { name: 'Gate OOS' }).getAttribute('aria-pressed')).toBe('true')
-  expect(intro.textContent).toMatch(/public WF windows are in-sample/i)
-  expect(intro.textContent).toMatch(/gate OOS observations are separate/i)
-  expect(intro.textContent).toMatch(/unknown and incompatible evidence stays unranked/i)
+  expect(await screen.findByText('Gate observations · not live performance')).toBeTruthy()
+
 })
 
 
@@ -83,7 +80,7 @@ it('omits empty strategy modes while keeping research results accessible', async
   })))
   render(<MemoryRouter><Leaderboard /></MemoryRouter>)
   await screen.findByText('Unsupported retained index payload.')
-  expect(screen.queryByRole('button', { name: 'Public WF windows' })).toBeNull()
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Public WF windows' })).toBeNull())
   expect(screen.queryByText('No registered strategies yet')).toBeNull()
   expect(screen.getByRole('heading', { name: 'Latest research' })).toBeTruthy()
 })

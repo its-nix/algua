@@ -44,15 +44,17 @@ if (externalBase !== undefined) {
       })
       const state = await page.evaluate(() => ({
         width: window.innerWidth, scrollWidth: document.documentElement.scrollWidth,
-        bottomBars: [...document.querySelectorAll('*')].filter(el => {
+        bottomBars: [...document.querySelectorAll('.bottom-nav')].filter(el => {
           const r = el.getBoundingClientRect()
           return getComputedStyle(el).position === 'fixed' && r.width > innerWidth * .6
-            && r.top > innerHeight / 2 && r.bottom >= innerHeight - 1
+            && r.top > innerHeight / 2 && r.bottom <= innerHeight && r.bottom >= innerHeight - 24
         }).length,
       }))
       assert.equal(state.width, width)
       assert(state.scrollWidth <= width, `${name}: horizontal overflow ${JSON.stringify(state)}`)
-      assert.equal(state.bottomBars, 0, `${name}: unexpected fixed bottom bar`)
+      assert.equal(state.bottomBars, 1, `${name}: bottom navigation missing`)
+      assert.equal(await page.locator('.bottom-nav a').count(), 5)
+      assert.equal(await page.locator('.bottom-nav svg').count(), 5)
       await page.screenshot({ path: join(output, `${name}-${width}.png`), fullPage: true })
       console.log(`ok ${name} ${JSON.stringify(state)}`)
     }
@@ -227,7 +229,7 @@ for (const { route, width } of cases) {
         offenders.push(`${el.tagName}.${String(el.className).slice(0, 40)} right=${Math.round(r.right)}`)
       }
     })
-    const shortTargets = [...document.querySelectorAll('.secondary-link, .back-btn')]
+    const shortTargets = [...document.querySelectorAll('.bottom-link, .back-btn')]
       .map((el) => ({ name: el.className, height: el.getBoundingClientRect().height }))
       .filter(({ height }) => height < 44)
     const ideaDates = currentRoute === '/research'

@@ -48,7 +48,6 @@ export default function OperationalHealth({ updateHeader = false, compact = fals
         {stale && <span className="system-strip-extra"> · stale data</span>}
         {unavailable && data !== undefined && <span className="system-strip-extra"> · status incomplete</span>}
       </span>
-      <Link to="/now" aria-label="full ops diagnostics">View system →</Link>
     </aside>
   }
 
@@ -68,7 +67,6 @@ export default function OperationalHealth({ updateHeader = false, compact = fals
         <p className="dim-note">Warnings cannot be verified. Treat operations as unknown.</p>
         <div className="ops-actions">
           <button type="button" className="retry-btn" onClick={triage.refetch}>retry</button>
-          <Link to="/now" className="text-link">full ops diagnostics</Link>
         </div>
       </section>
     )
@@ -89,13 +87,12 @@ export default function OperationalHealth({ updateHeader = false, compact = fals
       )}
       <div className="ops-status-head">
         <div>
-          <h2 id="ops-health-heading" className="board-heading">Ops</h2>
+          <h2 id="ops-health-heading" className="board-heading">System</h2>
           <div className="dim-note num">
             fleet {headline.fleet_total === null ? 'UNKNOWN' : `${headline.fleet_ok}/${headline.fleet_total}`}
             {' · '}loops {headline.loops_alerting}
           </div>
         </div>
-        <Link to="/now" className="text-link" aria-label="full ops diagnostics">ops diagnostics</Link>
       </div>
 
       {degraded.length > 0 && (
@@ -106,44 +103,46 @@ export default function OperationalHealth({ updateHeader = false, compact = fals
       )}
 
       {items.length === 0 ? (
-        <div className="all-clear-line">no current warnings in the available health read</div>
+        <div className="all-clear-line">no current warnings</div>
       ) : (
         <div className="row-list ops-warning-list">
           {items.map((item, index) => <HealthWarning key={`${item.kind}-${item.title}-${index}`} item={item} />)}
         </div>
       )}
       <div className="tile-row">
-        <HeadlineLink label="fleet ok" value={headline.fleet_total === null ? 'UNKNOWN' : `${headline.fleet_ok}/${headline.fleet_total}`} to="/fleet" />
-        <HeadlineLink label="book" value={headline.book_capacity === null ? 'UNKNOWN' : `${headline.book_allocated}/${headline.book_capacity}`} to="/money" />
-        <HeadlineLink label="loops down" value={String(headline.loops_alerting)} to="/research" alarm={headline.loops_alerting > 0} />
+        <HeadlineStat label="fleet ok" value={headline.fleet_total === null ? 'UNKNOWN' : `${headline.fleet_ok}/${headline.fleet_total}`} />
+        <HeadlineStat label="book" value={headline.book_capacity === null ? 'UNKNOWN' : `${headline.book_allocated}/${headline.book_capacity}`} />
+        <HeadlineStat label="loops down" value={String(headline.loops_alerting)} alarm={headline.loops_alerting > 0} />
       </div>
     </section>
   )
 }
 
-function HeadlineLink({ label, value, to, alarm = false }: {
+function HeadlineStat({ label, value, alarm = false }: {
   label: string
   value: string
-  to: string
   alarm?: boolean
 }) {
   return (
-    <Link to={to} className="metric-tile headline-tile">
+    <div className="metric-tile headline-tile">
       <div className="metric-value" style={alarm ? { color: 'var(--red)' } : undefined}>{value}</div>
       <div className="metric-label">{label}</div>
-    </Link>
+    </div>
   )
 }
 
 function HealthWarning({ item }: { item: TriageItem }) {
-  return (
-    <Link to={item.route} className="triage-row">
+  const content = (
+    <>
       <span className="triage-rule" style={{ background: KIND_COLOR[item.kind] }} aria-hidden="true" />
       <div className="triage-body">
         <div className="triage-title">{item.title}</div>
         {item.detail !== null && item.detail !== '' && <div className="dim-note">{item.detail}</div>}
         {item.since !== null && <div className="dim-note num">since {utcDateTime(item.since)}</div>}
       </div>
-    </Link>
+    </>
   )
+  return /^\/(?:s|strategy)\//.test(item.route)
+    ? <Link to={item.route} className="triage-row">{content}</Link>
+    : <div className="triage-row">{content}</div>
 }

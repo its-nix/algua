@@ -152,7 +152,7 @@ it('keeps missing dates honest and execution errors distinct from qualification'
 })
 
 
-it('limits the home preview to three rows and links to the complete archive', async () => {
+it('limits the home preview to three rows without duplicating section navigation', async () => {
   const many = { ...index, count: 5, attempts: Array.from({ length: 5 }, (_, i) => ({
     ...index.attempts[0], attempt_id: i + 7, evidence_id: `idea_attempts:${i + 7}`,
   })) }
@@ -161,6 +161,6 @@ it('limits the home preview to three rows and links to the complete archive', as
   expect(await screen.findAllByRole('button', { name: /Inspect/ })).toHaveLength(3)
   expect(await screen.findByRole('heading', { name: 'worker 1' })).toBeTruthy()
   expect(fetch).toHaveBeenCalledTimes(2)
-  expect(screen.getByRole('link', { name: /View all research/ }).getAttribute('href')).toBe('/research')
+  expect(screen.queryByRole('link')).toBeNull()
   expect(document.querySelector<HTMLDetailsElement>('.retained-more')?.open).toBe(false)
 })

@@ -7,13 +7,6 @@ export default function Leaderboard() {
     <div className="leaderboard-page">
       <header className="leaderboard-intro">
         <h1>Leaderboard</h1>
-        <details className="context-disclosure">
-          <summary>About</summary>
-          <p>
-          Latest identity-bound evidence. Public WF windows are in-sample; gate OOS observations are separate.
-          Compare within a recorded cohort; unknown and incompatible evidence stays unranked.
-          </p>
-        </details>
       </header>
       <StrategyBoard hideEmpty />
       <RetainedExperiments compact />

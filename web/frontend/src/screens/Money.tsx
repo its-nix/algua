@@ -65,16 +65,14 @@ export default function Money() {
       {/* Stated, not hidden: the account equity needs a broker call this view must not make, so
           capital headroom is genuinely unknown here rather than zero. */}
       <div className="dim-note">
-        {book.count_headroom} more tenants fit. Capital headroom needs the account equity, which
-        this read-only view never calls the broker for.
+        {book.count_headroom} slots available. Capital headroom unknown.
       </div>
 
       {book.unallocated_operational.length > 0 && (
         <section className="panel needs-capital">
           <span className="micro-label">holding no capital</span>
           <div className="dim-note" style={{ marginBottom: 8 }}>
-            These are in an operational stage with no slice, so the operator loop skips them
-            entirely. Allocating is a capital decision — terminal only.
+            No allocation. Skipped by the trading loop.
           </div>
           <div className="row-list">
             {book.unallocated_operational.map((row) => (

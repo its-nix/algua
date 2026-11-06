@@ -41,7 +41,7 @@ it('collapses to a single quiet line when nothing needs you', async () => {
   )
 
   // The all-clear case is the COMMON case: one line, no panel, no celebration.
-  expect(await screen.findByText('no current warnings in the available health read')).toBeTruthy()
+  expect(await screen.findByText('no current warnings')).toBeTruthy()
   // ...and no partial-read warning, because every source loaded.
   expect(screen.queryByText(/warnings may be incomplete/)).toBeNull()
 })

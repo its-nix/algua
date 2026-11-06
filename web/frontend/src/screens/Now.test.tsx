@@ -81,10 +81,10 @@ it('leads with the ranked needs-you list, worst first', async () => {
 
 it('routes each item to the tab that owns it', async () => {
   renderNow()
-  const row = (await screen.findByText('research loop rate limited')).closest('a')
-  expect(row?.getAttribute('href')).toBe('/research')
-  const capital = screen.getByText(/holds no capital/).closest('a')
-  expect(capital?.getAttribute('href')).toBe('/money')
+  const row = (await screen.findByText('research loop rate limited')).closest<HTMLElement>('.triage-row')
+  expect(row?.tagName).toBe('DIV')
+  const capital = screen.getByText(/holds no capital/).closest<HTMLElement>('.triage-row')
+  expect(capital?.tagName).toBe('DIV')
 })
 
 it('names a source that failed rather than silently ranking a shorter list', async () => {
@@ -99,12 +99,12 @@ it('shows every item with the one fact that makes it actionable', async () => {
   expect(screen.getByText(/the operator loop skips it/)).toBeTruthy()
 })
 
-it('gives each job a headline that deep-links to its tab', async () => {
+it('shows headline metrics without duplicate section links', async () => {
   renderNow()
-  const fleetTile = (await screen.findByText('fleet ok')).closest('a')
-  expect(fleetTile?.getAttribute('href')).toBe('/fleet')
+  const fleetTile = (await screen.findByText('fleet ok')).closest<HTMLElement>('.metric-tile')
+  expect(fleetTile?.tagName).toBe('DIV')
   expect(within(fleetTile!).getByText('7/10')).toBeTruthy()
-  expect(screen.getByText('book').closest('a')?.getAttribute('href')).toBe('/money')
+  expect(screen.getByText('book').closest('a')).toBeNull()
 })
 
 it('absorbs the audit trail as the overnight feed', async () => {

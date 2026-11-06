@@ -53,14 +53,14 @@ it('surfaces a strategy stranded without capital and says why it matters', async
   renderMoney()
   expect(await screen.findByText('liquidity_stable_quality_momentum')).toBeTruthy()
   expect(screen.getByText(/never ticked/)).toBeTruthy()
-  expect(screen.getByText(/the operator loop skips them/)).toBeTruthy()
+  expect(screen.getByText(/Skipped by the trading loop/)).toBeTruthy()
 })
 
 it('states that capital headroom is unknown rather than implying it is zero', async () => {
   renderMoney()
   // The account equity needs a broker call this view must never make.
-  expect(await screen.findByText(/never calls the broker/)).toBeTruthy()
-  expect(screen.getByText(/62 more tenants fit/)).toBeTruthy()
+  expect(await screen.findByText(/Capital headroom unknown/)).toBeTruthy()
+  expect(screen.getByText(/62 slots available/)).toBeTruthy()
 })
 
 it('renders no p&l for a slice that has never ticked, instead of claiming break-even', async () => {
