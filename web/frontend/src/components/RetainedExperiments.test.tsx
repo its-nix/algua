@@ -51,9 +51,9 @@ it('shows retained attempts without registered strategies and selects exact cycl
   expect(fetch).toHaveBeenCalledTimes(1) // Never fan out archives on list render.
   expect(screen.getByText('1 attempt · not registered strategies')).toBeTruthy()
   expect(screen.getByText(/5 Nov.*10:59.*UTC/)).toBeTruthy()
-  expect(within(button).getByText('Qualification blocked')).toBeTruthy()
+  expect(within(button).getByText('Not qualified')).toBeTruthy()
   fireEvent.click(button)
-  const title = await screen.findByRole('heading', { name: 'worker_1' })
+  const title = await screen.findByRole('heading', { name: 'worker 1' })
   expect(button.closest('li')?.contains(title)).toBe(true) // Detail follows this mobile selection.
   expect(button.getAttribute('aria-pressed')).toBe('true')
   expect(within(screen.getByRole('group', { name: 'Key research metrics' }))
@@ -66,9 +66,10 @@ it('shows retained attempts without registered strategies and selects exact cycl
   const disclosures = [...document.querySelectorAll('details')]
   expect(disclosures.length).toBeGreaterThanOrEqual(4)
   expect(disclosures.every(item => !item.open)).toBe(true)
+  fireEvent.click(screen.getByText('Details', { exact: true }))
   fireEvent.change(screen.getByRole('combobox', { name: 'Evaluation' }),
     { target: { value: `scratch:${cycle}:runs:2` } })
-  expect(screen.getByRole('heading', { name: 'worker_2' })).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'worker 2' })).toBeTruthy()
   expect(within(screen.getByRole('group', { name: 'Key research metrics' }))
     .getByText('-0.25')).toBeTruthy()
   expect(fetch).toHaveBeenCalledTimes(2)
@@ -128,6 +129,8 @@ it('formats known in-sample metrics while preserving exact raw values behind dis
   expect(within(group).getByText('-12.3%')).toBeTruthy()
   expect(within(group).getByText('-20.0%')).toBeTruthy()
   expect(within(group).getByText('Unavailable')).toBeTruthy()
+  expect(document.querySelector<HTMLDetailsElement>('.retained-more')?.open).toBe(false)
+  fireEvent.click(screen.getByText('Details', { exact: true }))
   const summary = screen.getByText('All recorded metrics')
   const disclosure = summary.closest('details')!
   expect(disclosure.open).toBe(false)
@@ -145,5 +148,19 @@ it('keeps missing dates honest and execution errors distinct from qualification'
   const row = await screen.findByRole('button', { name: /Inspect/ })
   expect(within(row).getByText('Execution error')).toBeTruthy()
   expect(within(row).getByText(/Date unavailable/)).toBeTruthy()
-  expect(screen.queryByText('Qualification blocked')).toBeNull()
+  expect(screen.queryByText('Not qualified')).toBeNull()
+})
+
+
+it('limits the home preview to three rows and links to the complete archive', async () => {
+  const many = { ...index, count: 5, attempts: Array.from({ length: 5 }, (_, i) => ({
+    ...index.attempts[0], attempt_id: i + 7, evidence_id: `idea_attempts:${i + 7}`,
+  })) }
+  const fetch = serve(many)
+  render(<RetainedExperiments compact />)
+  expect(await screen.findAllByRole('button', { name: /Inspect/ })).toHaveLength(3)
+  expect(await screen.findByRole('heading', { name: 'worker 1' })).toBeTruthy()
+  expect(fetch).toHaveBeenCalledTimes(2)
+  expect(screen.getByRole('link', { name: /View all research/ }).getAttribute('href')).toBe('/research')
+  expect(document.querySelector<HTMLDetailsElement>('.retained-more')?.open).toBe(false)
 })

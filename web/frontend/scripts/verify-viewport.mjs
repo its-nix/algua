@@ -59,7 +59,7 @@ if (externalBase !== undefined) {
     for (const width of [390, 1440, 360]) {
       await page.setViewportSize({ width, height: 900 })
       await page.goto(url.origin, { waitUntil: 'networkidle' })
-      await page.getByRole('heading', { name: 'Strategy leaderboard', exact: true }).waitFor()
+      await page.getByRole('heading', { name: 'Leaderboard', exact: true }).waitFor()
       await page.getByRole('button', { name: 'Gate OOS', exact: true }).click()
       await page.getByText(/Synthetic fixture evidence is hidden/).waitFor()
       assert.equal(await rows.count(), 0, 'fixture evidence must be hidden by default')

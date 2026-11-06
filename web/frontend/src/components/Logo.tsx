@@ -1,10 +1,6 @@
-/** The approved reversed horizontal lockup, inlined verbatim from
- * docs/brand/logo-horizontal-reversed.svg.
- *
- * Path-only and font-free by construction (the wordmark ships as outlines), so
- * it renders identically before webfonts land and at any size. Do not retype
- * the wordmark, recolor the fills, or reorder the sea/A layers — regenerate the
- * source with `uv run python docs/brand/build_assets.py` and re-copy instead.
+/** Approved lockup geometry from docs/brand/logo-horizontal-reversed.svg.
+ * CSS adapts its neutral lettering to light/dark surfaces; the blue A is preserved.
+ * Outlined paths need no font download.
  */
 export default function Logo() {
   return (

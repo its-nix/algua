@@ -45,7 +45,7 @@ it('leads with the strategy leaderboard while keeping stale operational warnings
 
   render(<MemoryRouter><Leaderboard /></MemoryRouter>)
 
-  expect(screen.getByRole('heading', { name: 'Strategy leaderboard' })).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'Leaderboard' })).toBeTruthy()
   expect(await screen.findByText('paper loop stalled')).toBeTruthy()
   expect(screen.getByText(/stale data/)).toBeTruthy()
   expect(screen.getByText(/status incomplete/)).toBeTruthy()
@@ -64,7 +64,7 @@ it('F1 distinguishes public in-sample windows from separate gate observations in
       url === '/api/strategy-board?include_evidence=true' ? gateBoard : board,
   })) as unknown as typeof fetch)
   render(<MemoryRouter><Leaderboard /></MemoryRouter>)
-  const intro = screen.getByRole('heading', { name: 'Strategy leaderboard' }).closest('header')!
+  const intro = screen.getByRole('heading', { name: 'Leaderboard' }).closest('header')!
   expect(intro.textContent).toMatch(/public WF windows are in-sample/i)
   expect(intro.textContent).toMatch(/gate OOS observations are separate/i)
   expect(screen.getByRole('button', { name: 'Public WF windows' }).getAttribute('aria-pressed')).toBe('true')
@@ -73,4 +73,17 @@ it('F1 distinguishes public in-sample windows from separate gate observations in
   expect(intro.textContent).toMatch(/public WF windows are in-sample/i)
   expect(intro.textContent).toMatch(/gate OOS observations are separate/i)
   expect(intro.textContent).toMatch(/unknown and incompatible evidence stays unranked/i)
+})
+
+
+it('omits empty strategy modes while keeping research results accessible', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+    ok: true, status: 200, json: async () => url === '/api/triage' ? triage :
+      { ...board, data: { ...board.data, count: 0, rows: [] } },
+  })))
+  render(<MemoryRouter><Leaderboard /></MemoryRouter>)
+  await screen.findByText('Unsupported retained index payload.')
+  expect(screen.queryByRole('button', { name: 'Public WF windows' })).toBeNull()
+  expect(screen.queryByText('No registered strategies yet')).toBeNull()
+  expect(screen.getByRole('heading', { name: 'Latest research' })).toBeTruthy()
 })

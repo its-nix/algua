@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, useFetch } from '../api'
 import type { UseFetchResult } from '../api'
@@ -125,24 +125,34 @@ export function RefreshError({ error }: { error: Error | null }) {
  * complete payload and never replaces which run represents a strategy. Read-only: rows navigate
  * through the stable-ID resolver and nothing here mutates state.
  */
-export default function StrategyBoard({ compact = false }: { compact?: boolean }) {
+export default function StrategyBoard({ compact = false, hideEmpty = false }: {
+  compact?: boolean; hideEmpty?: boolean
+}) {
   const [research, setResearch] = useState(true)
+  const [empty, setEmpty] = useState(false)
   return <>
-    <div className="chip-row" role="group" aria-label="evidence mode">
+    {!empty && <div className="chip-row" role="group" aria-label="evidence mode">
       <button className={research ? 'filter-chip active' : 'filter-chip'} type="button" aria-pressed={research} onClick={() => setResearch(true)}>Public WF windows</button>
       <button className={research ? 'filter-chip' : 'filter-chip active'} type="button" aria-pressed={!research} onClick={() => setResearch(false)}>Gate OOS</button>
-    </div>
-    <StrategyBoardFetch key={research ? 'public' : 'gate'} research={research} compact={compact} />
+    </div>}
+    <StrategyBoardFetch key={research ? 'public' : 'gate'} research={research}
+      compact={compact} hideEmpty={hideEmpty} onEmpty={setEmpty} />
   </>
 }
 
 /** Each mode owns its fetch state, so superseded completions cannot replace the selected board. */
-function StrategyBoardFetch({ research, compact }: { research: boolean; compact: boolean }) {
+function StrategyBoardFetch({ research, compact, hideEmpty, onEmpty }: {
+  research: boolean; compact: boolean; hideEmpty: boolean; onEmpty: (value: boolean) => void
+}) {
   const query = useFetch<ApiEnvelope<StrategyBoardPayload>>(
     research ? STRATEGY_BOARD_EVIDENCE_URL : '/api/strategy-board?include_evidence=true',
   )
-  return <StrategyBoardView query={query} compact={compact}
-    expectedEvidenceSchema={compact ? undefined : research ? RESEARCH_SCHEMA_VERSION : EVIDENCE_SCHEMA_VERSION} />
+  const schema = compact ? undefined : research ? RESEARCH_SCHEMA_VERSION : EVIDENCE_SCHEMA_VERSION
+  const empty = Boolean(hideEmpty && query.data?.ok && !query.data.stale && query.error === null
+    && isBoardPayload(query.data.data) && query.data.data.evidence_schema_version === schema
+    && query.data.data.rows.length === 0)
+  useEffect(() => { onEmpty(empty) }, [empty, onEmpty])
+  return empty ? null : <StrategyBoardView query={query} compact={compact} expectedEvidenceSchema={schema} />
 }
 
 export function StrategyBoardView({
