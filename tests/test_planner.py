@@ -38,12 +38,20 @@ def test_planner_returns_validated_weights_and_sorted_rebalance_intents():
     assert again.intents == result.intents
 
 
-@pytest.mark.parametrize("version", [0, 2, -1, True, 1.0, "1", None])
+@pytest.mark.parametrize("version", [0, 99, -1, True, 1.0, "1", None])
 def test_unsupported_protocol_fails_before_strategy_access(version):
     from algua.live.planner import PlannerInput, plan
 
     request = PlannerInput(pd.DataFrame(), {}, datetime(2023, 1, 4, tzinfo=UTC), version)
     with pytest.raises(ValueError, match="unsupported planner protocol"):
+        plan(object(), request)
+
+
+def test_model_profile_without_context_fails_before_strategy_access():
+    from algua.live.planner import PlannerInput, plan
+
+    request = PlannerInput(pd.DataFrame(), {}, datetime(2023, 1, 4, tzinfo=UTC), 2)
+    with pytest.raises(ValueError, match="bound decision context"):
         plan(object(), request)
 
 
@@ -345,7 +353,9 @@ def test_planner_dependency_closure_has_no_operational_authority():
         "algua.live.planner_contract", "algua.live.planner_decision",
         "algua.live.planner_early", "algua.live.planner_late",
         "algua.live.planner_validation", "algua.risk.limits",
-        "algua.strategies.base",
+        "algua.strategies.base", "algua.strategies.context_inputs",
+        "algua.live.model_context", "algua.live.frozen_model_wire",
+        "algua.live.frozen_wire_json",
     }
     forbidden = {
         name for name in dependencies if name.startswith("algua.")
