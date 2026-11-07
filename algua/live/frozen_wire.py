@@ -16,7 +16,8 @@ import json
 from dataclasses import dataclass, fields
 from typing import Any, Final
 
-from algua.contracts.canonical import FROZEN_WIRE
+from algua.live.frozen_model_wire import WireIdentity as WireIdentity
+from algua.live.frozen_model_wire import model_fields, wire_tag, wire_version
 from algua.live.frozen_wire_arrow import BARS_FILE as BARS_FILE
 from algua.live.frozen_wire_arrow import bars_reference, decode_referenced_bars, encode_bars
 from algua.live.frozen_wire_json import MAX_JSON_COLLECTION as MAX_JSON_COLLECTION
@@ -37,14 +38,11 @@ from algua.live.frozen_wire_json import (
     expect_hex,
     expect_object,
     expect_phase,
-    expect_wire,
-    is_hex,
     loads_strict,
     optional,
     parse_canonical,
 )
 from algua.live.planner_contract import (
-    BOUNDARY_VERSION,
     CapturedStrategyState,
     EarlyPlannerInput,
     LatePlannerInput,
@@ -91,27 +89,6 @@ _CAPTURED_KEYS = frozenset(
 
 
 @dataclass(frozen=True)
-class WireIdentity:
-    strategy_name: str
-    deployment_id: int
-    artifact_id: int
-    manifest_digest: str
-    bundle_digest: str
-    environment_digest: str
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.strategy_name, str) or not self.strategy_name:
-            raise WireError("bad_identity", "strategy_name must be a non-empty string")
-        for name in ("deployment_id", "artifact_id"):
-            value = getattr(self, name)
-            if type(value) is not int or value <= 0:
-                raise WireError("bad_identity", f"{name} must be a positive integer")
-        for name in ("manifest_digest", "bundle_digest", "environment_digest"):
-            if not is_hex(getattr(self, name), 64):
-                raise WireError("bad_identity", f"{name} must be 64 lowercase hex chars")
-
-
-@dataclass(frozen=True)
 class DecodedRequest:
     phase: Phase
     identity: WireIdentity
@@ -119,8 +96,8 @@ class DecodedRequest:
     late: LatePlannerInput | None
 
 
-def _check_literals(boundary_version: Any, timeframe: Any) -> None:
-    if type(boundary_version) is not int or boundary_version != BOUNDARY_VERSION:
+def _check_literals(boundary_version: Any, timeframe: Any, version: int) -> None:
+    if type(boundary_version) is not int or boundary_version != version:
         raise WireError("unsupported_boundary_version", str(boundary_version))
     if type(timeframe) is not str or timeframe != TIMEFRAME:
         raise WireError("unsupported_timeframe", str(timeframe))
@@ -210,14 +187,14 @@ def encode_request(
               identity.manifest_digest)
     if carried != wanted or any(type(value) is not int for value in carried[1:3]):
         raise WireError("identity_mismatch", "early input does not carry the wire identity")
-    _check_literals(early.boundary_version, early.timeframe)
+    _check_literals(early.boundary_version, early.timeframe, identity.protocol_version)
     bars = encode_bars(early.raw_bars)
     if len(bars) > MAX_BARS_BYTES:
         raise WireTooLarge("bars_too_large", f"{len(bars)} > {MAX_BARS_BYTES} bytes")
     reference = bars_reference(early.raw_bars)
     universe = expect(early.gate_universe, tuple, "gate_universe")
     root = {
-        "wire": dict(FROZEN_WIRE),
+        "wire": wire_tag(identity.protocol_version),
         "phase": phase,
         "request_id": expect_hex(early.request_id, 32, "request_id"),
         "strategy_name": identity.strategy_name,
@@ -227,7 +204,7 @@ def encode_request(
         "bundle_digest": identity.bundle_digest,
         "environment_digest": identity.environment_digest,
         "early": {
-            "boundary_version": BOUNDARY_VERSION,
+            "boundary_version": identity.protocol_version,
             "config_hash": expect(early.config_hash, str, "config_hash"),
             "resolved_config": _config_object(early.resolved_config_json),
             "now": encode_ts(early.now, "now"),
@@ -240,6 +217,9 @@ def encode_request(
         },
         "late": None if late is None else _encode_late(late),
     }
+    if identity.protocol_version == 2:
+        root["early"].update(model_fields(  # type: ignore[union-attr]
+            _config_object(early.resolved_config_json), early.bars_snapshot_id))
     try:
         check_limits(root)
     except WireError as exc:
@@ -257,14 +237,20 @@ def decode_request(request_json: bytes, bars_arrow: bytes) -> DecodedRequest:
     if len(bars_arrow) > MAX_BARS_BYTES:
         raise WireError("bars_too_large", f"{len(bars_arrow)} > {MAX_BARS_BYTES} bytes")
     root = expect_object(parse_canonical(request_json), _ROOT_KEYS, "request")
-    expect_wire(root["wire"])
+    version = wire_version(root["wire"])
     phase = expect_phase(root["phase"])
     if (phase == "a") != (root["late"] is None):
         raise WireError("phase_late_mismatch", "phase 'b' and only phase 'b' carries late state")
     request_id = expect_hex(root["request_id"], 32, "request_id")
-    identity = WireIdentity(**{field.name: root[field.name] for field in fields(WireIdentity)})
-    e = expect_object(root["early"], _EARLY_KEYS, "early")
-    _check_literals(e["boundary_version"], e["timeframe"])
+    identity = WireIdentity(**{field.name: root[field.name] for field in fields(WireIdentity)
+                               if field.name != "protocol_version"}, protocol_version=version)
+    e = expect_object(root["early"], _EARLY_KEYS | (
+        frozenset({"bars_snapshot_id", "model_ref"}) if version == 2 else frozenset()), "early")
+    _check_literals(e["boundary_version"], e["timeframe"], version)
+    if version == 2:
+        extension = model_fields(e["resolved_config"], e["bars_snapshot_id"])
+        if canonical_bytes(e["model_ref"]) != canonical_bytes(extension["model_ref"]):
+            raise WireError("bad_model_profile", "model_ref differs from recorded config")
     config_hash: str = expect(e["config_hash"], str, "early.config_hash")
     config = _planner_config_json(expect(e["resolved_config"], dict, "early.resolved_config"))
     now = decode_ts(e["now"], "early.now")
@@ -278,7 +264,7 @@ def decode_request(request_json: bytes, bars_arrow: bytes) -> DecodedRequest:
     late = None if root["late"] is None else _decode_late(root["late"])
     raw_bars = decode_referenced_bars(bars_arrow, e["bars"])  # last: the bulk read
     early = EarlyPlannerInput(
-        boundary_version=BOUNDARY_VERSION,
+        boundary_version=version,
         request_id=request_id,
         strategy_name=identity.strategy_name,
         deployment_id=identity.deployment_id,
@@ -293,6 +279,7 @@ def decode_request(request_json: bytes, bars_arrow: bytes) -> DecodedRequest:
         early_positions=positions,
         gate_universe=gate_universe,
         max_drawdown=max_drawdown,
+        bars_snapshot_id=e.get("bars_snapshot_id"),
     )
     return DecodedRequest(
         phase, identity, early, None if late is None else LatePlannerInput(early, *late)

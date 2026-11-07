@@ -20,6 +20,7 @@ from algua.risk.limits import WEIGHT_TOL, check_finite_weights, validate_decisio
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping, Sequence
 
+    from algua.contracts.strategy_context import AsOfContext
     from algua.contracts.types import ExecutionContract
     from algua.strategies.base import LoadedStrategy
 
@@ -30,6 +31,7 @@ class PlannerInput:
     current_weights: dict[str, float]
     decision_ts: datetime
     protocol_version: int = PLANNER_PROTOCOL_VERSION
+    context: AsOfContext | None = None
 
 
 @dataclass(frozen=True)
@@ -117,15 +119,27 @@ def canonical_weights(weights: pd.Series, strategy_name: str) -> pd.Series:
 def plan(strategy: LoadedStrategy, inputs: PlannerInput) -> PlannerResult:
     if (
         type(inputs.protocol_version) is not int
-        or inputs.protocol_version != PLANNER_PROTOCOL_VERSION
+        or inputs.protocol_version not in (1, 2)
+        or (inputs.protocol_version == 1 and PLANNER_PROTOCOL_VERSION != 1)
     ):
         raise ValueError(f"unsupported planner protocol: {inputs.protocol_version!r}")
-    weights = canonical_weights(strategy.target_weights(inputs.view), strategy.name)
+    if inputs.protocol_version == 2:
+        if (inputs.context is None or strategy.strategy_interface != "context_v1"
+                or not strategy.config.needs_model
+                or inputs.context.decision_ts != inputs.decision_ts):
+            raise ValueError("model planner requires a bound decision context")
+        raw = strategy.target_weights_context(inputs.context)
+    else:
+        if inputs.context is not None:
+            raise ValueError("legacy planner cannot carry a model context")
+        raw = strategy.target_weights(inputs.view)
+    weights = canonical_weights(raw, strategy.name)
     validate_decision_weights(
         weights, strategy.execution, strategy.name, allowed_symbols=strategy.universe
     )
     return PlannerResult(
-        weights, build_intents(weights, inputs.current_weights, inputs.decision_ts)
+        weights, build_intents(weights, inputs.current_weights, inputs.decision_ts),
+        protocol_version=inputs.protocol_version,
     )
 
 

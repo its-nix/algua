@@ -14,6 +14,7 @@ from algua.contracts.frozen_model import (
     unpack_model,
 )
 from algua.contracts.model_types import ModelHandle
+from algua.live.frozen_model_wire import protocol_profile
 from algua.primitives.bounded_file import read_relative_regular
 
 
@@ -21,15 +22,7 @@ def bundle_model(bundle_root: Path) -> ModelHandle:
     """The fixed model stamp and files belong to the enclosing inventory-verified bundle."""
     raw = read_relative_regular(bundle_root, '_algua/protocol.json', 256 * 1024)
     stamp = json.loads(raw)
-    if (canonical_json(stamp).encode() != raw or type(stamp) is not dict
-            or set(stamp) != {'descriptor_version', 'planner_boundary_version',
-                             'planner_protocol_version', 'frozen_wire',
-                             'strategy_interface', 'model_asset'}
-            or stamp['strategy_interface'] != 'context_v1'
-            or any(type(stamp[key]) is not int or stamp[key] != 2
-                   for key in ('descriptor_version', 'planner_boundary_version',
-                               'planner_protocol_version'))
-            or stamp['frozen_wire'] != {'name': 'frozen-planner', 'version': 2}):
+    if canonical_json(stamp).encode() != raw or protocol_profile(stamp) != 2:
         raise ValueError('unsupported frozen model bundle profile')
     asset = FrozenModelAsset.from_dict(stamp['model_asset'])
     return unpack_model(asset,

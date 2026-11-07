@@ -474,7 +474,7 @@ HEX_ONE = (1.0).hex()
         ("a", ("strategy_name",), 5, "bad_identity"),
         ("a", ("early", "bars", "rows"), True, "bad_type"),
         ("a", ("wire", "version"), True, "bad_wire"),
-        ("a", ("wire", "version"), 2, "bad_wire"),
+        ("a", ("wire", "version"), 99, "bad_wire"),
         ("a", ("wire", "name"), "other-planner", "bad_wire"),
         ("a", ("early", "max_drawdown"), 0.1, "bad_float"),
         ("a", ("early", "max_drawdown"), "0x1p-4", "bad_float"),

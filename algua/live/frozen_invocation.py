@@ -24,6 +24,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Final
 
+from algua.live.frozen_model_wire import protocol_profile
 from algua.live.frozen_wire import (
     BARS_FILE,
     BOOTSTRAP,
@@ -39,8 +40,7 @@ from algua.live.frozen_wire import (
     TIMEOUT_SECONDS,
     WireError,
 )
-from algua.live.frozen_wire_json import expect_wire, parse_canonical
-from algua.live.planner_contract import BOUNDARY_VERSION
+from algua.live.frozen_wire_json import parse_canonical
 from algua.primitives.contained_process import ContainedResult
 
 PROTOCOL_FILE: Final = "_algua/protocol.json"
@@ -63,15 +63,9 @@ def unsupported_content(bundle_root: Path) -> str | None:
     if len(data) > MAX_REQUEST_BYTES:
         return f"{PROTOCOL_FILE} exceeds {MAX_REQUEST_BYTES} bytes"
     try:
-        stamp = parse_canonical(data)
-        if type(stamp) is not dict:
-            raise WireError("bad_protocol", "the stamp is not an object")
-        expect_wire(stamp.get("frozen_wire"))
-        boundary = stamp.get("planner_boundary_version")
-        if type(boundary) is not int or boundary != BOUNDARY_VERSION:
-            raise WireError("unsupported_boundary_version", repr(boundary))
+        protocol_profile(parse_canonical(data))
     except WireError as exc:
-        return f"{PROTOCOL_FILE} is not frozen-planner wire 1, planner boundary 1: {exc}"
+        return f"{PROTOCOL_FILE} has an unsupported frozen-planner profile: {exc}"
     try:
         present = (bundle_root / CHILD_FILE).is_file()
     except OSError as exc:  # e.g. EACCES on a directory: is_file() only swallows "not found"

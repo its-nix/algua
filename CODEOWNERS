@@ -38,6 +38,9 @@
 /algua/strategies/context_inputs.py @Lior-Nis   # shared immutable decision context composition
 /algua/strategies/frozen_model.py @Lior-Nis   # model-only frozen strategy admission
 /algua/live/frozen_model_loading.py @Lior-Nis   # bundle-only model recovery in the child
+/algua/live/frozen_model_wire.py @Lior-Nis   # bundle-only model recovery in the child
+/algua/live/model_context.py @Lior-Nis   # bundle-only model recovery in the child
+/algua/live/planner_context.py @Lior-Nis   # bundle-only model recovery in the child
 /algua/strategies/context_loader.py @Lior-Nis   # Task 2 authored context binding
 /algua/strategies/loader.py     @Lior-Nis   # Task 2 interface selection and model resolution
 /algua/strategies/tradable.py   @Lior-Nis   # Task 2 paper/live/frozen context refusal

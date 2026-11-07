@@ -143,6 +143,7 @@ def test_early_input_has_only_the_normative_data_fields():
         "early_positions",
         "gate_universe",
         "max_drawdown",
+        "bars_snapshot_id",
     ]
     forbidden = {
         "registry",

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from algua.calendar.market_calendar import MarketCalendar
+from algua.live.model_context import build_model_decision_context
 from algua.live.planner_contract import (
     CapturedStrategyState,
     Decision,
@@ -225,7 +226,10 @@ def phase_b_impl(
         return verdict
     try:
         result = plan_fn(
-            strategy, PlannerInput(verdict.view, verdict.current_weights, verdict.decision_ts)
+            strategy, PlannerInput(verdict.view, verdict.current_weights, verdict.decision_ts,
+                protocol_version=late.early.boundary_version,
+                context=build_model_decision_context(
+                    strategy, late.early, verdict.view, verdict.decision_ts))
         )
         state = verdict.state
         final = PlannerState(

@@ -22,18 +22,24 @@ from algua.live.planner_contract import (
     EarlyNoDecision,
     EarlyPlannerInput,
     EarlyPlannerResult,
+    PlannerInputFailure,
     PlannerRiskFailure,
     PlannerState,
     SnapshotRequired,
 )
-from algua.live.planner_validation import normalized, normalized_symbols, validate_early
+from algua.live.planner_validation import (
+    input_failure,
+    normalized,
+    normalized_symbols,
+    validate_early,
+)
 from algua.risk.limits import MAX_STALE_SESSIONS, RiskBreach, check_mark_freshness
 
 if TYPE_CHECKING:
     from algua.contracts.types import ExecutionContract
     from algua.strategies.base import LoadedStrategy
 
-type EarlyVerdict = PlannerRiskFailure | EarlyNoDecision | SnapshotRequired
+type EarlyVerdict = PlannerRiskFailure | PlannerInputFailure | EarlyNoDecision | SnapshotRequired
 
 
 def risk_failure(exc: RiskBreach) -> PlannerRiskFailure:
@@ -177,6 +183,15 @@ def early_verdict(early: EarlyPlannerInput, execution: ExecutionContract) -> Ear
         return risk_failure(exc)
     if prepared.bars.empty:
         return EarlyNoDecision("no_bars", _empty_state(early))
+    if early.boundary_version == 2 and prepared.decision_ts is not None:
+        import json
+
+        from algua.contracts.model_types import normalize_as_of
+
+        ref = json.loads(early.resolved_config_json)["model_ref"]
+        if normalize_as_of(ref["training_as_of"]) > pd.Timestamp(prepared.decision_ts):
+            return input_failure(
+                "invalid_early_input", "model training_as_of is after the decision")
     if prepared.warming and not held:
         return EarlyNoDecision("warming", _empty_state(early, prepared.decision_ts))
     binding = phase_a_binding(early, decision_ts=prepared.decision_ts, warming=prepared.warming)
