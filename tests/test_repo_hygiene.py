@@ -244,6 +244,8 @@ def test_strategies_placement_and_provenance() -> None:
 # fails loudly at the moment of the move instead of silently disarming a wall.
 INTEGRITY_CRITICAL_MODULES = frozenset(
     {
+        "algua/contracts/frozen_model.py",
+        "algua/registry/frozen_model_assets.py",
         "algua/contracts/lifecycle.py",
         "algua/contracts/strategy_context.py",
         "algua/backtest/engine.py",

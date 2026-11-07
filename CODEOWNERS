@@ -32,6 +32,8 @@
 /algua/contracts/strategy_interface.py @Lior-Nis   # Task 2 closed decision-interface vocabulary
 /algua/contracts/strategy_identity.py @Lior-Nis   # Task 2 interface-aware config identity
 /algua/contracts/strategy_scoring.py @Lior-Nis   # Task 2 context scoring and model-pin checks
+/algua/contracts/frozen_model.py @Lior-Nis   # portable pinned model identity and byte verification
+/algua/registry/frozen_model_assets.py @Lior-Nis   # bounded immutable model asset packaging and reads
 /algua/strategies/context_loader.py @Lior-Nis   # Task 2 authored context binding
 /algua/strategies/loader.py     @Lior-Nis   # Task 2 interface selection and model resolution
 /algua/strategies/tradable.py   @Lior-Nis   # Task 2 paper/live/frozen context refusal
