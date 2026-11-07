@@ -25,7 +25,13 @@ from pathlib import Path
 from algua.audit.log import append as audit_append
 from algua.config.settings import get_settings
 from algua.contracts.lifecycle import Actor, Stage, TransitionError
-from algua.registry import allocations, artifact_errors, artifact_recording, frozen_tenant_errors
+from algua.registry import (
+    allocations,
+    artifact_errors,
+    artifact_recording,
+    frozen_model_policy,
+    frozen_tenant_errors,
+)
 from algua.registry.allocations import (
     AllocationError,
     CountCapReached,
@@ -179,21 +185,14 @@ def run_intake(
     prepare_and_verify: PrepareAndVerify | None = None,
     repo_root: Path | None = None, store_root: Path | None = None,
 ) -> dict:
-    """The FIFO book-admission loop over ONE registry connection — shared by the ``paper intake``
-    command and the ``paper merge-back`` driver (#485) so there is exactly one admit path, never a
-    dual one.
+    """FIFO book admission shared by ``paper intake`` and ``paper merge-back`` (#485).
 
     Two populations, re-entrants first:
 
-    **RE-ADMISSION** (``readmitted``) restores the book slice of a strategy already AT a book stage
-    that holds no active allocation. That state is a broken invariant, not a queue: `paper ->
-    dormant` and `live -> paper` revoke the allocation atomically while the return edges restore
-    only the stage, leaving a strategy that `paper run-all` skips as unallocated, that never ticks,
-    and that `fleet health` alerts on forever. Re-entrants go FIRST — they were admitted before the
-    queued candidates existed — and are funded through ``allocations.allocate_in_lane``, which
-    re-reads the stage under the SAME write lock and enforces the SAME Σ ≤ equity and count-cap
-    bounds. No stage changes, and an ALREADY-allocated tenant is never touched (intake is not a
-    rebalancer).
+    **RE-ADMISSION** (``readmitted``) restores an unfunded book-stage tenant before queued
+    candidates. ``allocations.allocate_in_lane`` re-reads its stage under the write lock and
+    enforces the same equity/count limits. Already-allocated tenants are unchanged; intake does
+    not rebalance or change re-entrant stages.
 
     **ADMISSION** (``admitted``) takes each candidate in FIFO order (candidate-entry
     ``stage_transitions.id``, tie-break strategy id). Outside any write transaction it runs
@@ -263,8 +262,9 @@ def run_intake(
             admission = step(repo, cand.name, repo_root=root,
                              store_root=store_root or get_settings().data_dir)
             # Content the supervisor's strict decoder refuses could never tick (Story 1.3c §2).
-            decode_tenant_config(
-                artifact_recording.parse_frozen_deployment_manifest(admission.manifest), cand.name)
+            manifest = artifact_recording.parse_frozen_deployment_manifest(admission.manifest)
+            decode_tenant_config(manifest, cand.name)
+            frozen_model_policy.require_execution_isolation(manifest)
         except _REFUSALS as exc:
             code = next(c for typ, c in _REFUSAL_CODES if isinstance(exc, typ))
             audit_append(conn, actor=actor.value, action='paper_intake_refused', reason=code,

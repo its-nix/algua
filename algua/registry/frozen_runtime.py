@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from algua.registry import paper_runtime
+from algua.registry import frozen_model_policy, paper_runtime
 from algua.registry.artifact_contract import BundleDescriptor
 from algua.registry.artifact_recording import parse_frozen_deployment_manifest
 from algua.registry.artifact_store import ArtifactStoreError, verify_bundle
@@ -211,7 +211,9 @@ def recorded_descriptor(
         raise FrozenContentUnavailable(
             "recorded descriptor", deployment_id=deployment.id) from exc
     try:
-        return manifest, decode_tenant_config(manifest, name)
+        config = decode_tenant_config(manifest, name)
+        frozen_model_policy.require_execution_isolation(manifest)
+        return manifest, config
     except FrozenTenantUnsupported as exc:
         exc.deployment_id = deployment.id
         raise

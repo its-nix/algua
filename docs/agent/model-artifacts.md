@@ -106,3 +106,29 @@ The existing loader verifies the exact version/bytes/provenance; canonical conte
 five-bar warmup and `t→t+1` execution remain in force. Context paper/live and model-backed
 walk-forward/sweeps remain refused. This demonstrates executable DL inference on fixtures,
 not a trained DL producer, real multimodal evidence, predictive quality or trading qualification.
+
+## Frozen pinned-model planner profile
+
+Artifact preparation can package the offline `price-linear/v1` producer into a new version-2
+frozen descriptor: daily bars, `context_v1`, one explicit `ModelRef`, no news or fundamentals.
+The bundle contains `_algua/model/artifact.json` (64 KiB maximum) and canonical portable
+`_algua/model/provenance.json` (1 MiB maximum), with full SHA-256 digests in addition to the
+existing registry pins. The provenance omits the machine-local artifact path. Model reads require
+regular bounded files and refuse symlinks through the asset path. Serving reads the verified
+bundle, without accessing the model registry or training.
+
+Descriptor, boundary, planner and wire versions are all 2 for this profile; existing version-1
+artifacts, hashes and request/result bytes retain their meanings. Requests bind the exact bars
+snapshot, model pin, interface and protocol across both phases; model bytes stay in the bundle.
+The child uses the same context composition, scorer, construction, overlays and intent builder
+as research. For a single paper decision its first evaluated cutoff is that decision, rather
+than the beginning of warmup history. A future-trained pin is refused before a warming result.
+The decision lag remains at least one bar.
+
+**Authoritative model-paper admission and resolution remain closed** with
+`frozen_content_unsupported`: reviewed authority-denying execution isolation is still required.
+`run_contained` bounds process time/output but does not supply that isolation. There is no enable
+flag. Trusted synthetic tests inject the policy seam, run real cold children with a recording
+broker, and verify snapshot attribution, corruption refusal and stable order identity. They do
+not establish economic qualification, elapsed operational sessions or deployment readiness.
+Working-tree model trading and frozen live execution retain their existing refusals.

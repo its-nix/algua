@@ -24,7 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 from contextlib import closing
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -36,6 +36,7 @@ from algua.backtest._sample import SyntheticProvider
 from algua.cli.main import app
 from algua.config.settings import get_settings
 from algua.contracts.lifecycle import Actor
+from algua.contracts.model_types import ModelHandle
 from algua.data.store import DataStore
 from algua.execution.alpaca_broker import AccountState
 from algua.registry.artifact_contract import BundleDescriptor
@@ -93,7 +94,9 @@ def window() -> tuple[str, str]:
 # --- content -----------------------------------------------------------------------------------
 
 
-def bundle_files(protocol: bytes | None) -> tuple[FrozenFile, ...]:
+def bundle_files(
+    protocol: bytes | None, *, resolved=None, source_text=None, model_handle=None,
+) -> tuple[FrozenFile, ...]:
     """This checkout's ``algua/`` with the tenant in its own family, plus 1.3b's ``_algua/``."""
     source = [
         FrozenFile(f"algua/{path.relative_to(CHECKOUT_ALGUA).as_posix()}", "100644",
@@ -104,9 +107,18 @@ def bundle_files(protocol: bytes | None) -> tuple[FrozenFile, ...]:
     source += [
         FrozenFile(f"algua/strategies/{FAMILY}/__init__.py", "100644", b""),
         FrozenFile(f"algua/strategies/{FAMILY}/{TENANT}.py", "100644",
-                   strategy_source(TENANT).encode()),
+                   (source_text or strategy_source(TENANT)).encode()),
     ]
-    files = [item for item in _bundle_files(tuple(source), RECORDED) if item.path != PROTOCOL]
+    model_asset = None
+    if model_handle is not None:
+        from algua.registry.frozen_model_assets import pack_model
+
+        model_asset, model_files = pack_model(model_handle)
+        source.extend(model_files)
+    generated = _bundle_files(tuple(source), resolved or RECORDED, model_asset=model_asset)
+    files = [item for item in generated if item.path != PROTOCOL]
+    if model_handle is not None and protocol == STAMP:
+        protocol = next(item.data for item in generated if item.path == PROTOCOL)
     if protocol is not None:
         files.append(FrozenFile(PROTOCOL, "100644", protocol))
     return tuple(sorted(files, key=lambda item: item.path.encode()))
@@ -272,7 +284,7 @@ def _allocate(conn, strategy_id: int, capital: float = 10_000.0) -> None:
     conn.commit()
 
 
-def _add_frozen_candidate(conn) -> None:
+def _add_frozen_candidate(conn, *, config_digest: str = CONFIG_HASH) -> None:
     """A qualified candidate whose newest passing gate binds the tenant's identity and gate
     universe, entered into ``candidate`` after that gate (the 1.3b qualification rule)."""
     repo = SqliteStrategyRepository(conn)
@@ -281,7 +293,7 @@ def _add_frozen_candidate(conn) -> None:
         rec.id, passed=True, n_funnel=1, own_lifetime_combos=1, windowed_total_combos=1,
         funnel_window_days=90, breadth_provenance="measured", pit_ok=True, pit_override=False,
         holdout_n_bars=63, min_holdout_observations=63, code_hash=CODE_HASH,
-        config_hash=CONFIG_HASH, dependency_hash=DEP, data_source="test", snapshot_id="snap",
+        config_hash=config_digest, dependency_hash=DEP, data_source="test", snapshot_id="snap",
         period_start="2024-01-01", period_end="2024-12-31", holdout_frac=0.2, actor="human",
         decision_json="{}", universe_name=GATE_NAME)
     created_at = conn.execute(
@@ -291,16 +303,44 @@ def _add_frozen_candidate(conn) -> None:
         "INSERT INTO stage_transitions(strategy_id, from_stage, to_stage, actor, reason,"
         " code_hash, config_hash, dependency_hash, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
         (rec.id, "backtested", "candidate", Actor.HUMAN.value, "fixture", CODE_HASH,
-         CONFIG_HASH, DEP, created_at))
+         config_digest, DEP, created_at))
     conn.commit()
 
 
-def build_world(monkeypatch, tmp_path: Path, *, protocol: bytes | None = STAMP) -> World:
+def build_world(
+    monkeypatch, tmp_path: Path, *, protocol: bytes | None = STAMP,
+    model_handle: ModelHandle | None = None,
+) -> World:
     """Publish content, register the sibling and the candidate, and admit the candidate through
     the real ``paper intake``. The CLI's broker, provider and child launch are wired to fakes/spies;
     the child itself is real."""
+    resolved, config_digest, source_text = RECORDED, CONFIG_HASH, strategy_source(TENANT)
+    model_asset = None
+    if model_handle is not None:
+        from algua.registry.frozen_model_assets import pack_model
+        from tests.test_frozen_model_manifest import model_strategy
+
+        strategy = model_strategy((model_handle.version, model_handle.artifact_bytes))
+        strategy = replace(strategy, config=strategy.config.model_copy(update={'name': TENANT}))
+        resolved, config_digest = recorded(strategy), config_hash(strategy)
+        model_asset, _ = pack_model(model_handle)
+        config = dict(resolved)
+        execution, ref = config.pop('execution'), config.pop('model_ref')
+        source_text = (
+            "from algua.contracts.model_types import ModelRef\n"
+            "from algua.contracts.types import ExecutionContract\n"
+            "from algua.strategies.base import StrategyConfig\n"
+            "from algua.features.price_linear_context import score_price_linear\n"
+            "STRATEGY_INTERFACE = 'context_v1'\n"
+            f"CONFIG = StrategyConfig(**{config!r}, execution=ExecutionContract(**{execution!r}), "
+            f"model_ref=ModelRef(**{ref!r}))\n"
+            "def score(context):\n"
+            " return score_price_linear(context, model_key=CONFIG.model_ref.name)\n")
+        # Trusted authored fixture only. No production bypass flag or capability is installed.
+        monkeypatch.setattr('algua.registry.frozen_model_policy.require_execution_isolation',
+                            lambda manifest: None)
     data_dir = tmp_path / "data"
-    data_dir.mkdir()
+    data_dir.mkdir(parents=True)
     monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "registry.db"))
     monkeypatch.setenv("ALGUA_DATA_DIR", str(data_dir))
     monkeypatch.setenv("ALGUA_ALPACA_API_KEY", API_KEY)
@@ -308,23 +348,26 @@ def build_world(monkeypatch, tmp_path: Path, *, protocol: bytes | None = STAMP) 
     DataStore(data_dir).ingest_universe(
         universe=GATE_NAME, symbols=GATE, effective_date="2020-01-01",
         as_of="2020-01-01T00:00:00Z", source="test")
-    files = bundle_files(protocol)
+    files = bundle_files(protocol, resolved=resolved, source_text=source_text,
+                         model_handle=model_handle)
     bundle = BundleDescriptor.from_files(tuple(item.contract_entry for item in files))
     publish_bundle(data_dir, files, bundle)
     environment = environment_descriptor()
     build_environment(data_dir, environment.digest)
     world = World(data_dir, RecordingBroker(), bundle, environment)
-    CHECKOUT_MODULE.write_text(strategy_source(TENANT))
+    CHECKOUT_MODULE.write_text(source_text)
 
     def prepare(repo, name, *, repo_root, store_root):
         world.prepared.append(name)
         assert Path(store_root) == data_dir
         qualification = repo.qualify_frozen_candidate(
-            name, code_hash=CODE_HASH, config_hash=CONFIG_HASH, dependency_hash=DEP)
+            name, code_hash=CODE_HASH, config_hash=config_digest, dependency_hash=DEP)
         frozen = FrozenManifest(
-            source_ref="a" * 40, code_hash=CODE_HASH, config_hash=CONFIG_HASH,
-            dependency_hash=DEP, resolved_config=RECORDED,
-            universe_name=qualification.universe_name, bundle=bundle, environment=environment)
+            source_ref="a" * 40, code_hash=CODE_HASH, config_hash=config_digest,
+            dependency_hash=DEP, resolved_config=resolved,
+            universe_name=qualification.universe_name, bundle=bundle, environment=environment,
+            strategy_interface="legacy" if model_handle is None else "context_v1",
+            model_asset=model_asset)
         artifact_id = repo.record_frozen_artifact(
             name, frozen_deployment_manifest(frozen),
             research_gate_id=qualification.research_gate_id)
@@ -361,7 +404,7 @@ def build_world(monkeypatch, tmp_path: Path, *, protocol: bytes | None = STAMP) 
     with world.conn() as conn:
         # The frozen tenant registers first (lower id), so run-all ticks it BEFORE the sibling:
         # an isolated frozen failure must let the cycle continue on to the sibling.
-        _add_frozen_candidate(conn)
+        _add_frozen_candidate(conn, config_digest=config_digest)
         _add_sibling(conn)
     result = runner.invoke(app, ["paper", "intake", "--max-concurrent", "5"])
     assert result.exit_code == 0, result.output

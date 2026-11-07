@@ -466,3 +466,20 @@ uv run pytest -q && uv run ruff check . && uv run mypy algua && uv run lint-impo
 Touching `web/`? Also `uv run --project web pytest web/backend/tests -q` and
 `cd web/frontend && npm run check && npm run build`. The root `uv.lock` is `dependency_hash`
 identity — never add web deps to it.
+
+### Frozen model mechanics (version 2; authoritative admission closed)
+
+The frozen descriptor can bind one portable offline price-linear model and its training
+provenance (`contracts/frozen_model`, `registry/frozen_model_assets`). Explicit version-2
+descriptor/boundary/planner/wire stamps select a bars-plus-model `context_v1` path; version 1
+keeps its original identity and bytes. `strategies/context_inputs` composes the shared immutable
+context, `live/model_context` applies the single-decision cutoff, and the cold child loads only
+the bundled pin through `strategies/frozen_model`. `live/frozen_model_wire` validates the profile
+and the two phases bind the exact bars snapshot and model identity. The supervisor retains risk
+validation, effects and evidence recording.
+
+`registry/frozen_model_policy` refuses authoritative model-paper intake and resolution until a
+reviewed authority-denying strategy execution boundary exists at the real launch seam. Existing
+process containment is insufficient. The implementation verifies trusted fixture mechanics and
+existing release wrappers; it does not activate a service, qualify model economics, shorten
+forward thresholds or enable frozen live trading.
