@@ -13,6 +13,7 @@ from algua.registry.artifact_store import ArtifactStoreError, verify_bundle
 from algua.registry.deployment import DeploymentError
 from algua.registry.environment_store import EnvironmentStoreError, verify_published_environment
 from algua.registry.frozen_manifest_contract import FrozenManifest
+from algua.registry.frozen_model_assets import read_bundle_model
 from algua.registry.store import SqliteStrategyRepository
 
 
@@ -36,7 +37,9 @@ def verify_frozen_artifact(
     if not isinstance(strategy, str) or not strategy:
         raise FrozenDescriptorConflict()
     try:
-        verify_bundle(store_root, manifest.bundle)
+        bundle_root = verify_bundle(store_root, manifest.bundle)
+        if manifest.model_asset is not None:
+            read_bundle_model(bundle_root, manifest.model_asset)
     except (ArtifactStoreError, OSError, ValueError) as exc:
         raise FrozenBundleCorrupt() from exc
     try:
