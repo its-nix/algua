@@ -30,6 +30,7 @@ from typing import Any
 
 import algua
 from algua.contracts.canonical import canonical_json
+from algua.live.frozen_model_loading import bundle_model
 from algua.live.frozen_wire import (
     BARS_FILE,
     EXIT_BAD_REQUEST,
@@ -47,6 +48,7 @@ from algua.live.frozen_wire_result import encode_result
 from algua.live.planner import phase_a, phase_b
 from algua.live.planner_contract import BOUNDARY_VERSION
 from algua.strategies.base import LoadedStrategy
+from algua.strategies.frozen_model import load_frozen_model_strategy
 from algua.strategies.loader import load_tradable_strategy
 
 PROTOCOL_FILE = "_algua/protocol.json"
@@ -146,7 +148,8 @@ def _load_bundle_strategy(bundle_root: Path, request: DecodedRequest) -> LoadedS
         raise _Refused(f"{RESOLVED_CONFIG_FILE} is not the request's recorded config")
     name = identity.strategy_name
     try:
-        strategy = load_tradable_strategy(name)
+        strategy = (load_tradable_strategy(name) if request.early.boundary_version == 1
+                    else load_frozen_model_strategy(name, model=bundle_model(bundle_root)))
     except (LookupError, ValueError) as exc:
         raise _Refused(f"the bundle holds no tradable strategy {name!r}: {exc}") from None
     if strategy.config.name != name:

@@ -34,6 +34,10 @@
 /algua/contracts/strategy_scoring.py @Lior-Nis   # Task 2 context scoring and model-pin checks
 /algua/contracts/frozen_model.py @Lior-Nis   # portable pinned model identity and byte verification
 /algua/registry/frozen_model_assets.py @Lior-Nis   # bounded immutable model asset packaging and reads
+/algua/primitives/bounded_file.py @Lior-Nis   # no-symlink bounded model file reads
+/algua/strategies/context_inputs.py @Lior-Nis   # shared immutable decision context composition
+/algua/strategies/frozen_model.py @Lior-Nis   # model-only frozen strategy admission
+/algua/live/frozen_model_loading.py @Lior-Nis   # bundle-only model recovery in the child
 /algua/strategies/context_loader.py @Lior-Nis   # Task 2 authored context binding
 /algua/strategies/loader.py     @Lior-Nis   # Task 2 interface selection and model resolution
 /algua/strategies/tradable.py   @Lior-Nis   # Task 2 paper/live/frozen context refusal

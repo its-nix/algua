@@ -60,7 +60,8 @@ JUNK_PATTERNS = [
 STRAT_PREFIX = "algua/strategies/"
 # Modules allowed directly at the strategies top level: infrastructure, not strategies.
 INFRA_TOP_LEVEL = frozenset(
-    {"__init__.py", "base.py", "context_loader.py", "loader.py", "tradable.py"}
+    {"__init__.py", "base.py", "context_loader.py", "context_inputs.py", "frozen_model.py",
+     "loader.py", "tradable.py"}
 )
 
 
@@ -246,6 +247,10 @@ INTEGRITY_CRITICAL_MODULES = frozenset(
     {
         "algua/contracts/frozen_model.py",
         "algua/registry/frozen_model_assets.py",
+        "algua/primitives/bounded_file.py",
+        "algua/strategies/context_inputs.py",
+        "algua/strategies/frozen_model.py",
+        "algua/live/frozen_model_loading.py",
         "algua/contracts/lifecycle.py",
         "algua/contracts/strategy_context.py",
         "algua/backtest/engine.py",

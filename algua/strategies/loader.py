@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import pkgutil
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
 
@@ -81,7 +82,10 @@ def _reload_strategy_closure(dotted: str) -> ModuleType:
         raise StrategyNotFound(f"{dotted}: {exc}") from exc
 
 
-def load_strategy(name: str, *, reload: bool = False) -> LoadedStrategy:
+def load_strategy(
+    name: str, *, reload: bool = False,
+    model_resolver: Callable[[str, StrategyConfig], ModelHandle] | None = None,
+) -> LoadedStrategy:
     """Load a bundled strategy by bare name; it must expose CONFIG plus the entry point selected by
     module interface (legacy ``signal`` or Task 2 ``STRATEGY_INTERFACE='context_v1'`` plus
     ``score(context)``), and CONFIG must
@@ -146,8 +150,9 @@ def load_strategy(name: str, *, reload: bool = False) -> LoadedStrategy:
     needs_fundamentals = bool(getattr(config, "needs_fundamentals", False))
     needs_news = bool(getattr(config, "needs_news", False))
     needs_model = bool(getattr(config, "needs_model", False))
+    resolve_model = model_resolver or _resolve_model_handle
     if context_interface:
-        resolver = (lambda: _resolve_model_handle(name, config)) if needs_model else None
+        resolver = (lambda: resolve_model(name, config)) if needs_model else None
         try:
             return bind_context_strategy(
                 module, config, construct_fn, overlay_fns, resolver
@@ -168,7 +173,7 @@ def load_strategy(name: str, *, reload: bool = False) -> LoadedStrategy:
                 f"{name}: needs_model=True requires signal(view, params, model); "
                 f"got {n_params} params"
             )
-        handle = _resolve_model_handle(name, config)
+        handle = resolve_model(name, config)
         return LoadedStrategy(
             config=config,
             model_signal_fn=module.signal,
@@ -233,11 +238,7 @@ def load_strategy_config(name: str) -> StrategyConfig:
 
 
 def _resolve_model_handle(name: str, config: StrategyConfig) -> ModelHandle:
-    """Resolve a needs_model strategy's PINNED model_ref against the model registry and build the
-    ModelHandle injected into signal(view, params, model). Fails closed (StrategyNotFound) unless
-    the resolved version's artifact digest, training_as_of, AND provenance_digest all match the
-    pinned ref — so a strategy can NEVER silently bind a different model (or a model whose training
-    provenance was rewritten) than the one its config was validated with (issue #376)."""
+    """Resolve the exact pin and provenance; never silently bind another registry version."""
     import hashlib
 
     from algua.models import ModelRegistryError, get_version_with_bytes
