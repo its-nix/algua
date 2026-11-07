@@ -45,6 +45,8 @@ from algua.primitives.contained_process import ContainedResult
 
 PROTOCOL_FILE: Final = "_algua/protocol.json"
 CHILD_FILE: Final = CHILD_MODULE.replace(".", "/") + ".py"
+# Installed trusted launcher, never a strategy-controlled PATH lookup or a sandbox=none switch.
+BWRAP: Final = Path("/usr/bin/bwrap")
 
 type Runner = Callable[..., ContainedResult]
 
@@ -126,7 +128,35 @@ def process_failure(result: ContainedResult) -> str | None:
 
 
 def child_argv(interpreter: Path, bundle_root: Path, invocation_dir: Path) -> list[str]:
-    return [str(interpreter), "-I", "-B", "-c", BOOTSTRAP, str(bundle_root), str(invocation_dir)]
+    """A mandatory kernel sandbox around the existing wire-v1 child (never authoring flags).
+
+    Mount only the verified bundle/environment, interpreter runtime, system libraries and sealed
+    request. The working tree, home, registry, broker sockets and host network are absent. Python
+    isolation and mode bits are not security boundaries against authored Python. Bubblewrap's
+    namespace failure is terminal: neither absence nor a failed launch retries the bare child.
+
+    Environment symlinks are trusted, content-verified dependency inputs, not strategy input.
+    Binding their site-packages target supports relocatable environments without exposing its
+    parent checkout. A dependency with other external paths simply fails closed when imported.
+    """
+    if not BWRAP.is_file() or not os.access(BWRAP, os.X_OK):
+        raise LaunchFailure("kernel strategy isolation unavailable: /usr/bin/bwrap is required")
+    environment = interpreter.parent.parent
+    roots = {bundle_root.resolve(), invocation_dir.resolve(), environment.resolve(),
+             interpreter.resolve().parent.parent}
+    for packages in environment.glob("lib/python*/site-packages"):
+        if packages.is_symlink():
+            roots.add(packages.resolve())
+    roots.update(Path(path) for path in ("/usr", "/lib", "/lib64") if Path(path).exists())
+    argv = [str(BWRAP), "--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL",
+            "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"]
+    # Create scratch first: a later tmpfs would hide permitted content located beneath /tmp.
+    # Do not mount an ancestor merely to make a path reachable: bwrap creates empty parents.
+    for root in sorted(roots, key=str):
+        argv.extend(["--ro-bind", str(root), str(root)])
+    argv.extend(["--chdir", str(bundle_root), "--"])
+    return argv + [str(interpreter), "-I", "-B", "-c", BOOTSTRAP,
+                   str(bundle_root), str(invocation_dir)]
 
 
 def child_env(environment_root: Path) -> dict[str, str]:
@@ -187,7 +217,7 @@ def launch_child(
             # `subprocess.Popen` re-raises a failed exec (or chdir into the bundle) in the child as
             # the child's errno with that path as `filename`; out of descriptors, fork or reaping
             # failures carry none, and are the supervisor's.
-            started_at = (str(interpreter), str(bundle_root))
+            started_at = (str(interpreter), str(bundle_root), str(BWRAP))
             if exc.filename is None or str(exc.filename) not in started_at:
                 raise
             raise LaunchFailure(str(exc)) from exc

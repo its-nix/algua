@@ -311,7 +311,7 @@ def _only_the_frozen_interpreter(monkeypatch, tmp_path: Path, interpreter: str) 
         argv = ([os.fsdecode(args)] if isinstance(args, (str, bytes, os.PathLike))
                 else [os.fsdecode(arg) for arg in args])
         launched.append(argv)
-        if argv[0] != interpreter:
+        if argv[0] != "/usr/bin/bwrap" or argv[-7] != interpreter:
             raise FileNotFoundError(errno.ENOENT, "not installed", argv[0])
         return execute_child(self, args, executable, *rest)
 
@@ -365,7 +365,9 @@ def test_each_recorded_attempt_replays_to_its_result_digest_after_a_restart(
     assert len(launched) == 2
     invocations = (world.data_dir / "frozen" / "invocations").resolve()
     for argv in launched:
-        assert argv[:-1] == [world.interpreter, "-I", "-B", "-c", BOOTSTRAP,
+        assert Path(argv[0]).name == "bwrap"
+        assert "--unshare-all" in argv
+        assert argv[-7:-1] == [world.interpreter, "-I", "-B", "-c", BOOTSTRAP,
                              str(world.bundle_root)]
         assert Path(argv[-1]).parent.resolve() == invocations
     assert list(invocations.iterdir()) == []  # each sealed directory removed after its child

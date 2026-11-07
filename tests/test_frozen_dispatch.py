@@ -324,7 +324,9 @@ def test_a_phase_launches_the_exact_contract_command_over_a_sealed_directory(wor
     (call,) = run.calls
     invocation = call["invocation"]
     assert invocation.parent == world.invocations
-    assert call["argv"] == [str(world.environment / "bin/python"), "-I", "-B", "-c", BOOTSTRAP,
+    assert Path(call["argv"][0]).name == "bwrap"
+    assert "--unshare-all" in call["argv"]
+    assert call["argv"][-7:] == [str(world.environment / "bin/python"), "-I", "-B", "-c", BOOTSTRAP,
                             str(world.bundle), str(invocation)]
     assert call["cwd"] == world.bundle
     assert call["env"] == {"PATH": str(world.environment / "bin"), "HOME": "/nonexistent",
@@ -436,7 +438,7 @@ def test_a_supervisor_side_fault_inside_the_launch_is_systemic(world, fault):
 
 
 @pytest.mark.parametrize("case", ["missing", "not_executable"])
-def test_a_real_interpreter_that_cannot_start_is_the_tenants_launch_failure(tmp_path, case):
+def test_a_real_interpreter_that_cannot_start_is_the_tenants_sandbox_failure(tmp_path, case):
     bundle = _bundle(tmp_path)
     environment = tmp_path / "environment"
     if case == "not_executable":
@@ -444,9 +446,10 @@ def test_a_real_interpreter_that_cannot_start_is_the_tenants_launch_failure(tmp_
         (environment / "bin/python").write_text("")  # mode 0644: exec fails with EACCES
     port = frozen_port(_target(bundle, environment), tmp_path / "inv")
 
-    failure = _failure(lambda: port.phase_a(early_input(in_process())), "frozen_launch_failed")
+    failure = _failure(lambda: port.phase_a(early_input(in_process())), "frozen_exit_abnormal")
 
-    assert str(environment / "bin/python") in failure.diagnostic
+    assert "bwrap:" in failure.diagnostic
+    assert str(environment) in failure.diagnostic
     assert _leftovers(tmp_path / "inv") == []
 
 
