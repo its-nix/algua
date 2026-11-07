@@ -1,7 +1,7 @@
 # Strategy delivery: historical qualification, short paper, experimental live
 
 Date: 2026-11-07. Source baseline: `9f4fbce`.
-Status: owner agreed to the direction in conversation; this written design is for review.
+Status: written design approved by the owner in conversation on 2026-11-07.
 This document changes no executable policy, lifecycle edge, approval, allocation or service.
 
 ## 1. Agreed objective and constraints
