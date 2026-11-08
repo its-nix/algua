@@ -467,7 +467,7 @@ Touching `web/`? Also `uv run --project web pytest web/backend/tests -q` and
 `cd web/frontend && npm run check && npm run build`. The root `uv.lock` is `dependency_hash`
 identity — never add web deps to it.
 
-### Frozen model mechanics (version 2; authoritative admission closed)
+### Frozen model mechanics (version 2; reviewed-code paper execution)
 
 The frozen descriptor can bind one portable offline price-linear model and its training
 provenance (`contracts/frozen_model`, `registry/frozen_model_assets`). Explicit version-2
@@ -478,8 +478,19 @@ the bundled pin through `strategies/frozen_model`. `live/frozen_model_wire` vali
 and the two phases bind the exact bars snapshot and model identity. The supervisor retains risk
 validation, effects and evidence recording.
 
-`registry/frozen_model_policy` refuses authoritative model-paper intake and resolution until a
-reviewed authority-denying strategy execution boundary exists at the real launch seam. Existing
-process containment is insufficient. The implementation verifies trusted fixture mechanics and
-existing release wrappers; it does not activate a service, qualify model economics, shorten
-forward thresholds or enable frozen live trading.
+On 2026-11-08 the owner explicitly approved removing the additional model-only isolation hold.
+Verified model-paper intake and resolution now use the existing unsandboxed reviewed-code trust
+model, including authored imports during preparation. The cold child still has process/output
+bounds and a replacement environment; it is not a filesystem/network/credential sandbox and
+escaped descendants are an accepted residual. Restrict this path to human-reviewed strategy code.
+The waiver does not provide verified-PR admission's separate isolation attestation, change signed
+live authority, relax qualification criteria, or activate services/accounts.
+
+
+`backtest/model_policy` admits a fixed pre-period price-linear context pin for walk-forward and
+sweep evaluation, with exact model identity retained in output and the economic ledger. It adds
+no training or model grid. `registry/experimental_sessions` records actual scheduled per-tenant
+paper mechanics; `experimental_qualification` binds current historical criteria plus five sessions
+into a separate authenticated record. `paper qualify-experimental` does not advance stages or
+mint a strict forward/live certificate. Capped frozen-live execution and layered drawdown remain
+separate implementation work.

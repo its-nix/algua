@@ -103,8 +103,8 @@ uv run algua backtest run model_dense_scores --snapshot EXISTING_BARS_SNAPSHOT \
 Use an immutable stored bars snapshot covering the three configured symbols and requested period;
 context scoring refuses unpinned `--demo` input. The tests ingest explicitly synthetic bars.
 The existing loader verifies the exact version/bytes/provenance; canonical context validation,
-five-bar warmup and `t→t+1` execution remain in force. Context paper/live and model-backed
-walk-forward/sweeps remain refused. This demonstrates executable DL inference on fixtures,
+five-bar warmup and `t→t+1` execution remain in force. This dense fixture remains unsupported for context paper/live and
+model-backed walk-forward/sweeps. This demonstrates executable DL inference on fixtures,
 not a trained DL producer, real multimodal evidence, predictive quality or trading qualification.
 
 ## Frozen pinned-model planner profile
@@ -125,10 +125,41 @@ as research. For a single paper decision its first evaluated cutoff is that deci
 than the beginning of warmup history. A future-trained pin is refused before a warming result.
 The decision lag remains at least one bar.
 
-**Authoritative model-paper admission and resolution remain closed** with
-`frozen_content_unsupported`: reviewed authority-denying execution isolation is still required.
-`run_contained` bounds process time/output but does not supply that isolation. There is no enable
-flag. Trusted synthetic tests inject the policy seam, run real cold children with a recording
-broker, and verify snapshot attribution, corruption refusal and stable order identity. They do
-not establish economic qualification, elapsed operational sessions or deployment readiness.
-Working-tree model trading and frozen live execution retain their existing refusals.
+**Owner-approved reviewed-code paper execution (2026-11-08).** The owner explicitly waived the
+extra model-only isolation prerequisite. Verified model-paper intake and ticks use the same
+reviewed-code trust model as existing strategies; no production bypass flag or fixture policy
+patch is needed. This is unsandboxed execution: authored imports during artifact preparation run
+in the operator process, and process containment does not deny filesystem/network/credential
+access or guarantee removal of escaped descendants. Only human-reviewed first-party strategy
+code belongs on this path. Model/bundle/PIT/config checks, current research and forward gates,
+supervisor risk checks and signed live activation remain binding.
+
+This waiver is not an `authoritative_strategy_execution` isolation assessment and cannot satisfy
+verified-PR admission's separate Task4 attestation. Working-tree model trading and frozen live
+execution retain their existing refusals. Real elapsed paper sessions and economic eligibility
+must still be established; fixture success is not qualification or deployment acceptance.
+
+
+## Fixed pre-period price-linear research
+
+Walk-forward and sweeps admit only the supported bars-only `context_v1` price-linear profile with
+one verified explicit model pin whose training cutoff is no later than the entire evaluation
+start. Every fold and parameter combination reuses that pin; no rolling fitting or model search
+is added. Invalid/future profiles refuse before data access or holdout reservation. Results and
+the run ledger preserve the exact five-field model reference; holdout measurements remain private
+until the existing promotion burn.
+
+## Five-session experimental qualification
+
+`uv run algua paper qualify-experimental NAME` previews current historical eligibility plus five
+contiguous completed exchange sessions for the active frozen deployment. Actual non-overridden
+scheduled paper runs record per-tenant observations; `operator run --now`, historical replay and
+synthetic fixtures cannot provide elapsed operational sessions through this hook. Each observation
+requires a fresh successful frozen invocation, reconciled broker-clocked tick and exact artifact,
+account and snapshot identity. Sibling failures do not erase successful tenants' observations.
+Paper Sharpe is not retested by this profile.
+
+`--actor human` uses the existing single-use SSH challenge/signature mechanism to record the exact
+qualification. The record is append-only and separate from strict forward certificates: it does
+not advance the strategy stage or authorize live execution. Capped frozen-live execution and the
+new layered drawdown controller remain separate implementation work.
