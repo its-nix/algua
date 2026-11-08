@@ -27,7 +27,7 @@ __all__ = [
 
 # Wall-clock staleness bounds, each ~3x the loop's configured timer period so an ordinary skipped
 # firing (a reboot, a long run) is not an alert but a stopped timer is.
-RESEARCH_STALE_AFTER_S = 3 * 60 * 60.0  # algua-research.timer: hourly
+RESEARCH_STALE_AFTER_S = 3 * 6 * 60 * 60.0  # algua-research.timer: every six hours
 MERGEBACK_STALE_AFTER_S = 90 * 60.0  # algua-mergeback-drain.timer: half-hourly
 
 # The paper operator is session-gated (one cycle per COMPLETED session), so its cadence is counted
