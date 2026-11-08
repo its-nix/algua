@@ -34,6 +34,7 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     paper_cmd,
     portfolio_cmd,
     registry_cmd,
+    replay_cmd,
     research_batch_cmd,
     research_cmd,
     research_memory_cmd,
@@ -69,6 +70,7 @@ research_cmd.research_app.add_typer(research_memory_cmd.memory_app, name="memory
 data_cmd.data_app.add_typer(data_refresh_cmd.refresh_app)
 data_cmd.data_app.add_typer(data_context_cmd.context_data_app)
 backtest_cmd.backtest_app.add_typer(portfolio_cmd.portfolio_app)
+backtest_cmd.backtest_app.add_typer(replay_cmd.replay_app)
 app.add_typer(deployment_cmd.deployment_app, name="deployment")
 app.add_typer(model_cmd.model_app, name="model")
 
