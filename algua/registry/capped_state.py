@@ -159,7 +159,6 @@ def commit_activation(
                 consume_gate_id=None,
                 consume_forward_gate_id=None,
                 now=now,
-                revoke_allocation=True,
             )
         from algua.contracts.canonical import canonical_json
 
