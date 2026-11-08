@@ -127,3 +127,14 @@ def test_future_model_cutoff_refuses_before_warmup(trained, warmup):
     result = phase_a(strategy, early)
     assert isinstance(result, PlannerInputFailure), result
     assert 'training_as_of' in result.detail
+
+
+@pytest.mark.parametrize('value', [None, [], 1, 'config', True])
+def test_model_config_must_be_an_object_before_profile_dispatch(trained, value):
+    _, early = model_early(trained)
+    raw, bars = encode_request('a', early, None, identity(early))
+    document = json.loads(raw)
+    document['early']['resolved_config'] = value
+    with pytest.raises(WireError) as refused:
+        decode_request(canonical_bytes(document), bars)
+    assert refused.value.reason == 'bad_type'

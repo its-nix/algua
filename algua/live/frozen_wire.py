@@ -247,12 +247,13 @@ def decode_request(request_json: bytes, bars_arrow: bytes) -> DecodedRequest:
     e = expect_object(root["early"], _EARLY_KEYS | (
         frozenset({"bars_snapshot_id", "model_ref"}) if version == 2 else frozenset()), "early")
     _check_literals(e["boundary_version"], e["timeframe"], version)
+    resolved_config = expect(e["resolved_config"], dict, "early.resolved_config")
     if version == 2:
-        extension = model_fields(e["resolved_config"], e["bars_snapshot_id"])
+        extension = model_fields(resolved_config, e["bars_snapshot_id"])
         if canonical_bytes(e["model_ref"]) != canonical_bytes(extension["model_ref"]):
             raise WireError("bad_model_profile", "model_ref differs from recorded config")
     config_hash: str = expect(e["config_hash"], str, "early.config_hash")
-    config = _planner_config_json(expect(e["resolved_config"], dict, "early.resolved_config"))
+    config = _planner_config_json(resolved_config)
     now = decode_ts(e["now"], "early.now")
     calendar_code: str = expect(e["calendar_code"], str, "early.calendar_code")
     positions = decode_pairs(e["early_positions"], "early.early_positions")
