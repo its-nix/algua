@@ -198,6 +198,7 @@ def record_sweep_run(
     trials_truncated_at = MAX_PERSISTED_TRIALS if n_ranked > MAX_PERSISTED_TRIALS else None
     parent = repo.record_run(
         "sweep", name,
+        components=_components_of(result),
         provenance=provenance_of(result),
         config={"grid": result.grid, "rank_by": result.rank_by,
                 "windows": result.windows, "holdout_frac": result.holdout_frac}

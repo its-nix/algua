@@ -18,6 +18,7 @@ from algua.registry.store.run_public import (
     public_config,
     public_extra,
     public_lineage,
+    public_model_components,
     public_number,
     public_rows,
     public_sort_metric,
@@ -158,7 +159,7 @@ class RunLedgerMixin:
         if kind in WINDOWED_KINDS:
             mets = {k: public_number(v) for k, v in mets.items()
                     if k in WINDOW_METRICS and kind != "sweep"}
-            config, components = public_config(config), []
+            config, components = public_config(config), public_model_components(components)
             extra_metrics = public_extra(kind, extra_metrics)
             derived_from = public_lineage(derived_from)
             series_backtest_id = series_holdout_id = None

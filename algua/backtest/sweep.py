@@ -19,6 +19,7 @@ from algua.backtest.core_budget import admit, close_lease_fd_in_worker, cpu_budg
 from algua.backtest.delisting import DelistingRecord
 from algua.backtest.engine import fetch_symbols
 from algua.backtest.errors import BacktestError
+from algua.backtest.model_policy import require_fixed_model_period
 from algua.backtest.run_inputs import RunInputBundle, capture_run_inputs
 from algua.backtest.walkforward import walk_forward
 from algua.contracts.types import DataProvider, FundamentalsProvider, NewsProvider
@@ -206,6 +207,7 @@ class SweepResult:
     news_snapshot: str | None = None
     bars_provenance: dict[str, Any] | None = None
     execution_costs: dict[str, Any] | None = None
+    model_ref: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return public_window_result(dataclasses.asdict(self))
@@ -373,14 +375,7 @@ def sweep(
     """
     if rank_by not in _RANK_KEYS:
         raise ValueError(f"rank_by must be one of {sorted(_RANK_KEYS)}, got {rank_by!r}")
-    # Model lane (#376) is not supported in sweep (it runs walk_forward per combo, which is not
-    # PIT-safe for a fixed-per-run model across OOS windows). Fail fast at the top with a clear
-    # message rather than surfacing the per-combo walk_forward failure. See walk_forward.
-    if strategy.config.needs_model:
-        raise BacktestError(
-            f"strategy {strategy.name!r} declares needs_model; sweep/walk-forward do not support "
-            f"the model lane yet (#376 follow-up) — refusing to run (fail closed)"
-        )
+    require_fixed_model_period(strategy, start)
     # Parent pre-pass: build + validate EVERY override here so a bad signal key or invalid
     # construction param fails fast (ValueError) BEFORE any worker process spawns — exactly the
     # parent-side behavior the sequential loop had. Shared with external pre-checks via
@@ -435,6 +430,8 @@ def sweep(
 
     return SweepResult(
         strategy=strategy.name,
+        model_ref=(strategy.config.model_ref.as_dict() if strategy.config.needs_model
+                   and strategy.config.model_ref is not None else None),
         data_source=meta["data_source"],
         snapshot_id=meta["snapshot_id"],
         timeframe=meta["timeframe"],

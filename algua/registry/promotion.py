@@ -480,8 +480,8 @@ def run_gate(
         # The same decision as an economic-layer run row. PASS AND FAIL — the rejections are the
         # dataset the IS-vs-OOS scatter is mostly made of.
         run_row={
-            "strategy_id": rec.id,
-            "derived_from": [wf_run_id],
+            "strategy_id": rec.id, "derived_from": [wf_run_id],
+            "components": [wf.model_ref] if wf.model_ref is not None else [],
             "config": capture_gate_comparison(wf, rec.id, wf_run_id, holdout_evaluation_id,
                                                holdout_returns_id, comparison_inputs),
             # The atomic writer supplies final_passed and the gate evaluation identity.

@@ -33,6 +33,7 @@
 /algua/contracts/strategy_identity.py @Lior-Nis   # Task 2 interface-aware config identity
 /algua/contracts/strategy_scoring.py @Lior-Nis   # Task 2 context scoring and model-pin checks
 /algua/contracts/frozen_model.py @Lior-Nis   # portable pinned model identity and byte verification
+/algua/backtest/model_policy.py @Lior-Nis   # fixed pre-period model eligibility before holdout use
 /algua/registry/frozen_model_assets.py @Lior-Nis   # bounded immutable model asset packaging and reads
 /algua/primitives/bounded_file.py @Lior-Nis   # no-symlink bounded model file reads
 /algua/strategies/context_inputs.py @Lior-Nis   # shared immutable decision context composition

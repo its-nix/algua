@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from algua.contracts.frozen_model import parse_model_ref
 from algua.provenance.research import RESEARCH_PROVENANCE_KEY, ResearchProvenanceError
 from algua.provenance.snapshot import (
     BARS_STREAMED_HASH_ALGO,
@@ -191,7 +192,20 @@ def public_window_result(payload: dict[str, Any]) -> dict[str, Any]:
     out["bars_provenance"] = public_bars(payload.get("bars_provenance"))
     out["execution_costs"] = public_run_provenance({
         "execution_costs": payload.get("execution_costs")})["execution_costs"]
+    if payload.get("model_ref") is not None:
+        pins = public_model_components([payload["model_ref"]])
+        out["model_ref"] = pins[0] if pins else {"invalid_fields": True}
     return out
+
+
+def public_model_components(value: Any) -> list[dict[str, Any]]:
+    """Only the supported single model's closed input identity; no artifact/report payloads."""
+    if not isinstance(value, list) or len(value) != 1:
+        return []
+    try:
+        return [parse_model_ref(value[0]).as_dict()]
+    except (TypeError, ValueError, OverflowError):
+        return []
 
 
 def public_trial(value: dict[str, Any]) -> dict[str, Any]:
