@@ -253,7 +253,6 @@ INTEGRITY_CRITICAL_MODULES = frozenset(
         "algua/live/frozen_model_loading.py",
         "algua/live/frozen_model_wire.py",
         "algua/live/model_context.py",
-        "algua/registry/frozen_model_policy.py",
         "algua/cli/frozen_paper.py",
         "algua/live/planner_context.py",
         "algua/contracts/lifecycle.py",

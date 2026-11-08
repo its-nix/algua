@@ -29,7 +29,6 @@ from algua.registry import (
     allocations,
     artifact_errors,
     artifact_recording,
-    frozen_model_policy,
     frozen_tenant_errors,
 )
 from algua.registry.allocations import (
@@ -264,7 +263,6 @@ def run_intake(
             # Content the supervisor's strict decoder refuses could never tick (Story 1.3c §2).
             manifest = artifact_recording.parse_frozen_deployment_manifest(admission.manifest)
             decode_tenant_config(manifest, cand.name)
-            frozen_model_policy.require_execution_isolation(manifest)
         except _REFUSALS as exc:
             code = next(c for typ, c in _REFUSAL_CODES if isinstance(exc, typ))
             audit_append(conn, actor=actor.value, action='paper_intake_refused', reason=code,

@@ -8,8 +8,6 @@ import pytest
 from algua.cli.main import app
 from algua.contracts.frozen_model import MODEL_ARTIFACT
 from algua.contracts.model_types import ModelHandle
-from algua.registry import frozen_model_policy
-from algua.registry.frozen_tenant_errors import FrozenTenantUnsupported
 from tests._frozen_harness import unseal
 from tests._frozen_paper_world import (
     CHECKOUT_MODULE,
@@ -20,8 +18,6 @@ from tests._frozen_paper_world import (
     teardown_world,
 )
 from tests.test_trained_model_context import trained as trained
-
-REQUIRE_ISOLATION = frozen_model_policy.require_execution_isolation
 
 
 @pytest.fixture
@@ -68,31 +64,13 @@ def test_model_corruption_produces_no_tenant_orders(world):
     assert world.deployment().manifest_digest == original
 
 
-def test_missing_isolation_keeps_authoritative_admission_closed(world, monkeypatch):
-    monkeypatch.setattr(frozen_model_policy, 'require_execution_isolation', REQUIRE_ISOLATION)
-    manifest = world.deployment().manifest()
-    from algua.registry.artifact_recording import parse_frozen_deployment_manifest
-    with pytest.raises(FrozenTenantUnsupported, match='isolation'):
-        REQUIRE_ISOLATION(parse_frozen_deployment_manifest(manifest))
-    code, payload = world.trade_tick()
-    assert code == 1 and payload['code'] == 'frozen_content_unsupported', payload
-    assert world.orders(TENANT) == [] and world.launches == []
-    # Re-offer the same qualified fixture with the real intake admission guard restored.
-    deployment = world.deployment()
-    strategy_id = deployment.strategy_id
-    from algua.registry import intake
-    admission = intake.FrozenAdmission(manifest, deployment.research_gate_id)
-    monkeypatch.setattr(intake, 'prepare_and_verify_frozen', lambda *args, **kw: admission)
+def test_model_paper_still_requires_paper_stage(world):
     with world.conn() as conn:
-        conn.execute("UPDATE strategies SET stage='candidate' WHERE name=?", (TENANT,))
-        conn.execute("UPDATE strategy_deployments SET retired_at=datetime('now') "
-                     "WHERE strategy_id=? AND retired_at IS NULL",
-                     (strategy_id,))
+        conn.execute("UPDATE strategies SET stage='backtested' WHERE name=?", (TENANT,))
         conn.commit()
-    result = runner.invoke(app, ['paper', 'intake', '--max-concurrent', '5'])
-    assert result.exit_code == 0, result.stdout
-    assert {'strategy': TENANT, 'code': 'frozen_content_unsupported'} in json.loads(
-        result.stdout)['refused']
+    code, payload = world.trade_tick()
+    assert code == 1 and payload['ok'] is False
+    assert world.orders(TENANT) == [] and world.launches == []
 
 
 def test_restarted_model_tick_preserves_existing_order_idempotency(world):

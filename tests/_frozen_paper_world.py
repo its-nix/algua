@@ -336,9 +336,6 @@ def build_world(
             f"model_ref=ModelRef(**{ref!r}))\n"
             "def score(context):\n"
             " return score_price_linear(context, model_key=CONFIG.model_ref.name)\n")
-        # Trusted authored fixture only. No production bypass flag or capability is installed.
-        monkeypatch.setattr('algua.registry.frozen_model_policy.require_execution_isolation',
-                            lambda manifest: None)
     data_dir = tmp_path / "data"
     data_dir.mkdir(parents=True)
     monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "registry.db"))

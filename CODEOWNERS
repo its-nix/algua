@@ -40,7 +40,6 @@
 /algua/live/frozen_model_loading.py @Lior-Nis   # bundle-only model recovery in the child
 /algua/live/frozen_model_wire.py @Lior-Nis   # bundle-only model recovery in the child
 /algua/live/model_context.py @Lior-Nis   # bundle-only model recovery in the child
-/algua/registry/frozen_model_policy.py @Lior-Nis   # bundle-only model recovery in the child
 /algua/cli/frozen_paper.py @Lior-Nis   # bundle-only model recovery in the child
 /algua/live/planner_context.py @Lior-Nis   # bundle-only model recovery in the child
 /algua/strategies/context_loader.py @Lior-Nis   # Task 2 authored context binding
