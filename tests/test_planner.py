@@ -83,6 +83,23 @@ def test_planner_retains_shared_weight_rails(weights, kind):
     assert exc.value.kind == kind
 
 
+@pytest.mark.parametrize("target", [float("nan"), float("inf"), float("-inf")])
+def test_build_intents_rejects_nonfinite_targets_before_constructing_any_intent(
+    monkeypatch, target,
+):
+    from algua.live import planner_decision as decision
+
+    def forbidden_intent(*args, **kwargs):
+        pytest.fail("OrderIntent constructed before validating all targets")
+
+    monkeypatch.setattr(decision, "OrderIntent", forbidden_intent)
+    with pytest.raises(RiskBreach) as exc:
+        decision.build_intents(
+            pd.Series({"AAA": 0.25, "ZZZ": target}), {}, datetime(2023, 1, 4, tzinfo=UTC),
+        )
+    assert exc.value.kind == "non_finite_weight"
+
+
 def _run_planner_entry(entry: str, current: dict, target: float) -> None:
     """Call ``build_intents`` or ``plan`` with one finite string target and ``current`` holdings."""
     from algua.live.planner import PlannerInput, build_intents, plan

@@ -90,13 +90,15 @@ def build_intents(
 ) -> list[OrderIntent]:
     """Emit sorted target-weight deltas, including zero targets for dropped holdings.
 
-    ``current_weights`` must have non-empty string keys and finite values. Keys are validated
+    Targets must pass the shared finite-weight and symbol-label guard. ``current_weights``
+    must have non-empty string keys and finite values. Keys are validated
     and not renamed: strategy labels are outside NFC normalization. A violation raises before
     any intent is built.
     """
     holdings = numeric_mapping(
         current_weights, "current_weights", normalize=False, allow_real_scalars=True
     )
+    check_finite_weights(weights, "build_intents")
     intents: list[OrderIntent] = []
     for symbol in sorted(set(weights.index) | set(holdings)):
         target = float(weights.get(symbol, 0.0))

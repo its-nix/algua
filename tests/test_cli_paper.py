@@ -2057,6 +2057,42 @@ def test_trade_tick_missing_allocation_surfaces_invalid_input(monkeypatch, tmp_p
     assert payload["error"] == f"{name} has no paper allocation"
 
 
+@pytest.mark.parametrize("values,quantities,error", [
+    ({"AAA": float("nan")}, {"AAA": 1.0}, "market_values['AAA'] must be a finite number"),
+    ({1: 100.0}, {1: 1.0}, "quantities keys must be non-empty strings"),
+])
+def test_trade_tick_malformed_current_holdings_fail_closed(
+    monkeypatch, tmp_path, values, quantities, error,
+):
+    from algua.execution.live_sizing import SizingSnapshot
+
+    monkeypatch.setenv("ALGUA_ALPACA_API_KEY", "k")
+    monkeypatch.setenv("ALGUA_ALPACA_API_SECRET", "s")
+    name = _paper_strategy_with_allocation(
+        monkeypatch, tmp_path, capital=10_000.0, account_equity=100_000.0,
+    )
+    broker = _FakePaperBroker(account_equity=100_000.0, positions={}, marks={})
+    monkeypatch.setattr("algua.cli.paper_cmd._alpaca_broker_from_settings", lambda: broker)
+    # Keep run_tick and both planner phases real; corrupt only the current sizing holdings.
+    monkeypatch.setattr(
+        "algua.cli.paper_cmd.build_paper_sizing_snapshot",
+        lambda *a, **k: (SizingSnapshot(10_000.0, values, quantities), 10_000.0),
+    )
+    end = datetime.now(UTC).date()
+    result = runner.invoke(app, [
+        "paper", "trade-tick", name, "--snapshot", _SNAP,
+        "--start", (end - timedelta(days=90)).isoformat(), "--end", end.isoformat(),
+    ])
+    assert result.exit_code != 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert payload["code"] == "invalid_input"
+    assert payload["error"] == error
+    assert broker.submitted == []
+    assert broker.account_wide_cancels == 0
+    assert _latest_tick(name) is None
+
+
 def test_trade_tick_halts_after_grace_expiry(monkeypatch, tmp_path):
     # After DEFAULT_GRACE_CYCLES (=3) the persistent unattributable holding escalates from
     # deferred to halt.  Invocations 1-3 defer (exit 0); invocation 4 hits

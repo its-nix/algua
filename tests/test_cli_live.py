@@ -1613,6 +1613,40 @@ def _wire_alive_run_all(monkeypatch, broker):
                         lambda conn, sid: {"capital": 10_000.0})
 
 
+@pytest.mark.parametrize("values,quantities,error", [
+    ({"AAA": float("nan")}, {"AAA": 1.0}, "market_values['AAA'] must be a finite number"),
+    ({1: 100.0}, {1: 1.0}, "quantities keys must be non-empty strings"),
+])
+def test_run_all_malformed_current_holdings_fail_closed(monkeypatch, values, quantities, error):
+    from algua.backtest._sample import SyntheticProvider
+    from algua.execution.live_sizing import SizingSnapshot
+
+    _to_live()
+    _permissive_book(monkeypatch)
+    broker = _AliveBroker()
+    _wire_alive_run_all(monkeypatch, broker)
+    submitted = []
+    monkeypatch.setattr(broker, "submit_sized", lambda *a, **k: submitted.append(a), raising=False)
+    monkeypatch.setattr(broker, "submit_offset", lambda *a, **k: submitted.append(a), raising=False)
+    monkeypatch.setattr("algua.cli.live_cmd._select_provider", lambda *a: SyntheticProvider())
+    # Keep run_tick and both planner phases real; corrupt only the current sizing holdings.
+    monkeypatch.setattr(
+        "algua.cli.live_cmd.build_live_sizing_snapshot",
+        lambda *a, **k: (SizingSnapshot(10_000.0, values, quantities), 10_000.0),
+    )
+    end = datetime.now(UTC).date()
+    result = runner.invoke(app, [
+        "live", "run-all", "--snapshot", "x",
+        "--start", (end - timedelta(days=90)).isoformat(), "--end", end.isoformat(),
+    ])
+    assert result.exit_code != 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert payload["code"] == "invalid_input"
+    assert payload["error"] == error
+    assert submitted == []
+
+
 @pytest.mark.parametrize("kind", ["stale_marks", "unvaluable_marks"])
 def test_run_all_dark_feed_breach_halts_without_flatten(monkeypatch, kind):
     # #452 HIGH#3: a stale / unvaluable mark (dark BAR feed, broker still alive) must ENGAGE THE
