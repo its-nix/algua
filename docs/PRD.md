@@ -545,10 +545,20 @@ Likewise, lower timeframes are justified by specific opportunities—not by the 
 
 High-frequency/tick-level trading is outside the current thesis.
 
-The primary research focus is liquid U.S.-listed small/mid-cap common equities: historical
-market cap **USD $0.5–10B**, price **>= $5**, trailing median **60-session dollar volume >= $5M**,
-and **90-session listing history**, all subject to PIT evidence. The pilot cannot certify these
-screens. Existing stock/ETF scope remains; this focus is not a historical-universe claim.
+**Owner-approved starting universe, 2026-11-08:** liquid U.S. mid-cap common equities, initially
+screened from the current S&P MidCap 400. Start with price **>= $10**, trailing median
+**60-session dollar volume >= $20M**, **252 sessions of observed history**, and a sector-spanning
+sample of **150–300** eligible names. Rank liquidity within sectors and select sectors round-robin;
+never select the sample by historical strategy returns. These initial rules supersede the earlier
+$0.5–10B/$5/$5M/90-session pilot focus, without claiming empirically optimal thresholds.
+
+Begin with daily signals and target multi-day positions of roughly **2–20 trading sessions**.
+Weekly re-ranking is the initial machinery example; it may retain a winning name across multiple
+weeks and does not enforce a hard holding-age exit. Broker active/tradable status must be verified
+before operational admission. Current membership, observed-history counts and present-day liquidity
+are proxy screens, not historical PIT eligibility or proof of listing date. Preserve the proxy's
+limitations; do not register/backdate today's selection as a historical universe. Existing
+stock/ETF scope remains. See [the midcap machinery sample](agent/midcap-machinery.md).
 
 Begin with end-of-day signals and next-eligible-session execution. Evaluate daily but rebalance
 only when marginal benefit justifies costs, using declared holding periods, signal decay, ranking
