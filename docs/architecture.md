@@ -494,3 +494,17 @@ paper mechanics; `experimental_qualification` binds current historical criteria 
 into a separate authenticated record. `paper qualify-experimental` does not advance stages or
 mint a strict forward/live certificate. Capped frozen-live execution and layered drawdown remain
 separate implementation work.
+
+
+### Configured layered account risk
+
+`risk/layered` owns pure policy arithmetic; `registry/drawdown_store` and `drawdown_auth` own
+independent durable state, immutable evidence and single-use human policy/restoration signatures
+(schema v51). `execution/drawdown_cycle` performs assessment before effects, confirms cancellation,
+synchronizes/reconciles fills and refreshes cash before guarded attributed limit reductions.
+`drawdown_guard` separates reduced sizing from economic NAV and caps aggregate buys. The paper
+and live CLI cycles share this body; direct trade-tick cannot skip a configured policy.
+`risk` commands expose configuration, restoration and status. The optional risk watcher is
+independent of the daily session gate and can obtain live trading capability only through existing
+signature verification. These implementations do not enable a timer, account or frozen live route.
+See [layered risk](agent/layered-risk.md) for scope and deployment obligations.

@@ -671,3 +671,14 @@ strict server checks or merge queue. Trusted immutable operator/Git/GitHub CLI/h
 and a separately scoped publication credential are deployment prerequisites; none is installed or
 issued here. The one additive protected CLI JSON field and these new workflow semantics require
 human review of this dependent draft before merge/activation; prior PR788 review does not cover it.
+
+
+### Optional independent risk watcher
+
+`algua-risk@.service` and `algua-risk@.timer` provide nominal minute account-risk checks without the
+paper job's once-per-session marker. Instances are `paper` or `live`; the command runs under the
+same operator lock. They are opt-in templates, not enabled by the installer or this implementation.
+Configure the signed account policy and verify the deployment's account, data, alert delivery,
+immutable signer anchor and live authority first. Checks may defer while the operator lock is held.
+See [layered risk](../../docs/agent/layered-risk.md). Never infer live activation from a policy or
+a timer file's existence.
