@@ -5,13 +5,13 @@ This expands `CLAUDE.md` with the why behind the rules.
 Product direction comes from [the vision of record](../PRD.md); current implementation gaps and
 historical references are tracked in [the reconciliation record](../vision-reconciliation.md).
 The vision does not itself change runtime controls or grant a new merge/deployment permission.
-The 10% experimental-account pause is a target requiring implementation review; the current
-configured default is documented separately in that record.
+The owner-approved opt-in policy reduces exposure at 10% drawdown and halts at 20%; see
+[layered risk](layered-risk.md). Unconfigured accounts retain their legacy default.
 
 ## The live gate
 Lifecycle stage lives in the SQLite registry (`algua/registry`). State is a *record*,
 not a wall: because agents can write the registry, a bare `stage='live'` flag is not a
-security boundary. Going live is a two-step signed ceremony requiring a human actor AND a
+security boundary. The legacy strict route is a signed ceremony requiring a human actor AND a
 valid forward-test certificate:
 
 1. Run `registry transition <name> --to live --actor human` (no `--signature`) — the CLI verifies
@@ -24,7 +24,9 @@ valid forward-test certificate:
    verifies the signature, consumes the single-use challenge, and advances the stage to `live`.
 
 The challenge is single-use and expires after 10 minutes. Trust the signature, never the flag.
-The forward certificate is not waivable in-band.
+The strict forward certificate is not waivable in-band. The separate owner-approved
+[capped frozen-live route](capped-live.md) uses current historical criteria plus five paper sessions,
+its own qualification and an exact-capital human signature. It does not change strict evidence.
 
 ## Module boundaries
 

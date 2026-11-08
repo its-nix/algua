@@ -38,7 +38,9 @@ planner attempt the supervisor decides to run a child for is recorded append-onl
 settles itself are not) and each frozen tick links its final invocation; forward evidence for a
 frozen deployment counts only linked ticks, and `paper promote` qualifies it from its
 recorded descriptor and freshly verified content, never the checkout (the raw `registry transition`
-edge refuses it). The live lane and go-live refuse frozen deployments (`frozen_live_unsupported`).
+edge refuses it). The raw registry go-live route still refuses frozen deployments; the separate human-signed
+[capped live connector](agent/capped-live.md) accepts an exact frozen deployment under the approved
+experimental profile. It does not mint a strict forward certificate.
 The shipped frozen-paper slice includes the two-phase planner boundary, verified immutable
 content/environments, child execution and deployment-bound operational evidence/qualification
 (Stories 1.3a–d). Existing migration-time tenants remain an explicit unmigrated cohort. The supervisor retains broker access, reconciliation and account-wide
@@ -320,7 +322,7 @@ can qualify forward operation.
 | Board (PRs #722–#724) | Strategy-first UI, stable identity, latest evidence, opt-in provenance/OOS disclosure | Honest non-comparability; sorting and broader integrated target not accepted. |
 | Portfolio / memory / factory | Construction, allocations, risk, attempts, scorecards, tracking/KB and operator primitives | Integrated allocator, comprehensive learning and one independent factory require system evidence. |
 | Execution / release / repair | Frozen-paper reproducibility/evidence, current supervisor, CI and operational controls | Authoritative strategy sandbox, safe immutable paper release/recovery and closed repair loop not accepted. |
-| Capital / live | Authenticated promotion/live gates and existing book guards | ₪2,000 envelope and inclusive cash-flow-adjusted 10% pause differ from current defaults; frozen live unsupported. |
+| Capital / live (November 8 update) | Signed capped frozen-live connector, explicit instruments and opt-in layered account guards | Actual USD ceiling/instruments, qualifying evidence, immutable deployment anchor and activation remain owner/deployment inputs. Legacy defaults remain. |
 | Unattended machine | Components and fixtures exist | **3 unattended cycles / >=100 real-data attempts: UNKNOWN.** Integrated scheduled operation and fault-recovery acceptance not established. |
 
 The architecture dependency order is data/provenance and canonical direction → context and
@@ -492,8 +494,8 @@ sweep evaluation, with exact model identity retained in output and the economic 
 no training or model grid. `registry/experimental_sessions` records actual scheduled per-tenant
 paper mechanics; `experimental_qualification` binds current historical criteria plus five sessions
 into a separate authenticated record. `paper qualify-experimental` does not advance stages or
-mint a strict forward/live certificate. Capped frozen-live execution and layered drawdown remain
-separate implementation work.
+mint a strict forward/live certificate. The separate capped-live connector and opt-in layered
+drawdown controller are implemented; see their operating guides below.
 
 
 ### Configured layered account risk
@@ -506,5 +508,20 @@ synchronizes/reconciles fills and refreshes cash before guarded attributed limit
 and live CLI cycles share this body; direct trade-tick cannot skip a configured policy.
 `risk` commands expose configuration, restoration and status. The optional risk watcher is
 independent of the daily session gate and can obtain live trading capability only through existing
-signature verification. These implementations do not enable a timer, account or frozen live route.
+signature verification. These implementations do not enable a timer or account.
 See [layered risk](agent/layered-risk.md) for scope and deployment obligations.
+
+
+### Capped frozen-live connector (schema v52)
+
+`registry/capped_auth`, `capped_context`, `capped_qualification` and `capped_state` bind a distinct
+human signature to frozen content, the original five-session qualification, provider/account,
+signed risk policy and exact capital. Matching approval, legal human lifecycle edges and allocation
+share one transaction. `capped_active` supplies the row-bound mid-order revocation check.
+`cli/capped_runtime` supplies data-aware verification to the live composition seam; execution
+modules cannot import the data lane. The risk watcher receives that verifier explicitly.
+`cli/experimental_handoff` revokes paper allocation and drains attributed paper exposure without a
+new tick or kill switch. `cli/frozen_planner` is shared by paper and `cli/frozen_live`; the live
+supervisor owns every effect and links the tick to its frozen invocation. Generic configured live
+allocation increases require the signed capped command. No activation or deployment is implicit.
+See [capped live](agent/capped-live.md) for the sequence, legacy scope and deployment obligations.

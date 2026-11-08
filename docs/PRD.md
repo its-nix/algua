@@ -856,8 +856,10 @@ the owner's November 8 layered policy. Its opt-in implementation is described in
 [layered account risk](agent/layered-risk.md). Unconfigured accounts retain the legacy 15%
 raw-equity breaker; this amendment does not silently change global defaults. Cash-flow-aware
 risk measurement, durable severity, signed configuration/restoration and bounded reconciled exits
-are required. The complete ₪2,000/instrument envelope, capped frozen-live route, deployment
-verification and human activation remain necessary. No funding, replenishment, activation or
+are required. The opt-in [capped frozen-live connector](agent/capped-live.md) now binds an exact
+USD allocation and explicit approved instruments to a human signature. It does not choose the USD
+equivalent of the initial ₪2,000 ceiling. Deployment verification, qualifying strategy evidence and
+human activation remain necessary. No funding, replenishment, activation or
 increase in approved capital follows from this document.
 
 ---

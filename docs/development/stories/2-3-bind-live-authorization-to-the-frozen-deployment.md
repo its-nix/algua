@@ -4,7 +4,13 @@ baseline_commit: e875b6d
 
 # Story 2.3: Bind the signed live authorization to the exact frozen deployment
 
-Status: backlog
+Status: partial — owner-approved capped route implemented 2026-11-08
+
+November 8 update: [capped live](../../agent/capped-live.md) implements the separate owner-approved
+historical-plus-five-session route, frozen signature/runtime and signed capital policy. Strict
+certificate migration and complete production-readiness acceptance from this original story are
+not claimed. The approved route includes its exact allocation in the signature transaction;
+legacy compatibility remains. No deployment, funding or activation occurred.
 
 Prepared: 2026-10-04. Baseline: `e875b6d` (main after PR #686). Epic: 2.
 Requirements: FR8, FR1 (live activation of the evidence-bearing artifact), NFR1, NFR4–NFR8.
