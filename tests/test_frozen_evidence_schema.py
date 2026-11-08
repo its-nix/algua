@@ -614,7 +614,7 @@ def test_migration_from_v47_keeps_existing_ticks_unlinked_and_is_idempotent(tmp_
     migrate(fresh)
     for _ in range(2):
         migrate(conn)
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 49
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 52
         assert _fingerprint(conn) == _fingerprint(fresh)
         rows = conn.execute("SELECT * FROM tick_snapshots ORDER BY id").fetchall()
         assert [tuple(r)[:-1] for r in rows] == before

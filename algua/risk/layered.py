@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass
 from decimal import Decimal, InvalidOperation
 
@@ -28,11 +29,23 @@ class DrawdownPolicy:
     max_spread: str = "0.01"
     limit_offset: str = "0.0025"
     feed: str = "iex"
+    permitted_symbols: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         for key in asdict(self):
-            if key != "feed":
+            if key not in ("feed", "permitted_symbols"):
                 object.__setattr__(self, key, str(decimal(getattr(self, key))))
+        symbols = self.permitted_symbols
+        if (
+            not isinstance(symbols, (tuple, list))
+            or any(
+                not isinstance(s, str) or re.fullmatch(r"[A-Z][A-Z0-9.-]{0,14}", s) is None
+                for s in symbols
+            )
+            or len(set(symbols)) != len(symbols)
+        ):
+            raise ValueError("invalid permitted instruments")
+        object.__setattr__(self, "permitted_symbols", tuple(symbols))
         if (
             decimal(self.normal_capital) <= 0
             or not 0 < decimal(self.reduce_at) < decimal(self.halt_at) <= 1
@@ -44,8 +57,8 @@ class DrawdownPolicy:
         ):
             raise ValueError("invalid layered drawdown policy")
 
-    def to_dict(self) -> dict[str, str]:
-        return asdict(self)
+    def to_dict(self) -> dict:
+        return asdict(self) | {"permitted_symbols": list(self.permitted_symbols)}
 
 
 @dataclass(frozen=True)

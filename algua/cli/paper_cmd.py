@@ -22,6 +22,7 @@ from algua.cli._common import (
     resolve_operator_cycle_window,
 )
 from algua.cli.app import app, emit
+from algua.cli.capped_runtime import live_resume_view
 from algua.cli.errors import json_errors
 from algua.cli.frozen_paper import build_frozen_planner
 from algua.cli.lane_refresh import build_cycle_plan, lane_symbols, refresh_lane_snapshot
@@ -255,7 +256,7 @@ def resume(name: str) -> None:
     with registry_conn() as conn:
         rec = SqliteStrategyRepository(conn).get(name)
         if rec.stage is Stage.LIVE:
-            strategy = load_strategy(name)
+            strategy = live_resume_view(conn, name, load_strategy)
             broker = _alpaca_live_readonly_from_settings()
             is_flat, residual = live_strategy_flat(conn, name, strategy.universe, broker)
             if not is_flat:

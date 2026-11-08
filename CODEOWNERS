@@ -158,3 +158,21 @@
 /algua/portfolio/overlay_policies.py   @Lior-Nis   # bundled overlay policies (trailing_stop, regime_gate), carved out of overlays.py; hashed into strategy identity
 /algua/portfolio/overlay_validation.py @Lior-Nis   # shared OverlayError + param-domain helpers, carved out of overlays.py; hashed into strategy identity
 /algua/portfolio/construction.py       @Lior-Nis   # construction policies hashed into strategy identity (#141); was unprotected until the overlays PR
+
+# Capped experimental live authority and frozen supervisor integration
+/algua/contracts/capped_live.py @Lior-Nis
+/algua/registry/db/capped_live.py @Lior-Nis
+/algua/registry/capped_auth.py @Lior-Nis
+/algua/registry/capped_context.py @Lior-Nis
+/algua/registry/capped_policy.py @Lior-Nis
+/algua/registry/capped_active.py @Lior-Nis
+/algua/registry/capped_qualification.py @Lior-Nis
+/algua/registry/capped_state.py @Lior-Nis
+/algua/registry/capped_allocation.py @Lior-Nis
+/algua/cli/capped_live_cmd.py @Lior-Nis
+/algua/cli/handoff_cmd.py @Lior-Nis
+/algua/cli/experimental_handoff.py @Lior-Nis
+/algua/cli/frozen_live.py @Lior-Nis
+/algua/cli/frozen_planner.py @Lior-Nis
+/algua/cli/capped_runtime.py @Lior-Nis
+/algua/registry/allocations.py @Lior-Nis

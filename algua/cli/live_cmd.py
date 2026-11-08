@@ -14,12 +14,15 @@ from algua.cli._common import (
     resolve_operator_cycle_window,
 )
 from algua.cli.app import app, emit
+from algua.cli.capped_runtime import verify_live_authorization
 from algua.cli.errors import json_errors
+from algua.cli.frozen_live import frozen_views, run_frozen_live
 from algua.cli.lane_refresh import build_cycle_plan, lane_symbols, refresh_lane_snapshot
 from algua.cli.layered_runtime import checked_cycle, live_health, observe_live
 from algua.config.settings import get_settings
+from algua.contracts.capped_live import CappedLiveAuthorization
 from algua.contracts.lifecycle import Actor, Stage
-from algua.contracts.types import LiveAuthorization, ScopedCancelBroker
+from algua.contracts.types import LiveAuthorization
 from algua.evaluation.inputs import (
     select_provider as _select_provider,
 )
@@ -35,7 +38,6 @@ from algua.execution.live_ledger import (
     believed_positions,
     fill_cursor,
     ingest_activities,
-    owned_open_order_ids,
     record_live_order,
 )
 from algua.execution.live_reservations import record_reservation
@@ -48,7 +50,21 @@ from algua.execution.order_state import (
 )
 from algua.execution.sizing import MIN_NOTIONAL
 from algua.execution.tick_clock import tick_clock
-from algua.execution.venue_sync import recover_stranded
+from algua.execution.venue_sync import (
+    broker_account_activities as _broker_account_activities,
+)
+from algua.execution.venue_sync import (
+    broker_buying_power as _broker_buying_power,
+)
+from algua.execution.venue_sync import (
+    broker_net_positions as _broker_net_positions,
+)
+from algua.execution.venue_sync import (
+    recover_live_stranded as _recover_live_stranded,
+)
+from algua.execution.venue_sync import (
+    scoped_live_cancel as _scoped_cancel,
+)
 from algua.live.book_exposure import build_book_exposure as _build_book_exposure
 from algua.live.live_loop import (
     SubmittedOrder,
@@ -68,12 +84,12 @@ from algua.registry import allocations
 from algua.registry import deployment_runtime as deploy
 from algua.registry.allocations import active_allocation
 from algua.registry.approvals import compute_artifact_hashes
+from algua.registry.capped_allocation import still_live_allocated as _still_live_allocated
 from algua.registry.db import registry_conn
 from algua.registry.live_gate import (
     ALLOWED_SIGNERS_PATH,
     LiveAuthorizationError,
     authorization_active,
-    verify_live_authorization,
 )
 from algua.registry.store import SqliteStrategyRepository
 from algua.registry.universe_binding import SOURCE_CONFIG_LEGACY, resolve_operational_universe
@@ -113,6 +129,8 @@ def allocate(
                 f"cannot allocate live capital to {name!r} at stage {rec.stage.value}; live "
                 "allocate requires stage 'live' (a dormant/recovered/forward-tested strategy "
                 "re-allocates only after reaching live)")
+        from algua.registry.capped_allocation import require_ordinary_allocation
+        require_ordinary_allocation(conn,rec.id,capital)
         allocations.allocate_in_lane(
             conn, rec.id, capital=capital, actor="human",
             account_equity=_live_account_equity(),
@@ -124,14 +142,6 @@ def _alpaca_live_broker(authorization: LiveAuthorization) -> AlpacaLiveBroker:
     # Single-sourced with the book-exit drain (#497) so the two never drift on how the real-money
     # broker is built from the settings credentials.
     return build_live_broker(authorization)
-
-
-def _still_live_allocated(conn, name: str) -> bool:
-    """True iff `name` is still Stage.LIVE with an active allocation. Re-read at submit time so a
-    mid-cycle `live -> dormant` bench (#247) halts further orders instead of orphaning a position
-    run-all would never flatten (#281); broader than dormant (any non-LIVE transition halts)."""
-    rec = SqliteStrategyRepository(conn).get(name)
-    return rec.stage is Stage.LIVE and active_allocation(conn, rec.id) is not None
 
 
 def _run_strategy_tick(  # noqa: PLR0913
@@ -148,6 +158,10 @@ def _run_strategy_tick(  # noqa: PLR0913
     isolated as ``StrategySetupError`` UNLESS it's a :data:`SYSTEMIC_SETUP_EXCEPTIONS` member (a
     shared-infra fault), which propagates raw to abort the whole cycle. Everything from
     ``run_tick`` onward is unwrapped: any exception there is book-integrity-critical and aborts."""
+    frozen = run_frozen_live(conn,name,authorization,broker,provider,max_drawdown,
+        start=start,end=end,reserve_buy=reserve_buy,cancel=cancel,snapshot_id=snapshot_id)
+    if frozen is not None:
+        return frozen
     try:
         strategy = load_tradable_strategy(name)
 
@@ -284,24 +298,6 @@ def _run_strategy_tick(  # noqa: PLR0913
 
 
 
-def _broker_account_activities(broker, after):
-    return broker.account_activities(after=after)
-
-
-def _recover_live_stranded(conn, broker) -> None:
-    """#312: backfill broker_order_id onto any crash-stranded NULL live_orders row (asks the venue
-    by client_order_id; never submits). Audit-only; a broker error propagates via json_errors."""
-    recover_stranded(conn, broker, LedgerKind.LIVE)
-
-
-def _broker_net_positions(broker) -> dict:
-    pos = broker.get_positions()  # pandas Series symbol->qty
-    return {sym: float(q) for sym, q in pos.items() if float(q) != 0.0}
-
-
-def _broker_buying_power(broker) -> float:
-    return float(broker.account().buying_power)
-
 
 @live_app.command("run-all")
 @json_errors
@@ -433,7 +429,11 @@ def run_all(
                 if refresh:
                     plan = build_cycle_plan(
                         conn, names=[n for n, _a in verified], kind=LedgerKind.LIVE,
-                        data_dir=get_settings().data_dir)
+                        data_dir=get_settings().data_dir,
+                        **({"views": frozen_views(conn, verified)} if any(
+                            isinstance(a, CappedLiveAuthorization) for _, a in verified
+                        ) else {}),
+                    )
                     results.extend(plan.skipped)
                     if verified and not plan.universes:
                         audit_append(conn, actor="system", action="cycle_plan_failed",
@@ -722,9 +722,3 @@ def halt_all(
                  "interim account-wide break-glass is the raw broker "
                  "(DELETE /v2/positions?cancel_orders=true with the live keys)."),
     }))
-
-
-def _scoped_cancel(conn, broker: ScopedCancelBroker, strategy: str) -> None:
-    """Cancel only THIS strategy's open orders (never a sibling's)."""
-    for oid in owned_open_order_ids(conn, broker, strategy):
-        broker.cancel_order(oid)

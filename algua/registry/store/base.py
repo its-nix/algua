@@ -129,6 +129,9 @@ class TransitionMixin:
             raise TransitionError(
                 f"concurrent transition detected for {rec.name!r}: stage is no longer"
                 f" {from_stage.value!r} (another session moved it); re-read and retry")
+        if from_stage is Stage.LIVE and to is not Stage.LIVE:
+            from algua.registry.capped_state import revoke
+            revoke(self._conn,rec.id,'left live',at=now)
         # Deployment retirement matrix (Story 1.2): a return from paper to candidate abandons
         # the evidence-bearing epoch, as does every terminal retirement. Pauses and lane movement
         # retain it. The update shares the stage CAS transaction and is one-way by schema trigger.

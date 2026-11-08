@@ -14,6 +14,7 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     audit_cmd,
     backtest_cmd,
     campaign_cmd,
+    capped_live_cmd,
     data_cmd,
     data_context_cmd,
     data_refresh_cmd,
@@ -21,6 +22,7 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     eval_cmd,
     fleet_cmd,
     governance_cmd,
+    handoff_cmd,
     idea_cmd,
     idea_ops_cmd,
     inspirations_cmd,
@@ -48,6 +50,8 @@ from algua.cli.errors import error_envelope, is_retryable
 # research_batch_cmd (the `run-all` batch worker, #326) is likewise mounted here — it imports the
 # reusable task bodies from backtest_cmd/research_cmd, so mounting at the composition root keeps
 # those listed command modules free of any sibling import.
+live_cmd.live_app.add_typer(capped_live_cmd.capped_live_app)
+paper_cmd.paper_app.add_typer(handoff_cmd.handoff_app)
 research_cmd.research_app.add_typer(idea_cmd.idea_app, name="idea")
 research_cmd.research_app.add_typer(campaign_cmd.campaign_app)
 # idea_ops_cmd carries the driver-facing claim/record-outcome/link/depth/refuted/import/

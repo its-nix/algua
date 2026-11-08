@@ -8,6 +8,7 @@ from pathlib import Path
 import typer
 
 from algua.cli.app import app, emit
+from algua.cli.capped_runtime import verify_live_authorization
 from algua.cli.errors import json_errors
 from algua.execution.broker_factory import BrokerKind, build_broker
 from algua.execution.drawdown_cycle import manage_cycle
@@ -83,7 +84,8 @@ def check(lane: str) -> None:
     with registry_conn() as conn:
         if account_state(conn, lane) is None:
             raise ValueError("no configured account policy")
-        broker = live_check_broker(conn) if lane == "live" else _broker(lane)
+        broker = (live_check_broker(conn, verifier=verify_live_authorization)
+                  if lane == "live" else _broker(lane))
         result = manage_cycle(conn, broker, lane)
         emit({"ok": bool(result and result["ready"]), "drawdown_control": result})
         if not result or not result["ready"]:

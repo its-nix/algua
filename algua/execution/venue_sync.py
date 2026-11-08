@@ -16,6 +16,7 @@ from algua.execution.live_ledger import (
     LedgerKind,
     fill_cursor,
     ingest_activities,
+    owned_open_order_ids,
     recover_stranded_broker_order_ids,
 )
 
@@ -82,3 +83,29 @@ def ingest_paper_venue_keep_cursor(
     after = fill_cursor(conn, LedgerKind.PAPER) or _PAPER_CURSOR_FAR_PAST
     acts = broker.account_activities_window(_window_start(after), until)
     ingest_activities(conn, acts, LedgerKind.PAPER, cursor_value=after)
+
+
+def broker_net_positions(broker) -> dict:
+    pos = broker.get_positions()  # pandas Series symbol->qty
+    return {sym: float(q) for sym, q in pos.items() if float(q) != 0.0}
+
+
+
+def scoped_live_cancel(conn, broker, strategy: str) -> None:
+    """Cancel only THIS strategy's open orders (never a sibling's)."""
+    for oid in owned_open_order_ids(conn, broker, strategy):
+        broker.cancel_order(oid)
+
+
+
+def broker_account_activities(broker, after):
+    return broker.account_activities(after=after)
+
+
+def broker_buying_power(broker) -> float:
+    return float(broker.account().buying_power)
+
+
+def recover_live_stranded(conn, broker) -> None:
+    """Backfill accepted live order IDs before reconciliation; never submits."""
+    recover_stranded(conn, broker, LedgerKind.LIVE)

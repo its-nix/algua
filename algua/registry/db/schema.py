@@ -16,6 +16,7 @@ from __future__ import annotations
 from algua.registry.db.authz import SCHEMA as AUTHZ_SCHEMA
 from algua.registry.db.backtest_returns import SCHEMA as BACKTEST_RETURNS_SCHEMA
 from algua.registry.db.breadth import SCHEMA as BREADTH_SCHEMA
+from algua.registry.db.capped_live import SCHEMA as CAPPED_LIVE_SCHEMA
 from algua.registry.db.core import SCHEMA as CORE_SCHEMA
 from algua.registry.db.deployment import SCHEMA as DEPLOYMENT_SCHEMA
 from algua.registry.db.drawdown import SCHEMA as DRAWDOWN_SCHEMA
@@ -49,4 +50,5 @@ SCHEMA = "\n".join([
     FROZEN_EVIDENCE_SCHEMA,
     EXPERIMENTAL_SCHEMA,
     DRAWDOWN_SCHEMA,
+    CAPPED_LIVE_SCHEMA,
 ])

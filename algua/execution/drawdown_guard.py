@@ -50,6 +50,11 @@ def reserve(conn, broker, lane: str, prior):
     def checked(symbol: str, requested: float) -> float:
         if not cycle_active(conn, broker, lane):
             raise ValueError("drawdown state changed or cycle expired before buy")
+        state = account_state(conn, lane)
+        assert state is not None
+        policy = policy_for(conn, state)
+        if policy.permitted_symbols and symbol not in policy.permitted_symbols:
+            return 0.0
         pool = broker._drawdown_cycle
         bound = min(decimal(requested), pool["available"])
         grant = min(bound, decimal(prior(symbol, float(bound)))) if prior else bound
