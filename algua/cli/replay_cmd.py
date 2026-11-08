@@ -75,7 +75,7 @@ def replay(
         "snapshot_id": snapshot,
         "content_hash": record.content_hash,
         **identity._asdict(),
-        "seed": 0,
+        "seed": None,  # The sequential simulator does not initialize an RNG.
         "start": start,
         "end": end,
         "source_metadata": record.to_dict()["source_metadata"],

@@ -58,6 +58,7 @@ def test_sequential_replay_has_orders_next_bar_fills_and_no_authority_writes(
     assert summary["live_authority"] is summary["investment_evidence"] is False
     assert summary["forward_sessions_created"] == 0 and summary["code_hash"]
     assert "runtime_code_hash" in summary
+    assert summary["seed"] is None
     assert all(f["fill_ts"] > f["decision_ts"] for f in trace["fill_records"])
     assert not (tmp_path / "must-not-exist.db").exists()
     again = runner.invoke(app, replay_inputs)
