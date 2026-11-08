@@ -34,7 +34,8 @@ from __future__ import annotations
 # (guarded ALTER + TICK_LINK_STATEMENTS in migrate()). Forward-only: 1.3c code refuses frozen ticks
 # on a v48 database; see the contract's rollback note before downgrading.
 # v49 (#647): paper_book_equity_peak — the paper lane's own whole-account high-water mark.
-SCHEMA_VERSION = 49
+# v50: separate scheduled-session observations and experimental qualifications.
+SCHEMA_VERSION = 50
 
 # v37 (#524, R9-M3): the per-search_trials-row upper bound on n_combos. A per-sweep combo count
 # above any legitimate grid; bounds each summand of the funnel-lifetime seed SUM so it is

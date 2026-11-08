@@ -25,6 +25,7 @@ from algua.cli.app import app, emit
 from algua.cli.errors import json_errors
 from algua.cli.frozen_paper import build_frozen_planner
 from algua.cli.lane_refresh import build_cycle_plan, lane_symbols, refresh_lane_snapshot
+from algua.cli.paper_experimental import register_experimental
 from algua.cli.paper_venue import live_strategy_flat, paper_broker_net, paper_scoped_cancel
 from algua.config.settings import get_settings
 from algua.contracts.lifecycle import Actor, Stage
@@ -130,6 +131,7 @@ from algua.strategies.loader import load_strategy
 
 paper_app = typer.Typer(help="Paper trading: run a paper-stage strategy", no_args_is_help=True)
 app.add_typer(paper_app, name="paper")
+register_experimental(paper_app)
 
 log = get_logger(__name__)
 

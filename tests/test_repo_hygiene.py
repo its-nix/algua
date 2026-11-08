@@ -246,6 +246,11 @@ def test_strategies_placement_and_provenance() -> None:
 INTEGRITY_CRITICAL_MODULES = frozenset(
     {
         "algua/contracts/frozen_model.py",
+        "algua/registry/db/experimental.py",
+        "algua/registry/experimental_sessions.py",
+        "algua/registry/experimental_qualification.py",
+        "algua/operator/paper_observations.py",
+        "algua/cli/paper_experimental.py",
         "algua/backtest/model_policy.py",
         "algua/registry/frozen_model_assets.py",
         "algua/primitives/bounded_file.py",

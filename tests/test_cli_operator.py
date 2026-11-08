@@ -607,3 +607,18 @@ def test_resolve_driver_argv_ignores_non_algua_head(monkeypatch, tmp_path):
     monkeypatch.setattr(operator_cmd.sys, "executable", str(bin_dir / "python3"))
     assert operator_cmd._resolve_driver_argv(["/abs/algua", "x"]) == ["/abs/algua", "x"]
     assert operator_cmd._resolve_driver_argv([]) == []
+
+
+def test_per_tenant_observation_survives_sibling_failure_without_marking_complete(
+        db_dir, monkeypatch):
+    observed = []
+    payload = {'ok': False, 'snapshot': {'id': 'snap'}, 'strategies': [
+        {'strategy': 'a', 'ok': True}, {'strategy': 'b', 'ok': False}]}
+    monkeypatch.setattr(operator_cmd, 'completed_session_observer',
+                        lambda *args, **kwargs: lambda day, result: observed.append((day,result)))
+    monkeypatch.setattr(operator_cmd, '_run_driver', _fake_driver(1, json.dumps(payload)))
+    _spy_alerts(monkeypatch)
+    result = _invoke()
+    assert result.exit_code == 1
+    assert observed == [(_SESSION, payload)]
+    assert SessionMarker(db_dir).last_session('paper') is None

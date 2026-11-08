@@ -33,6 +33,11 @@
 /algua/contracts/strategy_identity.py @Lior-Nis   # Task 2 interface-aware config identity
 /algua/contracts/strategy_scoring.py @Lior-Nis   # Task 2 context scoring and model-pin checks
 /algua/contracts/frozen_model.py @Lior-Nis   # portable pinned model identity and byte verification
+/algua/registry/db/experimental.py @Lior-Nis   # append-only experimental observations and qualifications
+/algua/registry/experimental_sessions.py @Lior-Nis   # real-session eligibility and exact epoch evidence
+/algua/registry/experimental_qualification.py @Lior-Nis   # historical lineage and signed qualification persistence
+/algua/operator/paper_observations.py @Lior-Nis   # non-overridden scheduled observation capture
+/algua/cli/paper_experimental.py @Lior-Nis   # authenticated experimental qualification command
 /algua/backtest/model_policy.py @Lior-Nis   # fixed pre-period model eligibility before holdout use
 /algua/registry/frozen_model_assets.py @Lior-Nis   # bounded immutable model asset packaging and reads
 /algua/primitives/bounded_file.py @Lior-Nis   # no-symlink bounded model file reads
