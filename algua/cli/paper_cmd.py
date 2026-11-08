@@ -25,6 +25,7 @@ from algua.cli.app import app, emit
 from algua.cli.errors import json_errors
 from algua.cli.frozen_paper import build_frozen_planner
 from algua.cli.lane_refresh import build_cycle_plan, lane_symbols, refresh_lane_snapshot
+from algua.cli.layered_runtime import paper_cycle
 from algua.cli.paper_experimental import register_experimental
 from algua.cli.paper_venue import live_strategy_flat, paper_broker_net, paper_scoped_cancel
 from algua.config.settings import get_settings
@@ -33,7 +34,7 @@ from algua.contracts.types import OrderIntent
 from algua.evaluation.backtest_run import run_backtest_task
 from algua.evaluation.inputs import select_provider as _select_provider
 from algua.evaluation.sweep_run import sweep_task
-from algua.execution import paper_reconcile
+from algua.execution import drawdown_guard, paper_reconcile
 from algua.execution.alpaca_broker import (
     AlpacaLiveReadOnlyBroker,
     AlpacaPaperBroker,
@@ -640,6 +641,7 @@ def _run_paper_strategy_tick(  # noqa: PLR0913
         if alloc is None:
             raise ValueError(f"{name} has no paper allocation")
         allocation = float(alloc["capital"])
+        drawdown_guard.require_cycle(conn, broker, "paper")
 
         # Only coids freshly inserted by this tick are safe to retract on noop (#311).
         freshly_recorded: set[str] = set()
@@ -673,12 +675,13 @@ def _run_paper_strategy_tick(  # noqa: PLR0913
             on_noop=_on_noop,
             should_halt=lambda: (kill_switch.is_tripped(conn, name)
                                  or global_halt.is_engaged(conn)
+                                 or not drawdown_guard.cycle_active(conn, broker, "paper")
                                  or not _still_paper_allocated(conn, name)),
             cancel=cancel,
-            reserve_buy=reserve_buy,
+            reserve_buy=drawdown_guard.reserve(conn, broker, "paper", reserve_buy),
             peak_equity=get_peak_equity(conn, name),
-            live_snapshot=lambda bars: build_paper_sizing_snapshot(
-                conn, name, allocation, bars, strategy.universe),
+            live_snapshot=lambda bars: drawdown_guard.sizing_snapshot(conn, broker, "paper",
+                build_paper_sizing_snapshot(conn, name, allocation, bars, strategy.universe)),
             live_positions=lambda: paper_believed_positions(conn, name),
             planner_context=context,
             planner=port,
@@ -923,6 +926,7 @@ def run_all(
                                  reason="paper run-all invoked with --disable-drawdown-breaker",
                                  strategy=None)
                 repo = SqliteStrategyRepository(conn)
+                managed_broker = paper_cycle(conn, _alpaca_broker_from_settings)
                 paper = repo.list_strategies(Stage.PAPER) + repo.list_strategies(
                     Stage.FORWARD_TESTED)
                 skipped_unallocated = [prec.name for prec in paper
@@ -955,7 +959,7 @@ def run_all(
                           "error": "every tickable strategy failed pre-effect setup",
                           "strategies": results, "skipped_unallocated": skipped_unallocated})
                     raise typer.Exit(1)
-                broker = _alpaca_broker_from_settings()
+                broker = managed_broker or _alpaca_broker_from_settings()
                 acct = broker.account()
                 tick_ts, clock_source = tick_clock(broker.clock)
                 # ingest fills + recover crash-stranded rows BEFORE reconcile; fail closed on any

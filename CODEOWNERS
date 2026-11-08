@@ -33,6 +33,22 @@
 /algua/contracts/strategy_identity.py @Lior-Nis   # Task 2 interface-aware config identity
 /algua/contracts/strategy_scoring.py @Lior-Nis   # Task 2 context scoring and model-pin checks
 /algua/contracts/frozen_model.py @Lior-Nis   # portable pinned model identity and byte verification
+/algua/risk/layered.py @Lior-Nis   # signed layered exposure policy and exact boundary arithmetic
+/algua/registry/db/drawdown.py @Lior-Nis   # durable independent account risk state and evidence
+/algua/registry/drawdown_store.py @Lior-Nis   # account risk state CAS and independent latches
+/algua/registry/drawdown_auth.py @Lior-Nis   # account policy signatures and restoration baseline
+/algua/execution/alpaca_reductions.py @Lior-Nis   # quote health and exact-identity bounded reductions
+/algua/execution/drawdown_flows.py @Lior-Nis   # cash-flow identity, timing and sign accounting
+/algua/execution/drawdown_actions.py @Lior-Nis   # attributed reduction intents and guarded submissions
+/algua/execution/drawdown_cycle.py @Lior-Nis   # shared account risk intervention ordering
+/algua/execution/drawdown_guard.py @Lior-Nis   # per-order state rechecks and aggregate reservation
+/algua/execution/drawdown_watch.py @Lior-Nis   # risk watcher live-authority reuse
+/algua/cli/layered_runtime.py @Lior-Nis   # account controller integration before strategy effects
+/algua/cli/risk_cmd.py @Lior-Nis   # signed policy and restoration command surface
+/algua/cli/live_cmd.py @Lior-Nis   # live enforcement call sites
+/algua/execution/book_breaker_halt.py @Lior-Nis   # selected profile versus legacy breaker routing
+/algua/execution/alpaca_broker.py @Lior-Nis   # venue selection and guarded reduction transport
+/algua/execution/fleet_health.py @Lior-Nis   # independent account risk halt visibility
 /algua/registry/db/experimental.py @Lior-Nis   # append-only experimental observations and qualifications
 /algua/registry/experimental_sessions.py @Lior-Nis   # real-session eligibility and exact epoch evidence
 /algua/registry/experimental_qualification.py @Lior-Nis   # historical lineage and signed qualification persistence

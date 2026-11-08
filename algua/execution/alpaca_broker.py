@@ -12,6 +12,7 @@ from requests import RequestException
 
 from algua.contracts.net import require_https_allowlisted_host
 from algua.contracts.types import LiveAuthorization, OrderIntent
+from algua.execution.alpaca_reductions import ReductionOrders
 from algua.execution.alpaca_rejections import (
     DEAD_ORDER_SKIP,
     available_qty,
@@ -25,8 +26,8 @@ from algua.primitives.retry import RetriesExhausted, call_with_backoff
 
 _TIMEOUT = 30  # seconds: per-request connect+read timeout for every Alpaca HTTP call
 # Default endpoints for the two Alpaca venues.
-_PAPER_DEFAULT_URL = "https://paper-api.alpaca.markets"
-_LIVE_DEFAULT_URL = "https://api.alpaca.markets"
+_PAPER_DEFAULT_URL, _LIVE_DEFAULT_URL = (
+    "https://paper-api.alpaca.markets", "https://api.alpaca.markets")
 
 # Retry policy for transient broker failures (#24). Reads are always safe to retry; submits are
 # safe ONLY because they carry a deterministic client_order_id. Alpaca does NOT de-duplicate that
@@ -85,8 +86,7 @@ def _qty_order(symbol: str, signed_qty: float, coid: str | None) -> dict[str, An
         body["client_order_id"] = coid
     return body
 
-
-class _AlpacaBroker:
+class _AlpacaBroker(ReductionOrders):
     """requests-based wrapper of the Alpaca REST API. Implements the contracts Broker protocol
     (get_positions, submit) and sizes via the shared `size_order` rule so it sizes target weights
     identically to SimBroker. The tick loop drives it through snapshot()/submit_sized() to keep

@@ -47,6 +47,8 @@ BUDGET: dict[str, int] = {
     # cohesive thing -- claims, attempts, outcomes for the idea pool -- and splitting the cap away
     # from the outcome transition it guards would put two halves of one rule in two files.
     "algua/registry/idea_attempts.py": 332,
+    # The existing fleet rollup crossed 300 adding the independent account-risk latch check.
+    "algua/execution/fleet_health.py": 301,
     "algua/backtest/bootstrap.py": 365,
     "algua/backtest/decision_path.py": 382,
     "algua/backtest/engine.py": 322,

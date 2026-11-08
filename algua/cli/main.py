@@ -35,6 +35,7 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     research_batch_cmd,
     research_cmd,
     research_memory_cmd,
+    risk_cmd,
     runs_cmd,
     strategy_cmd,
 )

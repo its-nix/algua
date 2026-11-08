@@ -35,7 +35,8 @@ from __future__ import annotations
 # on a v48 database; see the contract's rollback note before downgrading.
 # v49 (#647): paper_book_equity_peak — the paper lane's own whole-account high-water mark.
 # v50: separate scheduled-session observations and experimental qualifications.
-SCHEMA_VERSION = 50
+# v51: signed layered drawdown account policies and durable risk evidence.
+SCHEMA_VERSION = 51
 
 # v37 (#524, R9-M3): the per-search_trials-row upper bound on n_combos. A per-sweep combo count
 # above any legitimate grid; bounds each summand of the funnel-lifetime seed SUM so it is

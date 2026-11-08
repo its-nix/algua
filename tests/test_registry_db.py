@@ -9,12 +9,12 @@ _META_COLS = {"family", "tags", "author", "hypothesis_status", "derived_from", "
 
 # Pinned fingerprint of the schema a full bootstrap produces. BUMP THESE DELIBERATELY, together
 # with SCHEMA_VERSION and the migration that earns it — never to make a red test go green.
-_SCHEMA_OBJECT_COUNT = 146
-_SCHEMA_DIGEST = "2285de06c6a4ba564f10e32a201020e9bc969199f886a87a66259bc7321ca67d"
+_SCHEMA_OBJECT_COUNT = 163
+_SCHEMA_DIGEST = "74ac205592f89b47bc87511ae22e9dc06a971649f9d51387bb32aae2c1d92698"
 
 
 def test_schema_version_is_current():
-    assert SCHEMA_VERSION == 50
+    assert SCHEMA_VERSION == 51
 
 
 def test_v47_adds_explicit_deployment_epoch_schema(tmp_path):
@@ -891,7 +891,7 @@ def test_v26_fdr_columns_are_null_on_legacy_rows(tmp_path):
 
 
 def test_paper_venue_tables_created_at_v30(tmp_path):
-    assert SCHEMA_VERSION == 50
+    assert SCHEMA_VERSION == 51
     conn = sqlite3.connect(tmp_path / "r.db")
     conn.row_factory = sqlite3.Row
     migrate(conn)
@@ -915,7 +915,7 @@ def test_paper_reconcile_and_cycle_tables_exist(tmp_path):
         "SELECT name FROM sqlite_master WHERE type='table'")}
     assert "paper_reconcile_state" in tables
     assert "paper_cycle" in tables
-    assert SCHEMA_VERSION == 50
+    assert SCHEMA_VERSION == 51
 
 
 def test_v32_negative_results_table_created(tmp_path):
@@ -980,7 +980,7 @@ def test_v46_ideas_columns_and_tables_exist_after_migrate(tmp_path):
     tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"idea_attempts", "idea_inspirations"} <= tables
     migrate(conn)  # idempotent
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 50
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 51
 
 
 def test_v46_preserves_v45_idea_rows(tmp_path):
@@ -1033,12 +1033,12 @@ def test_v46_preserves_v45_idea_rows(tmp_path):
             "claimed_by", "claim_token", "claimed_at"} <= cols
     tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"idea_attempts", "idea_inspirations"} <= tables
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 50
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 51
 
     migrate(conn)  # idempotent re-run must not raise
     row = conn.execute("SELECT title FROM ideas").fetchone()
     assert row["title"] == "t"
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 50
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 51
 
 
 def test_v46_rebuilds_negative_results_check_on_legacy_db(tmp_path):
@@ -1114,3 +1114,21 @@ def test_v46_rebuilds_negative_results_check_on_legacy_db(tmp_path):
     ).fetchone()
     assert (before["rootpage"], before["sql"]) == (after["rootpage"], after["sql"])
     assert conn.execute("SELECT COUNT(*) FROM negative_results").fetchone()[0] == 2
+
+
+def test_v51_adds_risk_state_without_erasing_legacy_halt(tmp_path):
+    from algua.registry.db.drawdown import SCHEMA as DRAWDOWN
+    from algua.registry.db.schema import SCHEMA
+
+    conn = connect(tmp_path / "v50.db")
+    conn.executescript(SCHEMA.replace(DRAWDOWN, ""))
+    conn.execute("PRAGMA user_version=50")
+    conn.execute("INSERT INTO global_halt VALUES (1,'existing halt','human','t')")
+    conn.commit()
+    migrate(conn)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 51
+    assert conn.execute("SELECT reason FROM global_halt").fetchone()[0] == "existing halt"
+    assert conn.execute("SELECT COUNT(*) FROM drawdown_accounts").fetchone()[0] == 0
+    migrate(conn)
+    assert conn.execute("SELECT reason FROM global_halt").fetchone()[0] == "existing halt"
+    conn.close()

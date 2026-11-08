@@ -18,6 +18,7 @@ from algua.registry.db.backtest_returns import SCHEMA as BACKTEST_RETURNS_SCHEMA
 from algua.registry.db.breadth import SCHEMA as BREADTH_SCHEMA
 from algua.registry.db.core import SCHEMA as CORE_SCHEMA
 from algua.registry.db.deployment import SCHEMA as DEPLOYMENT_SCHEMA
+from algua.registry.db.drawdown import SCHEMA as DRAWDOWN_SCHEMA
 from algua.registry.db.execution import SCHEMA as EXECUTION_SCHEMA
 from algua.registry.db.experimental import SCHEMA as EXPERIMENTAL_SCHEMA
 from algua.registry.db.family import SCHEMA as FAMILY_SCHEMA
@@ -47,4 +48,5 @@ SCHEMA = "\n".join([
     EXECUTION_SCHEMA,
     FROZEN_EVIDENCE_SCHEMA,
     EXPERIMENTAL_SCHEMA,
+    DRAWDOWN_SCHEMA,
 ])
