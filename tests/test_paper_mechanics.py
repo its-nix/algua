@@ -494,3 +494,46 @@ def test_intervention_waiting_for_market_never_reports_held_normal(world, monkey
         assert current["phase"] == "closing_reconcile_pending"
         assert current["risk_intervention"]["severity"] == 2
     assert len(venue.posts) == 1
+
+
+def test_unsigned_paper_policy_supports_bounded_mechanics(world):
+    from algua.registry.drawdown_auth import paper_change
+
+    conn, venue, _ = world
+    result = paper_change(conn, venue, purpose="configure",
+                          policy=DrawdownPolicy("5", permitted_symbols=("CSL",)))
+    assert result["actor"] == "agent"
+    assert "last_human_action" not in result["state"]
+    init(world)
+    run(world)
+    assert len(venue.posts) == 1
+    assert venue.posts[0]["notional"] == "5.00"
+
+
+@pytest.mark.parametrize("options", [{"normal_capital": "6"},
+                                     {"permitted_symbols": ("CSL", "AAPL")},
+                                     {"reduce_at": ".11"}, {"halt_at": ".21"},
+                                     {"reduced_fraction": ".6"}])
+def test_automated_policy_never_loosens_smoke_limits(world, options):
+    from algua.registry.drawdown_auth import paper_change
+
+    conn, venue, _ = world
+    config = {"normal_capital": "5", "permitted_symbols": ("CSL",)} | options
+    paper_change(conn, venue, purpose="configure", policy=DrawdownPolicy(**config))
+    with pytest.raises(ValueError, match="smoke limits"):
+        init(world)
+    assert not venue.posts
+
+
+def test_automated_policy_requires_immutable_configuration_provenance(world):
+    import json
+
+    conn, _, _ = world
+    state = account_state(conn, "paper")
+    # A mutable marker alone cannot turn an unrelated policy into an automated configuration.
+    state.pop("last_human_action")
+    state["last_paper_action"] = {"actor": "agent", "purpose": "configure"}
+    conn.execute("UPDATE drawdown_accounts SET state_json=?", (json.dumps(state),))
+    conn.commit()
+    with pytest.raises(ValueError, match="recorded paper policy"):
+        init(world)

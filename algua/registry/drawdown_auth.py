@@ -1,4 +1,4 @@
-"""Human account-policy ceremony; no allocation, funding or strategy live authority is minted."""
+"""Paper account actions and signed live policies; neither grants strategy live authority."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import re
 from datetime import UTC, datetime, timedelta
 
 from algua.contracts.canonical import canonical_json
+from algua.execution.alpaca_broker import AlpacaPaperBroker
 from algua.execution.drawdown_flows import fingerprints, previous_close
 from algua.registry import live_gate
 from algua.registry.challenges import ChallengeSpec, build_payload, find_pending, issue
@@ -39,11 +40,11 @@ def flat_snapshot(broker) -> dict:
     return {"account_id": account.account_id, "equity": str(decimal(account.equity))}
 
 
-def signed_change(
-    conn, broker, lane: str, *, purpose: str, policy: DrawdownPolicy | None, signature: bytes | None
-) -> dict:
+def _context(conn, broker, lane: str, purpose: str, policy: DrawdownPolicy | None):
     if lane not in ("paper", "live") or purpose not in ("configure", "restore"):
-        raise ValueError("invalid drawdown ceremony")
+        raise ValueError("invalid drawdown action")
+    if (purpose == "configure") != (policy is not None):
+        raise ValueError("configure requires a policy; restore uses the existing policy")
     snapshot = flat_snapshot(broker)
     state = account_state(conn, lane)
     if state is not None and state["account_id"] != snapshot["account_id"]:
@@ -59,6 +60,30 @@ def signed_change(
     if policy is not None and decimal(policy.normal_capital) > decimal(snapshot["equity"]):
         raise ValueError("normal exposure budget exceeds non-borrowed account equity")
     options = canonical_json(policy.to_dict() if policy is not None else {})
+    return snapshot, state, options
+
+
+def paper_change(
+    conn, broker, *, purpose: str, policy: DrawdownPolicy | None, reason: str = "",
+) -> dict:
+    """Apply an automated PAPER-only action, retaining all baseline and settlement guards."""
+    if not isinstance(broker, AlpacaPaperBroker) or broker.base_url != (
+        "https://paper-api.alpaca.markets"
+    ):
+        raise ValueError("paper risk actions require the exact Alpaca paper host")
+    if purpose == "restore" and not reason.strip():
+        raise ValueError("paper restore requires a nonempty reason")
+    snapshot, state, options = _context(conn, broker, "paper", purpose, policy)
+    return _apply_change(conn, broker, "paper", purpose, policy, snapshot, state, options,
+                         reason=reason.strip())
+
+
+def signed_change(
+    conn, broker, lane: str, *, purpose: str, policy: DrawdownPolicy | None, signature: bytes | None
+) -> dict:
+    if lane != "live":
+        raise ValueError("paper risk actions are unsigned; omit --signature")
+    snapshot, state, options = _context(conn, broker, lane, purpose, policy)
     if signature is None:
         request = canonical_json(
             {
@@ -109,6 +134,14 @@ def signed_change(
         else "configure preserves severity",
     }:
         raise ValueError("drawdown state/account changed; request a new challenge")
+    return _apply_change(conn, broker, lane, purpose, policy, snapshot, state, options,
+                         principal=principal, challenge=row)
+
+
+def _apply_change(
+    conn, broker, lane, purpose, policy, snapshot, state, options, *,
+    principal="", challenge=None, reason="",
+) -> dict:
     # Settle and reconcile before accepting a new baseline; never use broker flatness alone.
     from algua.execution.drawdown_actions import synchronize
 
@@ -126,18 +159,20 @@ def signed_change(
     try:
         if account_state(conn, lane) != state:
             raise ValueError("drawdown state changed under lock")
-        consumed = conn.execute(
-            "UPDATE drawdown_challenges SET consumed_at=? WHERE nonce=? "
-            "AND consumed_at IS NULL AND expires_at>?",
-            (stamp, row["nonce"], datetime.now(UTC).isoformat()),
-        ).rowcount
-        if consumed != 1:
-            raise ValueError("drawdown challenge expired or already consumed")
+        if challenge is not None:
+            consumed = conn.execute(
+                "UPDATE drawdown_challenges SET consumed_at=? WHERE nonce=? "
+                "AND consumed_at IS NULL AND expires_at>?",
+                (stamp, challenge["nonce"], datetime.now(UTC).isoformat()),
+            ).rowcount
+            if consumed != 1:
+                raise ValueError("drawdown challenge expired or already consumed")
         if purpose == "configure":
             assert policy is not None
             pid = conn.execute(
                 "INSERT INTO drawdown_policies "
                 "(lane,account_id,policy_json,principal,created_at) VALUES (?,?,?,?,?)",
+                # Empty principal denotes no signer for an automated paper policy.
                 (lane, snapshot["account_id"], options, principal, stamp),
             ).lastrowid
         else:
@@ -169,8 +204,19 @@ def signed_change(
             "observed_at": stamp,
             "revision": 0,
         }
-        action = {"principal": principal, "purpose": purpose, "nonce": row["nonce"], "at": stamp}
-        initial["last_human_action"] = action
+        if challenge is not None:
+            action_key = "last_human_action"
+            action = {"principal": principal, "purpose": purpose,
+                      "nonce": challenge["nonce"], "at": stamp}
+        else:
+            action_key = "last_paper_action"
+            action = {"actor": "agent", "purpose": purpose, "reason": reason, "at": stamp}
+            if state is not None:
+                action["prior_episode"] = {key: state.get(key) for key in (
+                    "revision", "policy_id", "baseline_at", "baseline_equity", "baseline_nav",
+                    "peak_nav", "last_nav", "severity", "drawdown", "blocked_reason",
+                )}
+        initial[action_key] = action
         if state is None:
             conn.execute(
                 "INSERT INTO drawdown_accounts VALUES (?,?,?,?,?)",
@@ -181,8 +227,10 @@ def signed_change(
             updated = (
                 initial
                 if purpose == "restore"
-                else state | {"policy_id": pid, "last_human_action": action}
+                else state | {"policy_id": pid, action_key: action}
             )
+            if challenge is None:
+                updated.pop("last_human_action", None)
             state = write_state(conn, state, updated, purpose)
         conn.commit()
     except BaseException:
@@ -191,7 +239,7 @@ def signed_change(
     return {
         "ok": True,
         "action": purpose,
-        "principal": principal,
+        **({"principal": principal} if challenge is not None else {"actor": "agent"}),
         "state": state,
         "live_authority": False,
     }

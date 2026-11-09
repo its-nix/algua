@@ -1,4 +1,4 @@
-"""Signed opt-in risk policy, status and explicit broker-backed checks."""
+"""Paper risk actions, signed live policy and explicit broker-backed checks."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from algua.execution.drawdown_watch import live_check_broker
 from algua.operator.paper_account_lock import paper_account_lock
 from algua.primitives.bounded_file import read_relative_regular
 from algua.registry.db import registry_conn
-from algua.registry.drawdown_auth import signed_change
+from algua.registry.drawdown_auth import paper_change, signed_change
 from algua.registry.drawdown_store import account_state, status
 from algua.risk.layered import DrawdownPolicy
 
@@ -46,7 +46,9 @@ def configure(
     policy: Path = typer.Option(..., "--policy"),
     signature: Path | None = typer.Option(None, "--signature"),
 ) -> None:
-    """Issue a human SSH challenge, or apply its signed policy; no money or allocation changes."""
+    """Apply a paper policy directly; live policies require a human SSH signature."""
+    if lane == "paper" and signature is not None:
+        raise ValueError("paper risk actions are unsigned; omit --signature")
     raw = read_relative_regular(policy.absolute().parent, policy.name, 64 * 1024)
     obj = json.loads(raw)
     parsed = DrawdownPolicy(**obj)
@@ -57,7 +59,8 @@ def configure(
     )
     with paper_account_lock(lane), registry_conn() as conn:
         emit(
-            signed_change(
+            paper_change(conn, _broker(lane), purpose="configure", policy=parsed)
+            if lane == "paper" else signed_change(
                 conn, _broker(lane), lane, purpose="configure", policy=parsed, signature=sig
             )
         )
@@ -65,8 +68,14 @@ def configure(
 
 @risk_app.command("restore")
 @json_errors
-def restore(lane: str, signature: Path | None = typer.Option(None, "--signature")) -> None:
-    """Human-only rebase after a flat settled account; old risk history remains immutable."""
+def restore(
+    lane: str,
+    signature: Path | None = typer.Option(None, "--signature"),
+    reason: str = typer.Option("", "--reason"),
+) -> None:
+    """Explicit flat settled rebase: paper needs a reason, live needs a human signature."""
+    if lane == "paper" and signature is not None:
+        raise ValueError("paper risk actions are unsigned; omit --signature")
     sig = (
         read_relative_regular(signature.absolute().parent, signature.name, 64 * 1024)
         if signature
@@ -74,7 +83,10 @@ def restore(lane: str, signature: Path | None = typer.Option(None, "--signature"
     )
     with paper_account_lock(lane), registry_conn() as conn:
         emit(
-            signed_change(conn, _broker(lane), lane, purpose="restore", policy=None, signature=sig)
+            paper_change(conn, _broker(lane), purpose="restore", policy=None, reason=reason)
+            if lane == "paper" else signed_change(
+                conn, _broker(lane), lane, purpose="restore", policy=None, signature=sig
+            )
         )
 
 

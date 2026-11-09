@@ -1,4 +1,4 @@
-"""Paper-only adapter and existing signed account-risk assessment for the mechanics smoke."""
+"""Paper-only adapter and persisted account-risk assessment for the mechanics smoke."""
 from __future__ import annotations
 
 import hashlib
@@ -51,17 +51,36 @@ def readiness(broker, expected_account: str | None, symbol: str = SYMBOL) -> dic
     return raw
 
 
+def _policy_recorded(conn, state: dict, row) -> bool:
+    if row["principal"] and state.get("last_human_action", {}).get("principal") == row["principal"]:
+        return True  # Existing signed PAPER policies remain usable.
+    event = conn.execute(
+        "SELECT state_json FROM drawdown_events WHERE lane='paper' AND account_id=? "
+        "AND policy_id=? AND kind IN ('configured','configure') ORDER BY id DESC LIMIT 1",
+        (state["account_id"], state["policy_id"]),
+    ).fetchone()
+    if event is None:
+        return False
+    recorded = json.loads(event["state_json"])
+    if row["principal"]:
+        return recorded.get("last_human_action", {}).get("principal") == row["principal"]
+    action = recorded.get("last_paper_action", {})
+    return (action.get("actor") == "agent" and action.get("purpose") == "configure"
+            and action.get("at") == row["created_at"] and "principal" not in action
+            and "last_human_action" not in recorded)
+
+
 def risk_guard(
     conn, broker, expected_account: str, *, opening: bool,
 ) -> tuple[dict, DrawdownPolicy]:
     """Reuse the risk controller's real persisted assessment; never manufacture a cycle grant."""
     prior = account_state(conn, "paper")
     if prior is None or prior["account_id"] != expected_account:
-        raise ValueError("matching signed paper risk policy is required")
+        raise ValueError("matching recorded paper risk policy is required")
     policy = policy_for(conn, prior)
     row = conn.execute("SELECT * FROM drawdown_policies WHERE id=?", (prior["policy_id"],)
                        ).fetchone()
-    if (not row["principal"] or not prior.get("last_human_action", {}).get("principal")
+    if (not _policy_recorded(conn, prior, row)
             or decimal(policy.normal_capital) > 5
             or decimal(prior["baseline_nav"]) > 5
             or tuple(policy.permitted_symbols) != (SYMBOL,)
@@ -69,7 +88,7 @@ def risk_guard(
             or decimal(policy.halt_at) > decimal(".20")
             or decimal(policy.reduced_fraction) > decimal(".50")
             or prior.get("blocked_reason")):
-        raise ValueError("signed paper policy is missing, blocked or exceeds smoke limits")
+        raise ValueError("recorded paper policy is missing, blocked or exceeds smoke limits")
     for table in ("strategies", "paper_orders", "paper_venue_orders", "live_orders",
                   "tick_snapshots"):
         if conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone():

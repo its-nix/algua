@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
+from algua.execution.alpaca_broker import AlpacaPaperBroker
 from algua.execution.drawdown_cycle import manage_cycle
 from algua.execution.drawdown_guard import cycle_active, effective_allocation, reserve
 from algua.execution.live_ledger import (
@@ -16,14 +17,15 @@ from algua.execution.live_ledger import (
 )
 from algua.registry import live_gate
 from algua.registry.db import connect, migrate
-from algua.registry.drawdown_auth import signed_change
+from algua.registry.drawdown_auth import paper_change, signed_change
 from algua.registry.drawdown_store import account_state
 from algua.risk.layered import DrawdownPolicy
 from tests.test_human_actor import _anchor, _make_key, _sign
 
 
-class Venue:
+class Venue(AlpacaPaperBroker):
     def __init__(self):
+        super().__init__("fixture", "fixture")
         self.equity = 1000.0
         self.last_equity = 1000.0
         self.account_id = "synthetic-paper"
@@ -116,6 +118,9 @@ def world(tmp_path, monkeypatch):
 
     def signed(purpose="configure", policy=None, lane="paper"):
         cfg = (policy or DrawdownPolicy("1000")) if purpose == "configure" else None
+        if lane == "paper":
+            return paper_change(conn, venue, purpose=purpose, policy=cfg,
+                                reason="synthetic paper recovery"), None
         challenge = signed_change(conn, venue, lane, purpose=purpose, policy=cfg, signature=None)
         folder = tmp_path / ("sig-" + str(len(list(tmp_path.glob("sig-*")))))
         folder.mkdir()
@@ -225,7 +230,7 @@ def test_reduced_state_survives_price_recovery_and_legacy_resume(world):
     assert effective_allocation(conn, venue, "paper", 1000) == 500
 
 
-def test_twenty_percent_halts_flat_and_only_signature_restores(world):
+def test_twenty_percent_halts_flat_until_explicit_paper_restore(world):
     conn, venue, signed, _ = world
     venue.equity = venue.last_equity = 800
     assert manage_cycle(conn, venue, "paper")["reason"] == "drawdown_halted_flat"
@@ -240,20 +245,21 @@ def test_twenty_percent_halts_flat_and_only_signature_restores(world):
 
 def test_signature_replay_and_unsigned_config_cannot_change_policy(world):
     conn, venue, signed, _ = world
-    result, signature = signed()
+    result, signature = signed(lane="live")
     with pytest.raises(ValueError, match="fresh matching"):
-        signed_change(conn, venue, "paper", purpose="configure", policy=None, signature=signature)
-    before = account_state(conn, "paper")
+        signed_change(conn, venue, "live", purpose="configure", policy=DrawdownPolicy("1000"),
+                      signature=signature)
+    before = account_state(conn, "live")
     challenge = signed_change(
         conn,
         venue,
-        "paper",
+        "live",
         purpose="configure",
         policy=DrawdownPolicy("1000", halt_at=".3"),
         signature=None,
     )
     assert challenge["action"] == "drawdown_challenge"
-    assert account_state(conn, "paper") == before
+    assert account_state(conn, "live") == before
 
 
 def test_daily_loss_is_independent_and_no_unknown_market_fallback(world):
@@ -440,7 +446,7 @@ def test_cli_live_surfaces_intervention_without_inventing_live_authority(world, 
     assert not venue.sent and account_state(conn, "live")["severity"] == 2
 
 
-def test_unsigned_cli_config_only_issues_challenge(world, monkeypatch, tmp_path):
+def test_unsigned_cli_paper_config_applies_without_human_provenance(world, monkeypatch, tmp_path):
     import json
 
     from typer.testing import CliRunner
@@ -456,8 +462,16 @@ def test_unsigned_cli_config_only_issues_challenge(world, monkeypatch, tmp_path)
     before = account_state(conn, "paper")
     result = CliRunner().invoke(app, ["risk", "configure", "paper", "--policy", str(policy)])
     assert result.exit_code == 0, result.stdout
-    assert json.loads(result.stdout)["action"] == "drawdown_challenge"
-    assert account_state(conn, "paper") == before
+    payload = json.loads(result.stdout)
+    assert payload["action"] == "configure"
+    assert payload["live_authority"] is False
+    after = account_state(conn, "paper")
+    assert after["policy_id"] != before["policy_id"]
+    assert after["last_paper_action"]["actor"] == "agent"
+    assert "last_human_action" not in after
+    assert conn.execute("SELECT principal FROM drawdown_policies WHERE id=?",
+                        (after["policy_id"],)).fetchone()[0] == ""
+    assert account_state(conn, "live") is None
 
 
 def test_live_watcher_requires_existing_signature_verified_allocated_source(world, monkeypatch):
@@ -531,3 +545,23 @@ def test_revocation_after_recording_does_not_poison_restoration(world, monkeypat
     assert conn.execute("SELECT COUNT(*) FROM live_orders").fetchone()[0] == 0
     result, _ = signed("restore", lane="live")
     assert result["ok"]
+
+
+def test_live_restore_cli_still_requires_human_signature(world, monkeypatch):
+    import json
+
+    from typer.testing import CliRunner
+
+    from algua.cli import risk_cmd
+    from algua.cli.main import app
+
+    conn, venue, signed, _ = world
+    signed(lane="live")
+    prior = account_state(conn, "live")
+    monkeypatch.setenv("ALGUA_DB_PATH", conn.execute("PRAGMA database_list").fetchone()["file"])
+    monkeypatch.setattr(risk_cmd, "_broker", lambda lane: venue)
+    result = CliRunner().invoke(app, ["risk", "restore", "live"])
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["action"] == "drawdown_challenge" and payload["namespace"] == "algua-go-live"
+    assert account_state(conn, "live") == prior
