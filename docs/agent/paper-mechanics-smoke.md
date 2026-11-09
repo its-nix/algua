@@ -42,6 +42,28 @@ until account observations, fills, reconciliation and settled closeout actually 
 
 ## Installed bootstrap, 2026-11-09
 
+### Autonomous-paper rollout
+
+The later owner-approved rollout deploys source `e459140f4e9e6a35e941d413610739f3bd7d4723`,
+application digest `392cb13113b56a6e9c3d5f049d65d4070922e0399756f8c14b8197437ea20e97`
+(26,023 inventoried files). Registry v53 permits honest automated experimental-qualification
+provenance. Paper policy configuration/restoration and experimental qualification no longer need
+the human signature; the final live ceremony and live risk/capital controls retain it.
+
+Both authoritative and isolated registries passed migration/integrity/foreign-key checks. The
+installed paper configure command refused an unsettled account without creating a signing
+challenge; zero paper policies/challenges and no initialized mechanics journal were observed at
+rollout. The dashboard and previously enabled research schedules were restored.
+
+The already-approved USD5/CSL mechanics round trip is scheduled once for November 9 at 14:33 UTC,
+after the five existing owner-requested liquidation orders can settle at regular market opening.
+It uses only the installed CLI, validates the exact release, refuses a nonempty/unsettled account,
+and reconciles/cancels/closes only its original smoke identities. Configuration is unsigned. A
+failed or incomplete run retains its original journal and is not silently rerun or counted as
+qualification. This schedule is not evidence that the future orders or round trip completed.
+
+### Original installed bootstrap
+
 Application source `6ef7a677354b230387cc22dd80970bd8c2ef9170` is installed under
 `/opt/algua/releases/`, selected by the root-owned `/opt/algua/paper-current`. Its verified
 application digest is `01c949949e238f0603334ca1a672de4a89b10a00f3c0b273be839326fbd7d064`

@@ -28,13 +28,13 @@ is provenance while live independently verifies the evidence and human activatio
 Files: `algua/registry/drawdown_auth.py`, focused new paper account module as needed,
 `algua/cli/risk_cmd.py`, `algua/execution/paper_mechanics_broker.py`, focused risk/CLI/mechanics tests.
 
-- [ ] Add focused regressions for direct unsigned paper configure/restore, exact paper host/account,
+- [x] Add focused regressions for direct unsigned paper configure/restore, exact paper host/account,
   flatness/pending orders, preserved severity, honest provenance/reason and unchanged signed LIVE.
-- [ ] Reuse baseline/flow/reconciliation/CAS persistence; split only the signature requirement.
+- [x] Reuse baseline/flow/reconciliation/CAS persistence; split only the signature requirement.
   Require a reason for explicit paper restore. No schema change/fake human principal is needed
   merely to record automated paper actions; record explicit paper action provenance in state/events.
-- [ ] Update mechanics to accept legitimate automated paper policy while keeping USD5/CSL bounds.
-- [ ] Run focused tests, lint/types for changed modules, self-review; primary commits scoped files.
+- [x] Update mechanics to accept legitimate automated paper policy while keeping USD5/CSL bounds.
+- [x] Run focused tests, lint/types for changed modules, self-review; primary commits scoped files.
 
 ## Task 2: automatic five-session qualification
 
@@ -42,30 +42,54 @@ Files: `algua/cli/paper_experimental.py`, `algua/registry/experimental_qualifica
 `algua/registry/capped_qualification.py`, qualification/handoff diagnostic text,
 `algua/registry/db/{experimental.py,migrate.py,constants.py}`, focused qualification/DB/live tests.
 
-- [ ] Add regressions for automatic agent recording, explicit preview, idempotence, failed/drifted
+- [x] Add regressions for automatic agent recording, explicit preview, idempotence, failed/drifted
   report refusal, honest agent provenance and agent-produced evidence requiring final LIVE signing.
-- [ ] Add v53 migration accepting real human/agent/system qualification actors, preserving rows/IDs,
+- [x] Add v53 migration accepting real human/agent/system qualification actors, preserving rows/IDs,
   foreign-key integrity and append-only triggers. Fresh/partial schemas and repeat migration work.
-- [ ] Default CLI records a passing report; retain preview flag. Remove the redundant intermediate
+- [x] Default CLI records a passing report; retain preview flag. Remove the redundant intermediate
   human signing requirement and keep independent live source re-verification and final signature.
-- [ ] Run focused tests and self-review; primary commits scoped files. Frozen-world tests run
+- [x] Run focused tests and self-review; primary commits scoped files. Frozen-world tests run
   sequentially to avoid their temporary-source fixture races.
 
 ## Task 3: integrate, document and deploy
 
-- [ ] Independently review each diff and the combined paper/live boundary; fix concrete findings.
-- [ ] Amend current PRD/operating/layered-risk/capped-live/mechanics docs and supersede the private
+- [x] Independently review each diff and the combined paper/live boundary; fix concrete findings.
+- [x] Amend current PRD/operating/layered-risk/capped-live/mechanics docs and supersede the private
   signing helper so the owner is no longer told to sign a paper policy.
-- [ ] Run focused integration, root Ruff/mypy/import contracts and whitespace checks; omit full
+- [x] Run focused integration, root Ruff/mypy/import contracts and whitespace checks; omit full
   suite/CI under delivery policy. Commit exact source before building.
-- [ ] Take consistent registry backup with writers paused; migrate via new CLI; build/adopt exact
+- [x] Take consistent registry backup with writers paused; migrate via new CLI; build/adopt exact
   immutable paper application/anchor. Update root paper selector/helper and mutable research source
   together; preserve original pending liquidation receipts and no mechanics identity migration.
-- [ ] Verify installed unsigned paper CLI behavior. If sells are still pending, report the genuine
+- [x] Verify installed unsigned paper CLI behavior. If sells are still pending, report the genuine
   flatness prerequisite; no signature challenge is requested, no fill or qualification invented.
-- [ ] Restore prior services/timers, update existing Todoist cards, report actual checks/limits.
+- [x] Restore prior services/timers, update existing Todoist cards, report actual checks/limits.
 
 Ruling: existing optional authenticated research/forward relaxation commands stay protected; the
 normal unattended path uses current default gates. Removing them would change evidence policy,
 which the owner did not ask to weaken. Paper-only risk actions and five-session recording are the
 current manual bottlenecks and are in scope.
+
+## Completion evidence, 2026-11-09
+
+Source implementation commits: `a1d0abd` (paper risk), `33ef6e6` (automatic qualification/v53),
+`e459140` (operating docs/help and installed entry). Application source deployed at exact
+`e459140f4e9e6a35e941d413610739f3bd7d4723`, digest
+`392cb13113b56a6e9c3d5f049d65d4070922e0399756f8c14b8197437ea20e97`.
+
+Bounded combined review found no Important/Critical issue. Actual checks: 223 integration tests,
+23 capped-live tests with agent-authored qualification, 212 focused qualification/schema checks,
+96 paper-risk/controller/mechanics checks plus final focused regressions; final text/help check
+rerun 64 passed. These groups overlap. Root Ruff, mypy (491 sources), imports (31 kept/0 broken),
+whitespace and shell syntax passed. Full suite/CI intentionally omitted under fast-delivery policy.
+
+VPS: exact nonroot build/26,023-file inventory, immutable adoption/anchor, coordinated backups and
+v52→v53 registry migrations with integrity/FK checks passed. A missing default bundle ref stopped
+initial deployment before migration; corrected to explicit branch fetch. Original backups retained;
+no old-code DB rollback. Dashboard/timers restored. Installed unsigned configure refused actual
+unsettled positions/orders with no signing challenge; no policy or mechanics session fabricated.
+
+One already-approved USD5/CSL round trip is scheduled at 14:33UTC through the installed CLI,
+subject to flatness and regular-hours checks; original cleanup orders were not resubmitted.
+Future runtime/round-trip acceptance remains open. The private human paper-signing script is
+retired; no human signing action is requested for paper.
