@@ -1,5 +1,46 @@
 # Paper broker mechanics smoke preparation
 
+## Approved implementation, 2026-11-09
+
+The owner approved implementation and deployment of the isolated paper path. The CLI is now
+`paper mechanics`, with its own journal and a dedicated signed-risk registry. This is separate
+from strategy admission: no mechanics order/fill becomes a strategy, tick, scheduled paper
+observation, experimental qualification or live authority. The earlier preparation below retains
+its original evidence and design rationale; its missing-command stop point is superseded by this
+implementation, not by a synthetic passing gate.
+
+The deployed entry is `/usr/local/sbin/algua-paper`, run by the owner over SSH. It executes the
+immutable application as the separate `algua-paper` OS user; paper credentials belong in the
+root-owned `0600` file `/etc/algua/paper.env`, never in the research environment or chat. Use the
+read-only `paper mechanics account` command first to verify the actual account and CSL's active,
+tradable/fractionable status. Credentials, a human-signed paper policy and an open regular market
+remain runtime prerequisites; setup does not imply that a broker test has run.
+
+```sh
+algua-paper paper mechanics account
+algua-paper risk configure paper --policy /var/lib/algua-paper/policy.json
+# The owner signs the exact returned paper-policy challenge with the enrolled SSH key;
+# submit that signature through risk configure before initializing the smoke.
+algua-paper paper mechanics --state /var/lib/algua-paper/mechanics.db \
+  --risk-db /var/lib/algua-paper/risk.db --expected-account ACCOUNT_UUID init --symbol CSL
+algua-paper paper mechanics --state /var/lib/algua-paper/mechanics.db \
+  --risk-db /var/lib/algua-paper/risk.db --expected-account ACCOUNT_UUID step
+```
+
+Use the same common options before `status` or `close`. The opening identity and USD5 purchase
+budget are committed before the POST. Uncertain acceptance keeps the original identity consumed;
+retrying polls it rather than creating another order. The fixed policy-derived ID also prevents a
+second ledger from opening again under the same policy. Closing cancels only the verified own
+opening before waiting for complete fills, then uses the existing healthy-quote bounded limit exit.
+Both drawdown intervention levels fully close this one-order smoke, a stricter response than
+partial exposure reduction. Paper configure/restore and mechanics share the existing operator lock.
+
+Finish/close a mechanics run before switching its immutable release. Source/dependency drift
+refuses further operation; recover an outstanding order using the original recorded release,
+not by editing its receipt or creating a fresh ID. No paper/strategy/live timer or automated
+merge-back is enabled by these commands. The separate real-broker acceptance card remains open
+until account observations, fills, reconciliation and settled closeout actually occur.
+
 Prepared 2026-11-08 against `d55c325` plus the current working diff. **Preparation and offline
 fixture evidence only.** No broker request, order, credential installation, service activation,
 lifecycle advancement or qualification credit was performed. Actual account results remain the

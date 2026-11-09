@@ -13,6 +13,7 @@ from algua.cli.errors import json_errors
 from algua.execution.broker_factory import BrokerKind, build_broker
 from algua.execution.drawdown_cycle import manage_cycle
 from algua.execution.drawdown_watch import live_check_broker
+from algua.operator.paper_account_lock import paper_account_lock
 from algua.primitives.bounded_file import read_relative_regular
 from algua.registry.db import registry_conn
 from algua.registry.drawdown_auth import signed_change
@@ -54,7 +55,7 @@ def configure(
         if signature
         else None
     )
-    with registry_conn() as conn:
+    with paper_account_lock(lane), registry_conn() as conn:
         emit(
             signed_change(
                 conn, _broker(lane), lane, purpose="configure", policy=parsed, signature=sig
@@ -71,7 +72,7 @@ def restore(lane: str, signature: Path | None = typer.Option(None, "--signature"
         if signature
         else None
     )
-    with registry_conn() as conn:
+    with paper_account_lock(lane), registry_conn() as conn:
         emit(
             signed_change(conn, _broker(lane), lane, purpose="restore", policy=None, signature=sig)
         )

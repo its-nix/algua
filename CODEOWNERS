@@ -176,3 +176,11 @@
 /algua/cli/frozen_planner.py @Lior-Nis
 /algua/cli/capped_runtime.py @Lior-Nis
 /algua/registry/allocations.py @Lior-Nis
+
+# Isolated paper mechanics: cumulative purchase budget, identity/recovery and evidence exclusion.
+/algua/execution/paper_mechanics.py @Lior-Nis
+/algua/execution/paper_mechanics_broker.py @Lior-Nis
+/algua/execution/paper_mechanics_reconcile.py @Lior-Nis
+/algua/execution/paper_mechanics_state.py @Lior-Nis
+/algua/cli/paper_mechanics_cmd.py @Lior-Nis
+/algua/operator/paper_account_lock.py @Lior-Nis
