@@ -28,6 +28,19 @@ The strict forward certificate is not waivable in-band. The separate owner-appro
 [capped frozen-live route](capped-live.md) uses current historical criteria plus five paper sessions,
 its own qualification and an exact-capital human signature. It does not change strict evidence.
 
+## Autonomous paper
+
+The owner removed routine paper signatures on 2026-11-09. Paper account-policy configuration and
+explicit restored episodes, ordinary intake/allocation/ticks/promotion, and recording a passing
+five-session qualification run without a human ceremony. Actor fields record actual provenance,
+not authority. Paper controls still enforce account isolation, settlement, risk, reproducibility
+and evidence integrity. Restoring a halted paper account needs a reason and a reconciled flat
+baseline; a restart or new strategy cannot silently rebase it.
+
+Live qualification consumers independently verify original evidence; an unsigned paper record or
+paper risk policy never substitutes for the final live signature. Signed live policy/restoration
+and capital controls remain unchanged. See the [design](../superpowers/specs/2026-11-09-autonomous-paper-design.md).
+
 ## Module boundaries
 
 The full implemented package map is in [architecture](../architecture.md). The original

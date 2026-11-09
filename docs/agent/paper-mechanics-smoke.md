@@ -3,7 +3,7 @@
 ## Approved implementation, 2026-11-09
 
 The owner approved implementation and deployment of the isolated paper path. The CLI is now
-`paper mechanics`, with its own journal and a dedicated signed-risk registry. This is separate
+`paper mechanics`, with its own journal and a dedicated account-risk registry. This is separate
 from strategy admission: no mechanics order/fill becomes a strategy, tick, scheduled paper
 observation, experimental qualification or live authority. The earlier preparation below retains
 its original evidence and design rationale; its missing-command stop point is superseded by this
@@ -13,14 +13,13 @@ The deployed entry is `/usr/local/sbin/algua-paper`, run by the owner over SSH. 
 immutable application as the separate `algua-paper` OS user; paper credentials belong in the
 root-owned `0600` file `/etc/algua/paper.env`, never in the research environment or chat. Use the
 read-only `paper mechanics account` command first to verify the actual account and CSL's active,
-tradable/fractionable status. Credentials, a human-signed paper policy and an open regular market
+tradable/fractionable status. Credentials, a validated paper policy and an open regular market
 remain runtime prerequisites; setup does not imply that a broker test has run.
 
 ```sh
 algua-paper paper mechanics account
 algua-paper risk configure paper --policy /var/lib/algua-paper/policy.json
-# The owner signs the exact returned paper-policy challenge with the enrolled SSH key;
-# submit that signature through risk configure before initializing the smoke.
+# Paper policy configuration applies directly; there is no human signature/challenge.
 algua-paper paper mechanics --state /var/lib/algua-paper/mechanics.db \
   --risk-db /var/lib/algua-paper/risk.db --expected-account ACCOUNT_UUID init --symbol CSL
 algua-paper paper mechanics --state /var/lib/algua-paper/mechanics.db \
@@ -54,9 +53,15 @@ remain external runtime dependencies.
 `deploy/scripts/algua-paper-entry.sh` records the installed root entry. It permits the paper
 mechanics and paper-policy surface only, launches a confined transient service as `algua-paper`,
 and binds the physical application, private state, import path and paper host. There is no timer.
-The USD5/CSL policy file is prepared but unsigned. Installed `version` and empty-registry checks
+The USD5/CSL policy file was prepared but unsigned at the original install. Installed `version` and empty-registry checks
 passed; account discovery refused with `isolated Alpaca paper credentials are not configured`.
-No broker order or qualifying paper session has occurred.
+No mechanics order or qualifying paper session had occurred at that install.
+
+The later November 9 owner amendment removes the paper-policy signing requirement. Configuration
+and explicit restoration record automated provenance and retain account/risk/reconciliation checks.
+Five owner-requested pre-existing-position liquidation orders were subsequently accepted by the
+paper venue; those are cleanup orders, not mechanics or qualifying strategy sessions. Their
+pending/fill state must be read from original broker identities, never inferred from this document.
 
 Research source is separately deployed at the same application commit. Its existing registry was
 backed up and migrated from v49 to v52; the separate MLflow database was backed up and upgraded.

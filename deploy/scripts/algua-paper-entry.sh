@@ -10,7 +10,8 @@ case "${1-} ${2-} ${3-}" in
   *) printf '%s\n' '{"ok":false,"error":"only isolated paper mechanics and paper policy commands are allowed"}'; exit 1 ;;
 esac
 release=$(readlink -e /opt/algua/paper-current)
-[[ $release == /opt/algua/releases/6ef7a677354b230387cc22dd80970bd8c2ef9170 ]]
+# The selector and release directories are installed root-owned and runtime-unwritable.
+[[ $release =~ ^/opt/algua/releases/[0-9a-f]{40}$ ]]
 exec systemd-run --quiet --collect --wait --pipe --service-type=exec \
   --uid=algua-paper --gid=algua-paper \
   --property=EnvironmentFile=/etc/algua/paper.env \

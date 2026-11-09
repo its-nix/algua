@@ -2,12 +2,14 @@
 
 The owner-approved starting policy reduces the normal approved exposure budget to 50% at an
 inclusive 10% drawdown and halts new risk at an inclusive 20%. Thresholds and the reduction fraction
-are configurable through an authenticated account policy. Nothing activates by default.
+are configurable through an account policy. Live changes require the human signature; routine
+paper configuration/restoration is unsigned under the November 9 owner amendment. Nothing
+activates by default.
 
 ## What is measured
 
 Risk NAV is the initial approved risk capital plus account P&L net of external cash flows since
-the signed baseline. Its high-water mark determines drawdown. It is a fixed-capital risk measure,
+the recorded baseline. Its high-water mark determines drawdown. It is a fixed-capital risk measure,
 not a time-weighted investment return. Unallocated cash and later deposits cannot dilute losses
 against the approved risk capital. Economic strategy NAV remains unchanged when its sizing budget
 is reduced; otherwise the reduction itself would manufacture a strategy drawdown.
@@ -41,9 +43,11 @@ crash can be cleaned without inventing a venue action. Live authorization and ac
 rechecked before each live reduction. A risk policy supplies no strategy live authority.
 
 Severity survives price recovery, deposits, restarts, `paper resume-all` and legacy peak rebasing.
-Human restoration explicitly rebases future risk measurement and retains immutable history.
+Explicit restoration rebases future risk measurement and retains immutable history.
 Configuration and restoration require a flat reconciled account; changes preserve severity until
-a separate signed restoration. Genuine unresolved submitted orders prevent restoration.
+a separate restoration. Live restoration is signed. Paper restoration is an explicit automated
+action with a reason and retained prior episode. Genuine unresolved submitted orders prevent
+restoration; a restart never clears severity.
 
 ## Commands
 
@@ -53,21 +57,28 @@ Optional fields: `reduce_at`, `reduced_fraction`, `halt_at`, `quote_age_seconds`
 
 ```sh
 uv run algua risk status
-uv run algua operator lock-run -- algua risk configure paper --policy /path/to/policy.json
+uv run algua risk configure paper --policy /path/to/policy.json
+uv run algua risk restore paper --reason 'Reconciled after the recorded incident and repair'
 ```
 
-The first configure invocation prints a challenge under `algua-go-live`; it changes no policy.
-Save its exact `challenge` text, sign with the existing enrolled human key, then complete:
+Paper configuration applies the validated policy directly and records actual automated provenance;
+it asks for no signature. Paper configure/restore take the shared operator lock internally. The
+initial baseline and explicit restoration still require a settled, reconciled flat account. Adding
+a strategy uses the existing account policy and does not reset this baseline.
+
+For **live**, the first configure invocation prints a challenge under `algua-go-live`; it changes
+no policy. Save its exact `challenge` text, sign with the existing enrolled human key, then complete:
 
 ```sh
+uv run algua operator lock-run -- algua risk configure live --policy /path/to/live-policy.json
 ssh-keygen -Y sign -n algua-go-live -f /path/to/human-key /path/to/challenge.txt
-uv run algua operator lock-run -- algua risk configure paper --policy /path/to/policy.json \
+uv run algua operator lock-run -- algua risk configure live --policy /path/to/live-policy.json \
   --signature /path/to/challenge.txt.sig
-uv run algua operator lock-run -- algua risk check paper
+uv run algua operator lock-run -- algua risk check live
 ```
 
-`risk restore paper` uses the same challenge/signature flow and requires a flat settled account.
-Use `live` for the live lane. `risk check live` verifies an existing allocated LIVE strategy's
+`risk restore live` retains the challenge/signature flow and requires a flat settled account.
+`risk check live` verifies an existing allocated LIVE strategy's
 current signed authorization before constructing a trading broker; with no valid source it can
 only observe/cancel. Frozen live remains refused by the existing gate. No command here promotes,
 allocates, funds or activates a strategy. Serialize checks and policy changes with `operator

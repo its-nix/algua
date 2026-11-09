@@ -1,7 +1,7 @@
 # Capped frozen live
 
 The separate `capped-frozen-live/v1` route implements the owner's November 8 fast profile:
-current historical criteria plus five actual successful scheduled paper sessions. A signed
+current historical criteria plus five actual successful scheduled paper sessions. A recorded
 experimental qualification is evidence, not live authority and not a strict forward certificate.
 The legacy strict certificate route keeps its existing meaning.
 
@@ -14,7 +14,8 @@ No capital amount, instrument list, provider, signer, account or timer is enable
    history must have its canonical nonreused sealed holdout lineage; exploratory proxy data cannot
    be relabeled as qualifying point-in-time evidence.
 2. Collect five contiguous successful scheduled paper sessions. Use `paper qualify-experimental`
-   with its authenticated human-actor ceremony to record the exact passing qualification.
+   to record the exact passing qualification automatically; `--preview` reads it without recording.
+   This records numerical evidence with actual agent provenance and supplies no live authority.
 3. Use `paper handoff NAME`. It revokes the paper allocation first, cancels only the tenant's
    orders and offsets its paper holdings. Repeat after fills settle until `handoff_complete=true`.
    It does not trip the kill switch, write a new performance tick or mint live authority.

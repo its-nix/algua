@@ -464,6 +464,14 @@ including relaxations. Live activation separately requires the authenticated hum
 matching code/config/dependency identity and a fresh forward certificate. Protect signer trust
 anchors independently of the runtime. None of these walls is relaxed by this PRD.
 
+**Owner amendment, 2026-11-09 — autonomous paper:** routine paper account-policy configuration,
+explicit reconciled paper restoration, candidate intake, allocation, execution, default forward
+promotion and recording the historical-plus-five-session qualification require no human signature.
+Record actual agent/system provenance; qualification is numerical evidence, never live authority.
+Live activation independently rechecks its original source evidence and still requires the exact
+human signature. Live risk-policy changes/restoration and capital increases remain authenticated.
+This amendment does not enable unsigned integrity overrides or lower historical/forward criteria.
+
 ---
 
 # 11. Data
@@ -852,6 +860,12 @@ halts new risk, cancels orders and requires reconciliation before controlled ris
 Thresholds and the reduction fraction are configurable through authenticated human policy changes.
 Restoration requires a signed human review; recovering prices or depositing cash never resets it.
 
+The November 9 autonomous-paper amendment scopes those human signature requirements to **live**
+accounts. Paper configuration and explicit restoration use the same deterministic account,
+settlement, reconciliation and durable-history checks without signing. Paper restoration records
+its reason and prior episode; configuration preserves severity. Adding a paper strategy does not
+reset the account or erase failed trials. Paper actions grant no real-money authority.
+
 This threshold is an intervention rule, not a guarantee that losses cannot exceed it.
 
 No automatic replenishment.
@@ -865,7 +879,8 @@ initial work. The earlier 10% pause-without-liquidation specification in Story 2
 the owner's November 8 layered policy. Its opt-in implementation is described in
 [layered account risk](agent/layered-risk.md). Unconfigured accounts retain the legacy 15%
 raw-equity breaker; this amendment does not silently change global defaults. Cash-flow-aware
-risk measurement, durable severity, signed configuration/restoration and bounded reconciled exits
+risk measurement, durable severity, signed live configuration/restoration, audited unsigned paper
+configuration/restoration and bounded reconciled exits
 are required. The opt-in [capped frozen-live connector](agent/capped-live.md) now binds an exact
 USD allocation and explicit approved instruments to a human signature. It does not choose the USD
 equivalent of the initial ₪2,000 ceiling. Deployment verification, qualifying strategy evidence and

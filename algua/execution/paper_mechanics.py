@@ -32,7 +32,7 @@ def _binding(current, expected_account, observed):
     if (current["account_id"] != expected_account or current["symbol"] != SYMBOL
             or current["policy_id"] != observed["policy_id"]
             or current["baseline_at"] != observed["baseline_at"]):
-        raise ValueError("mechanics account, signed policy or baseline changed")
+        raise ValueError("mechanics account, recorded policy or baseline changed")
 
 
 def initialize(conn, risk_conn, broker, expected_account: str, symbol: str) -> dict:
@@ -49,7 +49,7 @@ def initialize(conn, risk_conn, broker, expected_account: str, symbol: str) -> d
             or any(decimal(q) != 0 for q in broker.get_positions().values)
             or broker.list_open_orders()
             or broker.account_activities_window(observed["baseline_at"], broker.clock())):
-        raise ValueError("mechanics requires an unused signed policy and empty settled baseline")
+        raise ValueError("mechanics requires an unused recorded policy and empty settled baseline")
     if any(decimal(q) != 0 for q in broker.get_positions().values) or broker.list_open_orders():
         raise ValueError("mechanics baseline changed during initialization")
     current = {"account_id": expected_account, "symbol": symbol, "phase": "ready",
@@ -71,7 +71,7 @@ def _guarded_send(conn, risk_conn, broker, current, observed, policy, kind, held
     risk_conn.execute("BEGIN IMMEDIATE")
     try:
         if account_state(risk_conn, "paper") != observed:
-            raise ValueError("signed risk state changed before mechanics submit")
+            raise ValueError("recorded risk state changed before mechanics submit")
         if kind == "buy" and global_halt.is_engaged(risk_conn):
             raise ValueError("global halt blocks mechanics opening purchases")
         if kind == "buy":

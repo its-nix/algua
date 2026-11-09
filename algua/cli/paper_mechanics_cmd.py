@@ -23,7 +23,7 @@ mechanics_app = typer.Typer(help="Isolated USD5 paper broker smoke; zero qualifi
 def mechanics_options(
     ctx: typer.Context,
     state_path: Path | None = typer.Option(None, "--state", help="Separate mechanics journal"),
-    risk_db: Path | None = typer.Option(None, "--risk-db", help="Dedicated signed risk registry"),
+    risk_db: Path | None = typer.Option(None, "--risk-db", help="Dedicated paper risk registry"),
     expected_account: str | None = typer.Option(None, "--expected-account"),
 ) -> None:
     if ctx.invoked_subcommand == "account":
@@ -52,7 +52,7 @@ def _broker() -> MechanicsBroker:
 def _resources(options):
     risk_path = options["risk_db"]
     if not risk_path.is_file():
-        raise ValueError("dedicated signed paper risk registry must already exist")
+        raise ValueError("dedicated paper risk registry must already exist")
     # The immutable release precreates its existing Git operator.lock for the paper runtime user.
     with paper_account_lock("paper"):
         risk = sqlite3.connect(risk_path.as_uri() + "?mode=rw", uri=True)
@@ -76,7 +76,7 @@ def account(ctx: typer.Context) -> None:
 @mechanics_app.command("init")
 @json_errors
 def init(ctx: typer.Context, symbol: str = typer.Option(..., "--symbol")) -> None:
-    """Capture an empty baseline under an existing signed policy. Only CSL is permitted."""
+    """Capture an empty baseline under an existing paper policy. Only CSL is permitted."""
     if symbol != SYMBOL:
         raise ValueError("the owner-approved smoke permits only CSL")
     with _resources(ctx.obj) as (journal, risk):
