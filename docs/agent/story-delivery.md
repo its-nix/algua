@@ -22,3 +22,20 @@ ceremony, not permission to trade or bypass signed authorization.
 Automatic repository CI/CD is disabled. `.github/workflows/ci.yml` retains its full checks behind
 `workflow_dispatch` for later use. When desired, re-enable the workflow and dispatch it explicitly;
 there is no requirement to do so before each small commit.
+
+## Lean VPS storage
+
+Owner direction, 2026-11-09: keep one active supervisor installation instead of accumulating full
+release-build copies. After verified adoption, retain its root-owned inventory/receipts and required
+consistent database recovery backups, then remove the duplicate build application trees and
+disposable download/build caches. An older supervisor may be removed only when no process,
+service, pending execution or approved deployment depends on it and its required source/metadata
+have been retained. Frozen strategy bundles/environments referenced by evidence or approval are
+not disposable supervisor caches.
+
+Inactive retained research workers may have reproducible `.venv` and `.uv-cache` directories
+trimmed after checking process use. Keep their source, lockfiles, scratch data, model bytes,
+checkpoints and public experiment archives; rehydrate dependencies from that worker's own lock
+before rerunning. Never trim the active research/web runtime or the current paper installation.
+Verify free space, registry integrity, retained-memory readback and service health after cleanup.
+Other applications' databases, volumes and backup histories are outside Algua cache cleanup.
