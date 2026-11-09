@@ -152,6 +152,7 @@ def capture_public_memory(menu: dict, *, cycle_directory: Path, tracking_uri: st
             env = {"PATH": os.defpath, "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "TZ": "UTC",
                 "HOME": scratch, "TMPDIR": scratch, "PYTHONDONTWRITEBYTECODE": "1",
                 "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "NUMBA_NUM_THREADS": "1",
+                "MLFLOW_DISABLE_TELEMETRY": "true",
                 "NUMBA_CACHE_DIR": scratch + "/numba", "MPLCONFIGDIR": scratch + "/mpl",
                 "XDG_CACHE_HOME": scratch + "/cache", "XDG_CONFIG_HOME": scratch + "/config"}
             result = _run_contained(

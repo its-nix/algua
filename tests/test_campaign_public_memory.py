@@ -45,6 +45,7 @@ def test_actual_contained_context_retains_negative_variants_after_prune(
 
     original = module._run_contained
     monkeypatch.setenv("ALGUA_ALPACA_API_KEY", "FIXTURE_MUST_NOT_REACH_CHILD")
+    monkeypatch.setenv("MLFLOW_DISABLE_TELEMETRY", "true")
     for name in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMBA_NUM_THREADS"):
         monkeypatch.setenv(name, "64")
     prefix = """import os
@@ -60,6 +61,8 @@ assert not any(k.startswith(('ALGUA_', 'OPENAI_', 'ANTHROPIC_')) for k in os.env
 """
     suffix = """
 import json
+from mlflow.telemetry import get_telemetry_client
+assert get_telemetry_client() is None, 'local archive reader enabled usage telemetry'
 sys.stderr.write(json.dumps({'definition_imports': sorted(n for n in sys.modules
     if n.startswith(('algua.config', 'algua.strategies', 'algua.models')))}))
 """
