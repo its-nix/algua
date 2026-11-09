@@ -109,9 +109,10 @@ It does not claim, query archives or launch a model; it also does not validate r
 Do not remove `--dry-run` from this preparation recipe or reuse its `noop` profile for real cycles.
 
 **Execution blockers:** final reviewed source/dependency release and Linux supervision/containment
-are not verified by this document; authoritative idea admission and exact campaign data-profile
-handoff to every claimed idea/author/interpret task remain pending (the driver has no snapshot/date
-flags); the actual local MLflow retention/chooser/primary-memory profile and prior-evidence receipt
+are not verified by this document; authoritative idea admission and observed author/interpret use
+remain pending. The November 9 [pinned profile](research-profile.md) implementation supplies the
+exact validated data receipt through existing context and task prompts; deployment must enable it.
+The actual local MLflow retention/chooser/primary-memory profile and prior-evidence receipt
 checks need verification on the intended deployment; data path/content/300-symbol receipts remain
 deployment inputs; genuine model/combined controls are unavailable. PIT and fresh qualifying
 historical evidence remain separate investment blockers. No source flip or execution is authorized here.

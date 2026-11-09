@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from algua.operator.research_cycle import file_hash
+from algua.operator.research_profile import load_research_profile
 
 
 def cycle_context(data_dir: Path, *, root: Path | None = None) -> dict:
@@ -33,6 +34,10 @@ def cycle_context(data_dir: Path, *, root: Path | None = None) -> dict:
     if any(value is None for value in manifest.values()):
         raise ValueError("missing cycle baseline source")
     baseline = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
-    return {"data_dir": str(data_dir.resolve()),
+    context: dict = {"data_dir": str(data_dir.resolve()),
             "data_manifest_sha256": file_hash(data_dir / "manifest.jsonl"),
             "source_baseline_sha256": baseline, **sources}
+    profile = load_research_profile(data_dir, root=root)
+    if profile is not None:
+        context["research_profile"] = profile
+    return context
