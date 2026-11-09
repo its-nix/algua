@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS experimental_qualifications (
  profile_digest TEXT NOT NULL,
  evidence_digest TEXT NOT NULL,
  evidence_json TEXT NOT NULL,
- actor TEXT NOT NULL CHECK(actor='human'),
+ actor TEXT NOT NULL CHECK(actor IN ('human','agent','system')),
  created_at TEXT NOT NULL DEFAULT(strftime('%Y-%m-%dT%H:%M:%f+00:00','now')),
  UNIQUE(deployment_id,profile_digest,evidence_digest)
 );

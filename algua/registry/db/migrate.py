@@ -27,6 +27,7 @@ from algua.registry.db._util import _add_missing_columns
 from algua.registry.db.connection import check_schema_version
 from algua.registry.db.constants import SCHEMA_VERSION
 from algua.registry.db.core import _migrate_shortlisted_to_candidate
+from algua.registry.db.experimental_migration import widen_qualification_actors
 from algua.registry.db.frozen_evidence import TICK_LINK_COLUMN, TICK_LINK_STATEMENTS
 from algua.registry.db.gate import _backfill_fdr_cohorts, _relabel_fdr_cohorts_for_current_size
 from algua.registry.db.holdout import _backfill_holdout_intervals
@@ -47,6 +48,7 @@ def migrate(conn: sqlite3.Connection) -> None:
     check_schema_version(conn)
     _migrate_shortlisted_to_candidate(conn)
     conn.executescript(SCHEMA)
+    widen_qualification_actors(conn)  # v53; rebuild CHECK while preserving live references.
     # v40: advisory shadow lane deleted (simplification stage 1). Idempotent drop; the rows were
     # advisory-only (never gate evidence), so no export is taken.
     conn.execute("DROP TABLE IF EXISTS shadow_evaluations")

@@ -44,7 +44,7 @@ def authorize(
         (deployment.id,),
     ).fetchone()
     if row is None:
-        raise ValueError("record a signed five-session experimental qualification first")
+        raise ValueError("record a passing five-session experimental qualification first")
     previous = None
     if rec.stage is Stage.LIVE:
         previous = verify(conn, repo, name, anchor or live_gate.ALLOWED_SIGNERS_PATH)

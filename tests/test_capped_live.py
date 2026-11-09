@@ -89,7 +89,7 @@ def _qualify(conn):
     report = experimental_qualification.qualification_report(conn, TENANT, calendar=cal, now=now)
     assert report["passed"]
     return experimental_qualification.record_qualification(
-        conn, TENANT, calendar=cal, now=now, expected=report, actor=Actor.HUMAN
+        conn, TENANT, calendar=cal, now=now, expected=report, actor=Actor.AGENT
     )
 
 

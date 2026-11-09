@@ -7,6 +7,7 @@ import json
 from datetime import date, datetime
 
 from algua.contracts.canonical import canonical_json
+from algua.contracts.lifecycle import Actor
 from algua.operator.schedule import target_session
 from algua.registry.experimental_qualification import historical_evidence
 from algua.registry.experimental_sessions import PROFILE_DIGEST, PROFILE_JSON, session_status
@@ -20,8 +21,9 @@ def verified_qualification(
         "SELECT * FROM experimental_qualifications WHERE id=? AND deployment_id=?",
         (qid, deployment.id),
     ).fetchone()
-    if row is None or row["actor"] != "human" or row["profile_digest"] != PROFILE_DIGEST:
-        raise ValueError("matching authenticated experimental qualification is required")
+    if (row is None or row["actor"] not in {actor.value for actor in Actor}
+            or row["profile_digest"] != PROFILE_DIGEST):
+        raise ValueError("matching experimental qualification is required")
     report = json.loads(row["evidence_json"])
     digest = report.pop("evidence_digest", None)
     if (

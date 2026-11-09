@@ -554,6 +554,11 @@ _V48_OBJECTS = frozenset({
     "tick_snapshots_link_immutable",
     "paper_book_equity_peak",  # v49 (#647), excluded so the v47 shape stays genuine
 })
+_V50_PLUS_TABLES = frozenset({
+    "experimental_paper_sessions", "experimental_qualifications",
+    "drawdown_policies", "drawdown_accounts", "drawdown_events", "drawdown_challenges",
+    "drawdown_reductions", "capped_live_challenges", "capped_live_authorizations",
+})
 _LINK_COLUMN = ", frozen_invocation_id INTEGER REFERENCES frozen_invocations(id)"
 
 
@@ -568,12 +573,12 @@ def _v47_database(tmp_path: Path) -> sqlite3.Connection:
     fresh = connect(tmp_path / "fresh.db")
     migrate(fresh)
     objects = fresh.execute(
-        "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL"
+        "SELECT name, sql, tbl_name FROM sqlite_master WHERE sql IS NOT NULL"
         " ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, rowid").fetchall()
     fresh.close()
     conn = connect(tmp_path / "v47.db")
-    for name, sql in objects:
-        if name in _V48_OBJECTS or name == "sqlite_sequence":
+    for name, sql, table in objects:
+        if name in _V48_OBJECTS or name == "sqlite_sequence" or table in _V50_PLUS_TABLES:
             continue
         if name == "tick_snapshots":
             assert sql.count(_LINK_COLUMN) == 1
@@ -614,7 +619,7 @@ def test_migration_from_v47_keeps_existing_ticks_unlinked_and_is_idempotent(tmp_
     migrate(fresh)
     for _ in range(2):
         migrate(conn)
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 52
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 53
         assert _fingerprint(conn) == _fingerprint(fresh)
         rows = conn.execute("SELECT * FROM tick_snapshots ORDER BY id").fetchall()
         assert [tuple(r)[:-1] for r in rows] == before

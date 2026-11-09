@@ -31,7 +31,7 @@ def handoff(conn, name: str) -> dict:
         (dep.id,),
     ).fetchone()
     if q is None:
-        raise ValueError("record the signed experimental qualification before handoff")
+        raise ValueError("record a passing experimental qualification before handoff")
     evidence = verified_qualification(
         conn, dep, q["id"], calendar=get_calendar(), at=datetime.now(UTC), require_fresh=True
     )

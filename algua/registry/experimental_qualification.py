@@ -108,9 +108,8 @@ def qualification_report(conn: sqlite3.Connection, name: str, *, calendar: Any,
 
 def record_qualification(conn: sqlite3.Connection, name: str, *, calendar: Any, now: datetime,
                          expected: dict, actor: Actor) -> int:
-    """Caller authenticates the human over expected; recheck the entire context under the lock."""
-    if actor is not Actor.HUMAN:
-        raise ValueError('recording experimental qualification requires authenticated human')
+    """Record actual authorship, rechecking evidence under the lock; grants no live authority."""
+    actor = Actor(actor)
     if conn.in_transaction:
         raise ValueError('qualification requires its own transaction')
     conn.execute('BEGIN IMMEDIATE')
@@ -121,7 +120,7 @@ def record_qualification(conn: sqlite3.Connection, name: str, *, calendar: Any, 
         conn.execute('INSERT OR IGNORE INTO experimental_qualifications '
             '(deployment_id,profile_digest,evidence_digest,evidence_json,actor) VALUES (?,?,?,?,?)',
             (actual['deployment_id'], PROFILE_DIGEST, actual['evidence_digest'],
-             canonical_json(actual), 'human'))
+             canonical_json(actual), actor.value))
         row = conn.execute('SELECT id FROM experimental_qualifications WHERE deployment_id=? '
                            'AND profile_digest=? AND evidence_digest=?',
                            (actual['deployment_id'], PROFILE_DIGEST,

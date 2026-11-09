@@ -37,7 +37,8 @@ from __future__ import annotations
 # v50: separate scheduled-session observations and experimental qualifications.
 # v51: signed layered drawdown account policies and durable risk evidence.
 # v52: separate capped frozen-live challenges and human authority.
-SCHEMA_VERSION = 52
+# v53: experimental qualification authorship admits actual human/agent/system provenance.
+SCHEMA_VERSION = 53
 
 # v37 (#524, R9-M3): the per-search_trials-row upper bound on n_combos. A per-sweep combo count
 # above any legitimate grid; bounds each summand of the funnel-lifetime seed SUM so it is

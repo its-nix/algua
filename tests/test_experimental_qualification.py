@@ -14,7 +14,6 @@ from algua.registry.db import connect, migrate
 from algua.registry.experimental_sessions import PROFILE_DIGEST
 from algua.registry.store import SqliteStrategyRepository
 from tests._frozen_evidence_helpers import seed_deployment
-from tests.test_human_actor import _anchor, _make_key, _sign
 
 
 @pytest.fixture
@@ -58,17 +57,24 @@ def test_seeded_gate_without_committed_lineage_is_not_historical_evidence(tmp_pa
     conn.close()
 
 
-def test_agent_cannot_record_and_human_write_never_advances_strict_stage(qualified):
-    conn, cal, now, dep = qualified
+@pytest.mark.parametrize('actor', list(Actor))
+def test_qualification_records_honest_actor_idempotently_without_strict_authority(qualified, actor):
+    conn, cal, now, _ = qualified
     result = qualification.qualification_report(conn, 'ops_s', calendar=cal, now=now)
-    with pytest.raises(ValueError, match='authenticated human'):
-        qualification.record_qualification(conn, 'ops_s', calendar=cal, now=now,
-                                           expected=result, actor=Actor.AGENT)
     rid = qualification.record_qualification(conn, 'ops_s', calendar=cal, now=now,
-                                             expected=result, actor=Actor.HUMAN)
-    assert rid > 0
+                                             expected=result, actor=actor)
+    assert qualification.record_qualification(conn, 'ops_s', calendar=cal, now=now,
+                                              expected=result, actor=actor) == rid
+    row = conn.execute('SELECT actor FROM experimental_qualifications').fetchone()
+    assert row['actor'] == actor.value
+    # An idempotent retry never rewrites the original author's provenance.
+    assert qualification.record_qualification(conn, 'ops_s', calendar=cal, now=now,
+                                              expected=result, actor=Actor.SYSTEM) == rid
+    persisted = conn.execute('SELECT actor FROM experimental_qualifications').fetchone()
+    assert persisted['actor'] == actor.value
     assert SqliteStrategyRepository(conn).get('ops_s').stage.value == 'paper'
     assert conn.execute('SELECT COUNT(*) FROM forward_gate_evaluations').fetchone()[0] == 0
+    assert conn.execute('SELECT COUNT(*) FROM approvals').fetchone()[0] == 0
     assert conn.execute('SELECT COUNT(*) FROM experimental_qualifications').fetchone()[0] == 1
     with pytest.raises(Exception, match='immutable'):
         conn.execute('DELETE FROM experimental_qualifications')
@@ -85,33 +91,57 @@ def test_changed_evidence_refuses_under_write_lock(qualified):
     conn.commit()
     with pytest.raises(ValueError, match='changed or failed'):
         qualification.record_qualification(conn, 'ops_s', calendar=cal, now=now,
-                                           expected=result, actor=Actor.HUMAN)
+                                           expected=result, actor=Actor.AGENT)
     assert conn.execute('SELECT COUNT(*) FROM experimental_qualifications').fetchone()[0] == 0
 
 
-def test_cli_requires_real_human_signature_and_refuses_replay(qualified, monkeypatch, tmp_path):
+def test_cli_preview_is_read_only_and_default_records_agent_idempotently(qualified, monkeypatch):
     from algua.cli import paper_experimental
-    from algua.registry import human_actor
 
     conn, *_ = qualified
     monkeypatch.setattr(paper_experimental, 'verify_frozen_artifact', lambda *args, **kw: None)
-    key, pub = _make_key(tmp_path)
-    monkeypatch.setattr(human_actor, 'ALLOWED_SIGNERS_PATH', _anchor(tmp_path, 'owner', pub))
     runner = CliRunner()
-    args = ['paper','qualify-experimental','ops_s','--actor','human']
-    challenge = runner.invoke(app, args)
-    assert challenge.exit_code == 0, challenge.stdout
-    payload = json.loads(challenge.stdout)
-    assert payload['action'] == 'human_actor_challenge'
+    args = ['paper', 'qualify-experimental', 'ops_s']
+    preview = runner.invoke(app, [*args, '--preview'])
+    assert preview.exit_code == 0, preview.stdout
+    assert json.loads(preview.stdout)['recorded'] is False
     assert conn.execute('SELECT COUNT(*) FROM experimental_qualifications').fetchone()[0] == 0
-    signature = tmp_path / 'approval.sig'
-    signature.write_bytes(_sign(key, payload['challenge'], tmp_path))
-    signed = runner.invoke(app, [*args, '--actor-signature', str(signature)])
-    assert signed.exit_code == 0, signed.stdout
-    assert json.loads(signed.stdout)['recorded'] is True
-    replay = runner.invoke(app, [*args, '--actor-signature', str(signature)])
-    assert replay.exit_code == 1
-    assert conn.execute('SELECT COUNT(*) FROM forward_gate_evaluations').fetchone()[0] == 0
+    first = runner.invoke(app, args)
+    assert first.exit_code == 0, first.stdout
+    assert json.loads(first.stdout)['recorded'] is True
+    repeated = runner.invoke(app, args)
+    assert repeated.exit_code == 0, repeated.stdout
+    assert json.loads(first.stdout)['experimental_qualification_id'] == json.loads(
+        repeated.stdout)['experimental_qualification_id']
+    assert conn.execute('SELECT actor FROM experimental_qualifications').fetchone()[0] == 'agent'
+    assert conn.execute('SELECT COUNT(*) FROM actor_challenges').fetchone()[0] == 0
+
+
+@pytest.mark.parametrize('actor', ['human', 'system'])
+def test_cli_compatibility_actor_is_unsigned_provenance(qualified, monkeypatch, actor):
+    from algua.cli import paper_experimental
+
+    conn, *_ = qualified
+    monkeypatch.setattr(paper_experimental, 'verify_frozen_artifact', lambda *args, **kw: None)
+    result = CliRunner().invoke(app, ['paper', 'qualify-experimental', 'ops_s',
+        '--actor', actor, '--actor-signature', '/not-read-or-required'])
+    assert result.exit_code == 0, result.stdout
+    assert json.loads(result.stdout)['recorded'] is True
+    assert conn.execute('SELECT actor FROM experimental_qualifications').fetchone()[0] == actor
+    assert conn.execute('SELECT COUNT(*) FROM actor_challenges').fetchone()[0] == 0
+
+
+def test_failed_report_cannot_record_even_when_expected_matches(qualified, monkeypatch):
+    conn, cal, now, _ = qualified
+    monkeypatch.setattr(qualification, 'historical_evidence', lambda *args: None)
+    report = qualification.qualification_report(conn, 'ops_s', calendar=cal, now=now)
+    with pytest.raises(ValueError, match='changed or failed'):
+        qualification.record_qualification(conn, 'ops_s', calendar=cal, now=now,
+                                            expected=report, actor=Actor.AGENT)
+    result = CliRunner().invoke(app, ['paper', 'qualify-experimental', 'ops_s'])
+    assert result.exit_code == 1, result.stdout
+    assert json.loads(result.stdout)['recorded'] is False
+    assert conn.execute('SELECT COUNT(*) FROM experimental_qualifications').fetchone()[0] == 0
 
 
 def seed_historical_lineage(conn, *, delistings=False):
