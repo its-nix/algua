@@ -16,9 +16,30 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parent.parent
 FORAGE = REPO / ".opencode" / "scripts" / "forage.sh"
 LEAP = REPO / ".opencode" / "scripts" / "leap.sh"
+
+
+@pytest.mark.parametrize("driver", [LEAP, FORAGE])
+@pytest.mark.parametrize("agent_exit", [0, 1, 3, 124])
+def test_agent_exit_survives_the_logging_pipeline(tmp_path, driver, agent_exit):
+    source = driver.read_text()
+    start = source.index('run_start="$(date +%s)"')
+    end = source.index('wall_s=', start)
+    script = (
+        'set -euo pipefail\nGOAL=fixture\n'
+        f'PROMPT_FILE={shlex.quote(str(tmp_path / "prompt"))}\n'
+        f'RUN_LOG={shlex.quote(str(tmp_path / "log"))}\n'
+        f'AGENT_CMD=(bash -c "exit {agent_exit}")\n'
+        + source[start:end] + '\nprintf "%s" "$rc"\n'
+    )
+    result = subprocess.run(['bash', '-c', script], capture_output=True, text=True,
+                            timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == str(agent_exit)
 
 
 def _run_leap_memory_context(tmp_path, response, *, memory_exit=0, dry_run=False):

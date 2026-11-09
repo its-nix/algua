@@ -329,8 +329,11 @@ RUN_LOG="${WORKTREE}/forage-loop.log"
 run_start="$(date +%s)"
 rc=0
 printf '%s\n' "${GOAL}" > "${PROMPT_FILE}"
-"${AGENT_CMD[@]}" </dev/null 2>&1 | tee "${RUN_LOG}" || true
+# Preserve the agent's status before another command overwrites PIPESTATUS.
+set +e
+"${AGENT_CMD[@]}" </dev/null 2>&1 | tee "${RUN_LOG}"
 rc="${PIPESTATUS[0]}"
+set -e
 wall_s=$(( $(date +%s) - run_start ))
 if [[ "${rc}" -ne 0 ]]; then
   echo "the agent exited ${rc} (timeout=124, provider failure=3, or a runtime error) — accepting any notes it wrote anyway." >&2

@@ -399,8 +399,11 @@ echo "Leaping (timeout ${TIMEOUT}, up to ${LEAP_MAX_IDEAS} ideas), SANDBOXED, sc
 RUN_LOG="${WORKTREE}/leap-loop.log"
 run_start="$(date +%s)"
 printf '%s\n' "${GOAL}" > "${PROMPT_FILE}"
-"${AGENT_CMD[@]}" </dev/null 2>&1 | tee "${RUN_LOG}" || true
+# Preserve the agent's status before another command overwrites PIPESTATUS.
+set +e
+"${AGENT_CMD[@]}" </dev/null 2>&1 | tee "${RUN_LOG}"
 rc="${PIPESTATUS[0]}"
+set -e
 wall_s=$(( $(date +%s) - run_start ))
 if [[ "${rc}" -ne 0 ]]; then
   echo "the agent exited ${rc} (timeout=124, provider failure=3, or a runtime error) — importing whatever it" \
