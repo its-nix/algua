@@ -1,6 +1,7 @@
 """Owned synthetic venue only: no credentials, broker network or real trading."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pandas as pd
@@ -8,6 +9,7 @@ import pytest
 
 from algua.execution.alpaca_broker import AlpacaPaperBroker
 from algua.execution.drawdown_cycle import manage_cycle
+from algua.execution.drawdown_flows import previous_close
 from algua.execution.drawdown_guard import cycle_active, effective_allocation, reserve
 from algua.execution.live_ledger import (
     LedgerKind,
@@ -18,7 +20,7 @@ from algua.execution.live_ledger import (
 from algua.registry import live_gate
 from algua.registry.db import connect, migrate
 from algua.registry.drawdown_auth import paper_change, signed_change
-from algua.registry.drawdown_store import account_state
+from algua.registry.drawdown_store import account_state, write_state
 from algua.risk.layered import DrawdownPolicy
 from tests.test_human_actor import _anchor, _make_key, _sign
 
@@ -129,6 +131,12 @@ def world(tmp_path, monkeypatch):
         return result, signature
 
     signed()
+    # Most intervention scenarios span sessions; first-day tests explicitly restore a new epoch.
+    state = account_state(conn, "paper")
+    with conn:
+        write_state(conn, state, state | {
+            "baseline_at": (datetime.now(UTC) - timedelta(days=7)).isoformat(),
+        }, "fixture_prior_epoch")
     yield conn, venue, signed, calls
     conn.close()
 
@@ -383,7 +391,95 @@ def test_funding_before_signed_baseline_does_not_corrupt_daily_reference(world):
     )
     signed("restore")
     result = manage_cycle(conn, venue, "paper")
-    assert result["ready"] and result["state"]["daily_loss"] == "0"
+    assert result["ready"] and Decimal(result["state"]["daily_loss"]) == 0
+
+
+@pytest.mark.parametrize("prior_close_equity", [1000.27375, 999.72625])
+def test_first_day_daily_loss_starts_at_configured_risk_baseline(world, prior_close_equity):
+    conn, venue, signed, _ = world
+    signed(policy=DrawdownPolicy("5"))
+    signed("restore")
+    venue.last_equity = prior_close_equity
+
+    result = manage_cycle(conn, venue, "paper")
+
+    assert result["ready"], result
+    assert result["state"]["last_nav"] == "5.0"
+    assert Decimal(result["state"]["daily_loss"]) == 0
+    assert result["state"]["severity"] == 0
+
+    venue.equity = 999.75001
+    assert manage_cycle(conn, venue, "paper")["ready"]
+    venue.equity = 999.75
+    loss = manage_cycle(conn, venue, "paper")
+    assert Decimal(loss["state"]["daily_loss"]) == Decimal(".05")
+    assert loss["state"]["severity"] == 2
+    venue.equity = 1000
+    assert manage_cycle(conn, venue, "paper")["state"]["severity"] == 2
+    signed(policy=DrawdownPolicy("5"))
+    assert account_state(conn, "paper")["severity"] == 2
+    restored, _ = signed("restore")
+    assert restored["state"]["last_paper_action"]["prior_episode"]["severity"] == 2
+    assert manage_cycle(conn, venue, "paper")["ready"]
+
+
+@pytest.mark.parametrize("baseline_minutes,offset_hours", [(-30, 2), (0, -3), (30, -3)])
+def test_daily_window_compares_baseline_and_prior_close_as_instants(
+    world, baseline_minutes, offset_hours
+):
+    conn, venue, _, _ = world
+    close = previous_close(datetime.now(UTC))
+    baseline = (close + timedelta(minutes=baseline_minutes)).astimezone(
+        timezone(timedelta(hours=offset_hours))
+    )
+    state = account_state(conn, "paper")
+    with conn:
+        write_state(conn, state, state | {"baseline_at": baseline.isoformat()}, "fixture_epoch")
+    venue.last_equity = 970
+    venue.equity = 950
+
+    result = manage_cycle(conn, venue, "paper")
+
+    reference = Decimal(970 if baseline_minutes < 0 else 1000)
+    assert Decimal(result["state"]["daily_loss"]) == 1 - Decimal(950) / reference
+    assert result["state"]["severity"] == (0 if baseline_minutes < 0 else 2)
+
+
+@pytest.mark.parametrize("epoch_before_close", [False, True])
+@pytest.mark.parametrize("external_amount", ["10000", "-100"])
+def test_daily_loss_nets_external_flows_in_first_and_subsequent_sessions(
+    world, epoch_before_close, external_amount
+):
+    conn, venue, _, _ = world
+    close = previous_close(datetime.now(UTC))
+    baseline = close + timedelta(hours=-24 if epoch_before_close else 1)
+    state = account_state(conn, "paper")
+    with conn:
+        write_state(conn, state, state | {"baseline_at": baseline.isoformat()}, "fixture_epoch")
+    amount = Decimal(external_amount)
+    venue.activities.append({
+        "id": "after-close-flow",
+        "activity_type": "CSD" if amount > 0 else "CSW",
+        "net_amount": str(amount),
+        "transaction_time": (close + timedelta(hours=2)).isoformat(),
+    })
+    prior_funding = Decimal(1000 if epoch_before_close else 0)
+    if prior_funding:
+        venue.activities.append({
+            "id": "before-close-flow",
+            "activity_type": "CSD",
+            "net_amount": str(prior_funding),
+            "transaction_time": (close - timedelta(hours=1)).isoformat(),
+        })
+    venue.last_equity = Decimal(960) + prior_funding if epoch_before_close else 1100
+    current_nav = Decimal(912 if epoch_before_close else 950)
+    venue.equity = current_nav + amount + prior_funding
+
+    result = manage_cycle(conn, venue, "paper")
+
+    assert Decimal(result["state"]["last_nav"]) == current_nav
+    assert Decimal(result["state"]["daily_loss"]) == Decimal(".05")
+    assert result["state"]["severity"] == 2
 
 
 def test_live_reduction_rechecks_authorization_immediately_before_send(world, monkeypatch):

@@ -49,13 +49,15 @@ def _observe(conn, broker, state):
         - flows
     )
     risk = evaluate(policy, nav, decimal(state["peak_nav"]), state["severity"])
-    daily_base = (
-        decimal(state["baseline_nav"])
-        + decimal(account.last_equity)
-        - decimal(state["baseline_equity"])
-        - flows
-        + daily_flows
-    )
+    # A prior close before this risk epoch must not import earlier account P&L.
+    daily_base = decimal(state["baseline_nav"])
+    if datetime.fromisoformat(state["baseline_at"]) < prior_close:
+        daily_base += (
+            decimal(account.last_equity)
+            - decimal(state["baseline_equity"])
+            - flows
+            + daily_flows
+        )
     if daily_base <= 0:
         raise ValueError("daily-loss reference is unusable")
     daily_limit = min(Decimal(".05"), decimal(get_settings().book_max_daily_loss))

@@ -1,5 +1,5 @@
 """Isolated paper smoke fixtures; no venue/network or promotion evidence."""
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pandas as pd
@@ -101,7 +101,8 @@ def world(tmp_path, monkeypatch):
     conn = connect(tmp_path / "risk.db")
     migrate(conn)
     venue = Venue()
-    stamp = venue.clock()
+    # Overnight intervention scenarios use an account epoch predating the daily reference.
+    stamp = (datetime.fromisoformat(venue.clock()) - timedelta(days=7)).isoformat()
     policy = DrawdownPolicy("5.00", permitted_symbols=("CSL",))
     import json
     pid = conn.execute("INSERT INTO drawdown_policies "

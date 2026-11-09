@@ -21,6 +21,12 @@ ambiguous flows pause for review. Existing initial cash activities with date-onl
 contribute to the daily adjustment only where their date lies unambiguously after the prior close.
 The daily intervention remains at the stricter of the existing configured limit and 5%.
 
+Daily loss starts at the later of the recorded risk baseline and the prior completed exchange
+close. On an epoch's first day, account gains/losses from before configuration or explicit
+restoration are excluded; subsequent sessions use the prior-close reference. External flows
+remain netted out. An already-latched intervention still requires explicit restoration and is
+never cleared by this calculation or by a restart.
+
 ## Response and recovery
 
 The controller persists severity before cancellation. It confirms cancellation, ingests fills,
