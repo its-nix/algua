@@ -17,6 +17,40 @@ def test_schema_version_is_current():
     assert SCHEMA_VERSION == 52
 
 
+def test_migrate_refuses_newer_schema_without_mutating_schema_or_data(tmp_path):
+    with connect(tmp_path / "future.db") as conn:
+        conn.execute(
+            "CREATE TABLE strategies (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE,"
+            " stage TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+        )
+        conn.execute("INSERT INTO strategies VALUES (1,'future','shortlisted','t','t')")
+        conn.execute("CREATE TABLE shadow_evaluations (value TEXT NOT NULL)")
+        conn.execute("INSERT INTO shadow_evaluations VALUES ('future data to preserve')")
+        conn.execute(f"PRAGMA user_version={SCHEMA_VERSION + 1}")
+        conn.commit()
+        before = tuple(conn.iterdump())
+        changes = conn.total_changes
+        with pytest.raises(ValueError, match="newer than supported"):
+            migrate(conn)
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION + 1
+        assert tuple(conn.iterdump()) == before
+        assert conn.total_changes == changes
+
+
+def test_connect_closes_the_connection_when_refusing_a_newer_schema(tmp_path, monkeypatch):
+    from algua.registry.db import connection
+
+    path = tmp_path / "future.db"
+    opened = sqlite3.connect(path)
+    opened.execute(f"PRAGMA user_version={SCHEMA_VERSION + 1}")
+    opened.commit()
+    monkeypatch.setattr(connection.sqlite3, "connect", lambda _: opened)
+    with pytest.raises(ValueError, match="newer than supported"):
+        connect(path)
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        opened.execute("SELECT 1")
+
+
 def test_v47_adds_explicit_deployment_epoch_schema(tmp_path):
     conn = connect(tmp_path / "r.db")
     migrate(conn)
@@ -615,7 +649,7 @@ def test_bootstrap_runs_even_when_version_already_current(tmp_path):
 
     A stale/pre-stamped user_version must NOT cause the schema to be skipped:
     the CREATE TABLE IF NOT EXISTS script always runs and brings the DB up to
-    the full current schema regardless of the recorded version.
+    the full current schema for every old or current recorded version.
     """
     conn = connect(tmp_path / "r.db")
     # Pre-stamp the version without creating any tables, simulating a DB whose

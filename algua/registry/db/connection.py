@@ -8,10 +8,26 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from algua.registry.db.constants import SCHEMA_VERSION
+
+
+def check_schema_version(conn: sqlite3.Connection) -> None:
+    """Refuse newer registries before connection setup or migration can mutate them."""
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version > SCHEMA_VERSION:
+        raise ValueError(
+            f"registry schema version {version} is newer than supported {SCHEMA_VERSION}; "
+            "upgrade Algua before opening this registry")
+
 
 def connect(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
+    try:
+        check_schema_version(conn)
+    except (ValueError, sqlite3.Error):
+        conn.close()
+        raise
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000;")  # WAL + busy_timeout = deliberate concurrency posture
     conn.execute("PRAGMA journal_mode=WAL;")
