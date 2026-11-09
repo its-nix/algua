@@ -12,19 +12,25 @@ implementation, not by a synthetic passing gate.
 The deployed entry is `/usr/local/sbin/algua-paper`, run by the owner over SSH. It executes the
 immutable application as the separate `algua-paper` OS user; paper credentials belong in the
 root-owned `0600` file `/etc/algua/paper.env`, never in the research environment or chat. Use the
-read-only `paper mechanics account` command first to verify the actual account and CSL's active,
+read-only `paper mechanics account --symbol TOST` command first to verify the actual account and the asset's active,
 tradable/fractionable status. Credentials, a validated paper policy and an open regular market
 remain runtime prerequisites; setup does not imply that a broker test has run.
 
 ```sh
-algua-paper paper mechanics account
+algua-paper paper mechanics account --symbol TOST
 algua-paper risk configure paper --policy /var/lib/algua-paper/policy.json
 # Paper policy configuration applies directly; there is no human signature/challenge.
 algua-paper paper mechanics --state /var/lib/algua-paper/mechanics.db \
-  --risk-db /var/lib/algua-paper/risk.db --expected-account ACCOUNT_UUID init --symbol CSL
+  --risk-db /var/lib/algua-paper/risk.db --expected-account ACCOUNT_UUID init --symbol TOST
 algua-paper paper mechanics --state /var/lib/algua-paper/mechanics.db \
   --risk-db /var/lib/algua-paper/risk.db --expected-account ACCOUNT_UUID step
 ```
+
+`--symbol` selects exactly one member of the protected 300-symbol midcap CONFIG; CSL remains
+the compatibility default. The paper policy must permit only that selected symbol. Before
+opening, the current quote must pass the same freshness, spread and size checks used for the
+exit; unavailable or unhealthy quotes create no intent or purchase. This checks present venue
+readiness and does not guarantee that a later exit quote will remain healthy.
 
 Use the same common options before `status` or `close`. The opening identity and USD5 purchase
 budget are committed before the POST. Uncertain acceptance keeps the original identity consumed;
@@ -39,6 +45,15 @@ refuses further operation; recover an outstanding order using the original recor
 not by editing its receipt or creating a fresh ID. No paper/strategy/live timer or automated
 merge-back is enabled by these commands. The separate real-broker acceptance card remains open
 until account observations, fills, reconciliation and settled closeout actually occur.
+
+### November 9 failed CSL trial
+
+Source `ef7cdfa` bought CSL for the isolated USD5 trial. Its ordinary limit exit correctly
+refused the stale, wide IEX quote; SIP access was unavailable. A separately recorded paper-only
+administrative liquidation filled, and the venue was verified flat with zero open orders.
+The failed mechanics journal and recovery receipt are retained. This was recovery, not a
+successful guarded round trip or qualifying strategy evidence. A later trial uses a fresh
+journal and matching one-symbol policy; it never rewrites or reuses the failed trial.
 
 ## Installed bootstrap, 2026-11-09
 

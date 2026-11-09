@@ -67,18 +67,16 @@ def _resources(options):
 
 @mechanics_app.command("account")
 @json_errors
-def account(ctx: typer.Context) -> None:
+def account(ctx: typer.Context, symbol: str = typer.Option(SYMBOL, "--symbol")) -> None:
     """Read account identity and asset readiness; never create a state or submit an order."""
     emit({"ok": True, "paper_only": True, "qualification_credit": False,
-          "account": readiness(_broker(), ctx.obj["expected_account"])})
+          "account": readiness(_broker(), ctx.obj["expected_account"], symbol)})
 
 
 @mechanics_app.command("init")
 @json_errors
-def init(ctx: typer.Context, symbol: str = typer.Option(..., "--symbol")) -> None:
-    """Capture an empty baseline under an existing paper policy. Only CSL is permitted."""
-    if symbol != SYMBOL:
-        raise ValueError("the owner-approved smoke permits only CSL")
+def init(ctx: typer.Context, symbol: str = typer.Option(SYMBOL, "--symbol")) -> None:
+    """Bind one approved midcap symbol to an empty baseline and matching paper policy."""
     with _resources(ctx.obj) as (journal, risk):
         result = initialize(journal, risk, _broker(), ctx.obj["expected_account"], symbol)
     emit({"ok": True, "mechanics": result})

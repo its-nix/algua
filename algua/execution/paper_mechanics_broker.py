@@ -11,12 +11,13 @@ from urllib.parse import quote
 from algua.execution.alpaca_broker import AlpacaPaperBroker
 from algua.execution.drawdown_cycle import _observe
 from algua.primitives.bounded_file import read_relative_regular
+from algua.primitives.midcap_universe import midcap_symbols
 from algua.provenance.lockfile import dependency_hash
 from algua.registry.drawdown_store import account_state, policy_for
 from algua.risk import global_halt
 from algua.risk.layered import DrawdownPolicy, decimal
 
-SYMBOL = "CSL"  # Owner-selected member of the approved 300-symbol midcap CONFIG.
+SYMBOL = "CSL"  # Backward-compatible default within the approved 300-symbol midcap CONFIG.
 PAPER_URL = "https://paper-api.alpaca.markets"
 _SOURCE_ROOT = Path(__file__).resolve().parents[2]
 
@@ -35,8 +36,9 @@ class MechanicsBroker(AlpacaPaperBroker):
 
 def readiness(broker, expected_account: str | None, symbol: str = SYMBOL) -> dict:
     if (not isinstance(broker, MechanicsBroker) or broker.base_url != PAPER_URL
-            or (expected_account is not None and not expected_account.strip()) or symbol != SYMBOL):
-        raise ValueError("exact paper host, expected account and permitted CSL symbol required")
+            or (expected_account is not None and not expected_account.strip())
+            or symbol not in midcap_symbols(_SOURCE_ROOT)):
+        raise ValueError("exact paper host, expected account and approved midcap symbol required")
     raw = broker.mechanics_readiness(symbol)
     asset = raw["asset"]
     if (not isinstance(raw.get("id"), str) or not raw["id"]
@@ -71,7 +73,7 @@ def _policy_recorded(conn, state: dict, row) -> bool:
 
 
 def risk_guard(
-    conn, broker, expected_account: str, *, opening: bool,
+    conn, broker, expected_account: str, *, opening: bool, symbol: str = SYMBOL,
 ) -> tuple[dict, DrawdownPolicy]:
     """Reuse the risk controller's real persisted assessment; never manufacture a cycle grant."""
     prior = account_state(conn, "paper")
@@ -83,7 +85,8 @@ def risk_guard(
     if (not _policy_recorded(conn, prior, row)
             or decimal(policy.normal_capital) > 5
             or decimal(prior["baseline_nav"]) > 5
-            or tuple(policy.permitted_symbols) != (SYMBOL,)
+            or symbol not in midcap_symbols(_SOURCE_ROOT)
+            or tuple(policy.permitted_symbols) != (symbol,)
             or decimal(policy.reduce_at) > decimal(".10")
             or decimal(policy.halt_at) > decimal(".20")
             or decimal(policy.reduced_fraction) > decimal(".50")
@@ -104,10 +107,10 @@ def risk_guard(
     return observed, policy
 
 
-def opening_coid(conn, state: dict) -> str:
+def opening_coid(conn, state: dict, symbol: str = SYMBOL) -> str:
     row = conn.execute("SELECT created_at FROM drawdown_policies WHERE id=?",
                        (state["policy_id"],)).fetchone()
-    identity = f'{state["account_id"]}:{state["policy_id"]}:{row[0]}:{SYMBOL}'
+    identity = f'{state["account_id"]}:{state["policy_id"]}:{row[0]}:{symbol}'
     return "pm-open-" + hashlib.sha256(identity.encode()).hexdigest()[:32]
 
 

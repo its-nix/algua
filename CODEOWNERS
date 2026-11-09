@@ -183,4 +183,6 @@
 /algua/execution/paper_mechanics_reconcile.py @Lior-Nis
 /algua/execution/paper_mechanics_state.py @Lior-Nis
 /algua/cli/paper_mechanics_cmd.py @Lior-Nis
+/algua/primitives/midcap_universe.py @Lior-Nis # approved paper mechanics universe parser
+/algua/strategies/momentum/midcap_weekly_momentum_smoke.py @Lior-Nis # approved symbol authority
 /algua/operator/paper_account_lock.py @Lior-Nis

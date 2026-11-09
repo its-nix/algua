@@ -17,6 +17,7 @@ class Venue(MechanicsBroker):
     def __init__(self):
         super().__init__("fixture", "fixture")
         self.account_id = "isolated-paper"
+        self.symbol = "CSL"
         self.qty = 0
         self.orders = {}
         self.activities = []
@@ -43,11 +44,11 @@ class Venue(MechanicsBroker):
                                buying_power=1000, last_equity=1000)
 
     def snapshot(self, symbols):
-        return SimpleNamespace(equity=1000, market_values={"CSL": self.qty*100},
-                               qtys={"CSL": self.qty})
+        return SimpleNamespace(equity=1000, market_values={self.symbol: self.qty*100},
+                               qtys={self.symbol: self.qty})
 
     def get_positions(self):
-        return pd.Series({"CSL": self.qty} if self.qty else {}, dtype=float)
+        return pd.Series({self.symbol: self.qty} if self.qty else {}, dtype=float)
 
     def list_open_orders(self):
         return [o for o in self.orders.values() if o["status"] in {"new", "partially_filled"}]
@@ -59,9 +60,10 @@ class Venue(MechanicsBroker):
         return self.activities
 
     def submit_sized(self, intent, snap, client_order_id=None, reserve=None):
-        assert reserve("CSL", 5) == 5
+        assert intent.symbol == self.symbol
+        assert reserve(self.symbol, 5) == 5
         row = {"id": "venue-"+client_order_id, "client_order_id": client_order_id,
-               "symbol": "CSL", "side": "buy", "notional": "5.00", "type": "market",
+               "symbol": self.symbol, "side": "buy", "notional": "5.00", "type": "market",
                "time_in_force": "day", "status": "new", "filled_qty": "0"}
         self.orders[client_order_id] = row
         self.posts.append(row)
@@ -77,6 +79,7 @@ class Venue(MechanicsBroker):
         return {"bp": 100, "ap": 100.1, "bs": 1, "as": 1, "t": self.clock()}
 
     def submit_reduction(self, symbol, qty, price, coid):
+        assert symbol == self.symbol
         assert float(qty) <= self.qty
         row = {"id": "venue-"+coid, "client_order_id": coid, "symbol": symbol,
                "side": "sell", "type": "limit", "limit_price": price, "qty": qty,
@@ -90,7 +93,7 @@ class Venue(MechanicsBroker):
         order.update(status=status, filled_qty=str(qty))
         self.qty += qty if side == "buy" else -qty
         self.activities.append({"id": str(len(self.activities)), "activity_type": "FILL",
-                                "order_id": order["id"], "symbol": "CSL", "side": side,
+                                "order_id": order["id"], "symbol": self.symbol, "side": side,
                                 "qty": str(qty), "price": "100", "transaction_time": self.clock()})
 
 
@@ -121,10 +124,10 @@ def world(tmp_path, monkeypatch):
     conn.close()
 
 
-def init(world):
+def init(world, symbol="CSL"):
     conn, venue, path = world
     with ledger(path) as db:
-        return initialize(db, conn, venue, "isolated-paper", "CSL")
+        return initialize(db, conn, venue, "isolated-paper", symbol)
 
 
 def run(world, action="step"):
@@ -538,3 +541,125 @@ def test_automated_policy_requires_immutable_configuration_provenance(world):
     conn.commit()
     with pytest.raises(ValueError, match="recorded paper policy"):
         init(world)
+
+
+@pytest.mark.parametrize("fault", ["stale", "wide", "empty_bid", "empty_ask", "crossed",
+                                  "unavailable"])
+@pytest.mark.parametrize("feed", ["iex", "sip"])
+def test_opening_requires_a_healthy_configured_exit_quote_before_intent(
+    world, monkeypatch, fault, feed,
+):
+    from algua.registry.drawdown_auth import paper_change
+
+    conn, venue, path = world
+    paper_change(conn, venue, purpose="configure",
+                 policy=DrawdownPolicy("5", permitted_symbols=(venue.symbol,), feed=feed))
+    init(world)
+    quote = venue.reduction_quote(venue.symbol, feed)
+    if fault == "stale":
+        quote["t"] = (datetime.now(UTC) - timedelta(seconds=11)).isoformat()
+    elif fault == "wide":
+        quote["ap"] = 102
+    elif fault == "crossed":
+        quote["ap"] = 99
+    elif fault != "unavailable":
+        quote["bs" if fault == "empty_bid" else "as"] = 0
+    requested = []
+
+    def exit_quote(symbol, feed):
+        requested.append((symbol, feed))
+        if fault == "unavailable":
+            raise ValueError("quote feed unavailable")
+        return quote
+
+    monkeypatch.setattr(venue, "reduction_quote", exit_quote)
+    with pytest.raises(ValueError, match="quote"):
+        run(world)
+    assert requested == [("CSL", feed)]
+    assert not venue.posts
+    with ledger(path) as db:
+        from algua.execution.paper_mechanics_state import state
+        assert db.execute("SELECT count(*) FROM intents").fetchone()[0] == 0
+        assert state(db)["opening_budget_consumed"] == "0.00"
+
+
+def test_another_approved_symbol_uses_one_policy_bound_opening_and_exit(world):
+    from algua.execution.paper_mechanics_broker import opening_coid
+    from algua.registry.drawdown_auth import paper_change
+
+    conn, venue, path = world
+    venue.symbol = "AA"
+    paper_change(conn, venue, purpose="configure",
+                 policy=DrawdownPolicy("5", permitted_symbols=(venue.symbol,)))
+    current = init(world, venue.symbol)
+    assert current["symbol"] == venue.symbol
+    assert current["opening_coid"] != opening_coid(conn, account_state(conn, "paper"), "CSL")
+    run(world)
+    venue.fill("buy", .05)
+    run(world, "close")
+    venue.fill("sell", .05)
+    assert run(world, "close")["phase"] == "closed"
+    assert [o["symbol"] for o in venue.posts] == [venue.symbol, venue.symbol]
+    assert run(world)["opening_budget_consumed"] == "5.00"
+    with ledger(path.with_name("second.db")) as db, pytest.raises(ValueError, match="unused"):
+        initialize(db, conn, venue, venue.account_id, venue.symbol)
+    assert len(venue.posts) == 2
+
+
+@pytest.mark.parametrize("symbols", [("AAPL",), ("AA", "CSL")])
+def test_mechanics_rejects_unapproved_or_multiple_policy_symbols(world, symbols):
+    from algua.registry.drawdown_auth import paper_change
+
+    conn, venue, _ = world
+    paper_change(conn, venue, purpose="configure",
+                 policy=DrawdownPolicy("5", permitted_symbols=symbols))
+    with pytest.raises(ValueError):
+        init(world, symbols[0])
+    assert not venue.posts
+
+
+def test_mechanics_keeps_policy_and_run_symbol_bound(world):
+    from algua.registry.drawdown_auth import paper_change
+
+    conn, venue, _ = world
+    init(world)
+    with pytest.raises(ValueError, match="smoke limits"):
+        init(world, "AA")
+    paper_change(conn, venue, purpose="configure",
+                 policy=DrawdownPolicy("5", permitted_symbols=("AA",)))
+    with pytest.raises(ValueError, match="smoke limits"):
+        run(world)
+    assert not venue.posts
+
+
+def test_cli_selects_another_approved_symbol_and_preserves_default(world, monkeypatch):
+    import json
+    from contextlib import nullcontext
+
+    from typer.testing import CliRunner
+
+    from algua.cli import paper_mechanics_cmd
+    from algua.cli.main import app
+    from algua.registry.drawdown_auth import paper_change
+
+    conn, venue, path = world
+    monkeypatch.setattr(paper_mechanics_cmd, "_broker", lambda: venue)
+    monkeypatch.setattr(paper_mechanics_cmd, "paper_account_lock", lambda lane: nullcontext())
+    runner = CliRunner()
+    default = runner.invoke(app, ["paper", "mechanics", "account"])
+    assert default.exit_code == 0, default.stdout
+    assert json.loads(default.stdout)["account"]["asset"]["symbol"] == "CSL"
+    approved = runner.invoke(app, ["paper", "mechanics", "account", "--symbol", "AA"])
+    assert approved.exit_code == 0, approved.stdout
+    assert json.loads(approved.stdout)["account"]["asset"]["symbol"] == "AA"
+    refused = runner.invoke(app, ["paper", "mechanics", "account", "--symbol", "AAPL"])
+    assert refused.exit_code != 0 and json.loads(refused.stdout)["ok"] is False
+    venue.symbol = "AA"
+    paper_change(conn, venue, purpose="configure",
+                 policy=DrawdownPolicy("5", permitted_symbols=("AA",)))
+    risk_path = conn.execute("PRAGMA database_list").fetchone()["file"]
+    initialized = runner.invoke(app, ["paper", "mechanics", "--state", str(path),
+        "--risk-db", risk_path, "--expected-account", venue.account_id, "init", "--symbol", "AA"])
+    assert initialized.exit_code == 0, initialized.stdout
+    assert json.loads(initialized.stdout)["mechanics"]["symbol"] == "AA"
+    assert not venue.posts

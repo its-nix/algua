@@ -9,7 +9,6 @@ from algua.execution.alpaca_broker import TickSnapshot
 from algua.execution.alpaca_reductions import reduction_price
 from algua.execution.paper_mechanics_broker import (
     PAPER_URL,
-    SYMBOL,
     MechanicsBroker,
     opening_coid,
     readiness,
@@ -28,8 +27,8 @@ from algua.risk import global_halt
 from algua.risk.layered import decimal
 
 
-def _binding(current, expected_account, observed):
-    if (current["account_id"] != expected_account or current["symbol"] != SYMBOL
+def _binding(current, expected_account, observed, symbol):
+    if (current["account_id"] != expected_account or current["symbol"] != symbol
             or current["policy_id"] != observed["policy_id"]
             or current["baseline_at"] != observed["baseline_at"]):
         raise ValueError("mechanics account, recorded policy or baseline changed")
@@ -38,13 +37,13 @@ def _binding(current, expected_account, observed):
 def initialize(conn, risk_conn, broker, expected_account: str, symbol: str) -> dict:
     identity = source_identity()
     readiness(broker, expected_account, symbol)
-    observed, _ = risk_guard(risk_conn, broker, expected_account, opening=True)
+    observed, _ = risk_guard(risk_conn, broker, expected_account, opening=True, symbol=symbol)
     if conn.execute("SELECT 1 FROM smoke").fetchone():
         current = state(conn)
-        _binding(current, expected_account, observed)
+        _binding(current, expected_account, observed, symbol)
         return current
     started = broker.clock()
-    coid = opening_coid(risk_conn, observed)
+    coid = opening_coid(risk_conn, observed, symbol)
     if (broker.get_order_by_client_order_id(coid) is not None
             or any(decimal(q) != 0 for q in broker.get_positions().values)
             or broker.list_open_orders()
@@ -62,9 +61,10 @@ def initialize(conn, risk_conn, broker, expected_account: str, symbol: str) -> d
 
 
 def _guarded_send(conn, risk_conn, broker, current, observed, policy, kind, held):
+    symbol = current["symbol"]
     if not broker.regular_market_open():
         raise ValueError("regular paper market must be open; orders are not queued overnight")
-    readiness(broker, current["account_id"])
+    readiness(broker, current["account_id"], symbol)
     account = broker.account()
     if account.account_id != current["account_id"] or decimal(account.cash) < 0:
         raise ValueError("paper account identity/cash changed before submit")
@@ -79,17 +79,19 @@ def _guarded_send(conn, risk_conn, broker, current, observed, policy, kind, held
                          decimal(account.buying_power)).quantize(Decimal(".01"), ROUND_FLOOR)
             if amount < 1:
                 raise ValueError("smoke amount is below venue minimum; do not raise the cap")
-            snap = broker.snapshot([SYMBOL])
+            snap = broker.snapshot([symbol])
             if any(decimal(q) != 0 for q in snap.qtys.values()):
                 raise ValueError("account is no longer flat before mechanics opening")
+            reduction_price(broker.reduction_quote(symbol, feed=policy.feed),
+                            policy, datetime.fromisoformat(broker.clock()))
             request = {"notional": str(amount), "type": "market"}
             coid = current["opening_coid"]
             prepare(conn, current, kind, coid, request)
 
-            def reserved(symbol, requested):
+            def reserved(order_symbol, requested):
                 age = (datetime.now(UTC) - datetime.fromisoformat(
                     observed["observed_at"])).total_seconds()
-                if (symbol != SYMBOL or account_state(risk_conn, "paper") != observed
+                if (order_symbol != symbol or account_state(risk_conn, "paper") != observed
                         or not 0 <= age <= 60 or global_halt.is_engaged(risk_conn)):
                     raise ValueError("mechanics reservation account/policy changed")
                 return float(min(amount, max(Decimal(0), decimal(requested))))
@@ -97,21 +99,21 @@ def _guarded_send(conn, risk_conn, broker, current, observed, policy, kind, held
             # The approved fixed-capital denominator sizes the smoke; account NAV is unchanged.
             sized = TickSnapshot(float(amount), snap.market_values, snap.qtys)
             order_id = broker.submit_sized(
-                OrderIntent(SYMBOL, Side.BUY, 1.0, datetime.now(UTC)), sized,
+                OrderIntent(symbol, Side.BUY, 1.0, datetime.now(UTC)), sized,
                 client_order_id=coid, reserve=reserved)
         else:
             if broker.list_open_orders():
                 raise ValueError("own order cancellation must settle before a mechanics exit")
-            actual = decimal(broker.get_positions().get(SYMBOL, 0))
+            actual = decimal(broker.get_positions().get(symbol, 0))
             qty = min(held, actual).quantize(Decimal("1e-9"), ROUND_FLOOR)
             if qty <= 0:
                 raise ValueError("no verified sellable mechanics shares")
-            price = reduction_price(broker.reduction_quote(SYMBOL, feed=policy.feed),
+            price = reduction_price(broker.reduction_quote(symbol, feed=policy.feed),
                                     policy, datetime.fromisoformat(broker.clock()))
             coid = current["opening_coid"].replace("pm-open-", "pm-exit-")
             request = {"qty": str(qty), "type": "limit", "limit_price": str(price)}
             prepare(conn, current, kind, coid, request)
-            order_id = broker.submit_reduction(SYMBOL, str(qty), str(price), coid)
+            order_id = broker.submit_reduction(symbol, str(qty), str(price), coid)
         if order_id in {"noop", "skipped"} or not order_id:
             raise ValueError("mechanics order not submitted; original intent remains consumed")
         acknowledge(conn, kind, order_id)
@@ -142,8 +144,9 @@ def operate(conn, risk_conn, broker, expected_account: str, action: str) -> dict
         raise ValueError("mechanics source/dependency identity changed")
     try:
         readiness(broker, expected_account, current["symbol"])
-        observed, policy = risk_guard(risk_conn, broker, expected_account, opening=False)
-        _binding(current, expected_account, observed)
+        observed, policy = risk_guard(risk_conn, broker, expected_account, opening=False,
+                                      symbol=current["symbol"])
+        _binding(current, expected_account, observed, current["symbol"])
     except Exception:
         try:
             _cancel_opening(conn, broker, current)
@@ -178,8 +181,9 @@ def operate(conn, risk_conn, broker, expected_account: str, action: str) -> dict
             raise ValueError("original mechanics exit is terminal with residual shares; review")
         current["phase"] = "closed"
     elif intent(conn, "buy") is None and current["phase"] != "closed":
-        observed, policy = risk_guard(risk_conn, broker, expected_account, opening=True)
-        _binding(current, expected_account, observed)
+        observed, policy = risk_guard(risk_conn, broker, expected_account, opening=True,
+                                      symbol=current["symbol"])
+        _binding(current, expected_account, observed, current["symbol"])
         _guarded_send(conn, risk_conn, broker, current, observed, policy, "buy", held)
         return current
     elif orders:
