@@ -41,12 +41,36 @@ not by editing its receipt or creating a fresh ID. No paper/strategy/live timer 
 merge-back is enabled by these commands. The separate real-broker acceptance card remains open
 until account observations, fills, reconciliation and settled closeout actually occur.
 
-Prepared 2026-11-08 against `d55c325` plus the current working diff. **Preparation and offline
+## Installed bootstrap, 2026-11-09
+
+Application source `6ef7a677354b230387cc22dd80970bd8c2ef9170` is installed under
+`/opt/algua/releases/`, selected by the root-owned `/opt/algua/paper-current`. Its verified
+application digest is `01c949949e238f0603334ca1a672de4a89b10a00f3c0b273be839326fbd7d064`
+(26,016 inventoried files). The tree and trust anchor are root-owned; the pre-created
+`.git/operator.lock` is the sole runtime-writable control-file exception. This is a manual,
+owner-approved first install, not a synthetic cohort release. The Python standard library and OS
+remain external runtime dependencies.
+
+`deploy/scripts/algua-paper-entry.sh` records the installed root entry. It permits the paper
+mechanics and paper-policy surface only, launches a confined transient service as `algua-paper`,
+and binds the physical application, private state, import path and paper host. There is no timer.
+The USD5/CSL policy file is prepared but unsigned. Installed `version` and empty-registry checks
+passed; account discovery refused with `isolated Alpaca paper credentials are not configured`.
+No broker order or qualifying paper session has occurred.
+
+Research source is separately deployed at the same application commit. Its existing registry was
+backed up and migrated from v49 to v52; the separate MLflow database was backed up and upgraded.
+Both integrity checks passed. Retained memory readback and the pinned 300-symbol profile dry run
+passed before previously enabled research timers and the dashboard were restored.
+
+## Historical preparation, 2026-11-08
+
+Prepared against `d55c325` plus the then-current working diff. **Preparation and offline
 fixture evidence only.** No broker request, order, credential installation, service activation,
 lifecycle advancement or qualification credit was performed. Actual account results remain the
 separate owner-blocked task `6hfCrg6qX8q4fvgG`.
 
-## Current admission boundary
+## Historical admission boundary before the approved mechanics command
 
 There is **no existing pre-qualification CLI seam that opens a real paper-venue mechanics
 position**. The proxy dataset cannot establish candidate eligibility, so it cannot honestly
