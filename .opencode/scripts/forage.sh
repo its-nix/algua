@@ -238,7 +238,7 @@ Frontmatter schema for every note (all fields required unless noted):
   category    - one of the category slugs above
   market      - one of the market vocabulary above
   horizon     - one of: intraday, daily, weekly, monthly, event
-  mechanism   - one sentence: why money is left on the table and by whom
+  mechanism   - the source's stated rationale, marked uncertain, or "unspecified by source"; no invented participant identities
   obscurity   - one of: canon, common, niche, rare (per the rubric above)
   status      - always "fresh" on a new note
 Body: the claim in your own words (what the source says works and why), one short verbatim quote
