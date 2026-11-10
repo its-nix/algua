@@ -50,6 +50,7 @@ from algua.cli._common import ok
 from algua.cli.app import emit
 from algua.cli.backtest_cmd import run_backtest_task, sweep_task
 from algua.cli.errors import error_code, json_errors
+from algua.evaluation.experiment_preflight import preflight_experiment
 from algua.portfolio import construction
 from algua.registry.promote_run import promote_task
 
@@ -72,6 +73,7 @@ _ALLOWED_KEYS: dict[str, frozenset[str]] = {
     "backtest": frozenset({
         "start", "end", "demo", "snapshot", "universe", "fundamentals_snapshot",
         "news_snapshot", "delistings", "assume_terminal_last_close", "register", "emit_series",
+        "research_only", "holdout_frac",
     }),
     "sweep": frozenset({
         "start", "end", "demo", "snapshot", "universe", "windows", "holdout_frac", "param",
@@ -88,7 +90,8 @@ _ALLOWED_KEYS: dict[str, frozenset[str]] = {
 
 
 _PARAMETER_TYPES: dict[str, type] = {
-    **dict.fromkeys(("demo", "register", "assume_terminal_last_close", "allow_holdout_reuse",
+    **dict.fromkeys(("demo", "register", "research_only", "assume_terminal_last_close",
+                    "allow_holdout_reuse",
                     "allow_non_pit"), bool),
     **dict.fromkeys(("start", "end", "snapshot", "universe", "fundamentals_snapshot",
                     "news_snapshot", "delistings", "emit_series", "rank_by", "actor",
@@ -97,6 +100,7 @@ _PARAMETER_TYPES: dict[str, type] = {
     **dict.fromkeys(("holdout_frac", "min_holdout_sharpe", "min_holdout_return",
                     "min_pct_positive", "min_window_sharpe"), float),
     "param": list,
+    "required_window_metrics": list,
 }
 _NULLABLE = frozenset({
     "snapshot", "universe", "fundamentals_snapshot", "news_snapshot", "delistings",
@@ -151,7 +155,7 @@ def _validate_tasks(raw: Any) -> list[dict[str, Any]]:
         name = item.get("name")
         if not isinstance(name, str) or not name:
             raise ValueError(f"task {i} ({action}) is missing a non-empty string 'name'")
-        extra = set(item) - {"action", "name"} - _ALLOWED_KEYS[action]
+        extra = set(item) - {"action", "name", "required_window_metrics"} - _ALLOWED_KEYS[action]
         if extra:
             raise ValueError(
                 f"task {i} ({action} {name}) has unsupported keys {sorted(extra)}; "
@@ -173,6 +177,8 @@ def run_all(
     tasks: str = typer.Option(
         ..., "--tasks",
         help="path to a JSON file: an array of {action, name, ...params} research tasks"),
+    preflight_only: bool = typer.Option(False, '--preflight-only',
+                                        help='Validate an experiment plan without simulation'),
 ) -> None:
     """Run a batch of research tasks in ONE warm process, amortizing the cold-start import tax.
 
@@ -201,12 +207,22 @@ def run_all(
     # mutated it (Codex GATE-1: construction._POLICIES is reachable+mutable from any strategy).
     pristine_policies = copy.copy(construction._POLICIES)
 
+    if preflight_only or any('required_window_metrics' in task for task in parsed):
+        try:
+            preflight = preflight_experiment(parsed, check_strategies=not preflight_only)
+        finally:
+            construction._POLICIES.clear()
+            construction._POLICIES.update(pristine_policies)
+        if preflight_only:
+            return emit(ok(preflight))
+
     results: list[dict[str, Any]] = []
     error_count = 0
     for task in parsed:
         action = task["action"]
         name = task["name"]
-        params = {k: v for k, v in task.items() if k not in ("action", "name")}
+        params = {k: v for k, v in task.items()
+                  if k not in ("action", "name", "required_window_metrics")}
         # Per-task reset boundary: restore the construction policy registry to pristine (undoes any
         # in-process mutation a prior task's strategy made). The strategy module itself is reloaded
         # inside the task via reload=True.
