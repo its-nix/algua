@@ -43,9 +43,24 @@ For each category, don't stop at the first obvious hit:
 - **What you found doubtful.** Every claim has a weak point — small sample, survivorship risk,
   no out-of-sample test, an author with something to sell, a mechanism that sounds like beta in
   disguise. Say what it is. A note with no doubt is a note that wasn't read critically.
-- **Obscurity, judged honestly** (rubric below) — the whole point of this signal is to tell leap
-  which notes are worth digging into (rare/niche) versus well-trodden ground (canon/common)
-  already priced into the pool's existing hypotheses.
+- **Obscurity, judged honestly** (rubric below) — describe how widely known the claim is, not
+  whether it works. A familiar, reproducible claim can support an informative replication;
+  obscurity alone supplies neither evidence nor a reason to discard it.
+
+## Research recipe
+
+Include a `Research recipe` section in each note's body. Extract these items from the source:
+
+- Exact signal or formula, lookback, direction and required data fields.
+- Source universe, sample dates, decision time, earliest fill, holding period and rebalance rule.
+- Portfolio construction, transaction-cost assumptions and comparison/control strategy.
+- Reported limitations, plus the numerical result that would contradict the claim.
+
+Mark anything the source does not specify as **unspecified**. Separate source facts from your
+interpretation; never invent formulas, costs, results, causality or missing inputs. Prefer sources
+with enough detail for a bounded test on the supplied data. Preserve requirements the current
+system cannot meet rather than silently adapting a long/short or intraday result to daily longs.
+Leap may later propose explicit assumptions or an adaptation, but must label them as its own.
 
 ## Obscurity rubric
 

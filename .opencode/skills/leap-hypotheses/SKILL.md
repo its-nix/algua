@@ -1,6 +1,6 @@
 ---
 name: leap-hypotheses
-description: Turn fresh inspiration notes into testable, falsifiable hypotheses in the idea pool — leap (transfer, combine, invert, re-construct) rather than restate, then run a critic pass that rejects beta-in-disguise, lookahead-by-construction, paraphrases of refuted ideas, untestable claims and vacuous falsifications. Use when running under `.codex/scripts/leap.sh`.
+description: Turn inspiration notes into bounded, falsifiable experiments, including honest replications and new hypotheses. Reject invalid tests and refuted duplicates; rank uncertain mechanisms and familiar exposures without inventing novelty. Use when running under `.opencode/scripts/leap.sh`.
 ---
 
 # Leap hypotheses (inspiration notes → idea pool)
@@ -36,9 +36,22 @@ notes are copied into this run's scratch vault at `$ALGUA_KNOWLEDGE_DIR`
 (`.leap-scratch/kb/`) — read them there when a note's body matters more than the frontmatter
 the prompt injected.
 
-## The leap (never a restatement)
+## From source to experiment
 
-A note says "X works". `X works` is not a hypothesis — it is the note. Leap from it:
+A note says "X works". Turn it into an explicit experiment with a signal, supported construction,
+costed control and falsification. **Novelty is a priority consideration, not an admission floor.**
+A familiar, previously untested claim may earn a bounded exploratory backtest without a new
+economic mechanism. This is not evidence that the claim works or deserves capital.
+
+Use one existing `--tag` to label the proposal `replication`, `extension` or `novel`. In the
+hypothesis, state the source's rationale, what the experiment can actually establish, and what
+remains uncertain. A source's causal story is not established fact; do not invent informed
+traders, forced sellers or other participant identities from prices alone.
+
+Start with a faithful, implementable replication when it answers an untested question. Distinguish
+source-specified rules from your own assumptions. If adapting a source's market, horizon or
+construction, label the adaptation and its limits; it cannot validate the original result.
+Extensions and new hypotheses can also use these moves:
 
 | move | what it means | example |
 |---|---|---|
@@ -91,9 +104,16 @@ untestable here, and saying so plainly is a better contribution than a hypothesi
 (Overlays — `regime_gate`, `trailing_stop` — may TIGHTEN a book after construction. They can only
 reduce or drop positions, never add one, flip a side or scale up.)
 
-The test for a real leap: **someone who read the note would not predict your hypothesis from it.**
-Prefer `rare`/`niche` notes as raw material — `canon`/`common` ground is already priced into the
-pool, and a hypothesis built on it will usually die in dedup or in the critic's beta check.
+Prioritize executable recipes, an unanswered question, informative controls and bounded research
+cost. Familiarity, predictable replication or an unproven causal rationale alone do not justify
+rejection. Label ordinary factor exposure honestly and compare it with an appropriate simple
+control; a positive absolute return does not establish incremental alpha. Preserve room for new
+hypotheses without requiring an invented interaction to earn an experiment.
+
+Keep related parameter choices in one predeclared bounded grid under the same idea/family and
+record every attempted variant in search breadth. Do not create new families or rename ideas to
+evade deduplication, prior empirical refutations or multiple-testing accounting. A familiar idea
+is eligible only if it survives those existing checks; this policy never reopens a refuted test.
 
 Cite every note you actually used with a repeated `--inspiration` flag. Citing a note you did not
 use corrupts the venue scorecard that decides where future foraging goes.
@@ -105,7 +125,7 @@ Every field is required for `--source-type inspiration`:
 | field | what it must contain |
 |---|---|
 | `title` | a short, specific name — the mechanism, not the category |
-| `hypothesis` | prose: **who leaves the money on the table and why** (the mechanism), a **signal sketch** (what you'd compute, from what data), and a **construction sketch** (how it becomes a portfolio) |
+| `hypothesis` | source rationale with uncertainty explicit, a signal sketch with exact fields/lookback, supported construction, timing/holding rule, costs and comparison/control; distinguish replication from proposed assumptions or adaptation |
 | `category` | one slug from this run's category vocabulary |
 | `market` | one of `us_equities`, `crypto`, `forex`, `prediction`, `any` |
 | `horizon` | one of `intraday`, `daily`, `weekly`, `monthly`, `event` |
@@ -132,21 +152,29 @@ A worked example (requires index-event and float data; not runnable on the curre
 ## The critic pass
 
 Run it on **every** hypothesis you formed, before adding it, with the methodology note as your
-lens. Be a hostile reader of your own work: a hypothesis you can't defend here would only burn a
-research run later. Reject when any of these hold:
+lens. Check validity before ranking promise. A conceptual concern is not an empirical refutation.
+Use existing negative-result reasons as context, but do not treat an earlier model's judgment
+about novelty or causal uncertainty as a measured failed experiment. Preserve the semantic
+refuted-history check: an equivalent empirical refutation is still a rejection, even when a
+token-based collision check misses a renamed mechanism.
+
+For a testable proposal, put familiar factor exposure, uncertain causal explanations and limited
+samples in the hypothesis's limitations and priority assessment. Demand a concrete costed control
+and a falsification that can fail; do not demand proof of profitability before the experiment.
+Reject or park when any of these hold:
 
 | `reason_kind` | reject when |
 |---|---|
-| `beta_in_disguise` | it is market beta, or a known factor (size, value, momentum, low-vol, carry), repackaged — with no mechanism distinct from the factor's own |
+| `beta_in_disguise` | after honest labeling and an appropriate control cannot repair it, the stated test would still misleadingly claim novel/incremental alpha from ordinary market or factor exposure; being a familiar factor alone is not a rejection |
 | `lookahead_by_construction` | the authored test adds future information: a full-sample statistic, a future-restated fundamental, membership selected using future observations, or a same-bar fill requiring the close; inherited declared pilot caveats alone are not this rejection |
-| `paraphrase_of_refuted` | it restates an idea in the refuted list, or a dead end in the negative-result log, without changing the mechanism — a new title is not a new idea |
+| `paraphrase_of_refuted` | it repeats an empirically refuted mechanism or an equivalent already-tested dead end; a new title, family, parameter choice or replication label does not reopen it |
 | `untestable` | it cannot be evaluated with the data this system has or could get, and it is not worth parking as `needs_data` |
 | `vacuous_falsification` | its falsification statement cannot fail ("refuted if it doesn't work"), or is so weak that any result survives it |
 
 Write each rejection as one JSON object per line in `leap-critic.jsonl` at the worktree root:
 
 ```json
-{"title": "...", "hypothesis": "...", "reason_kind": "beta_in_disguise", "reason": "long-only high-momentum decile with no mechanism beyond the momentum factor itself"}
+{"title": "...", "hypothesis": "...", "reason_kind": "lookahead_by_construction", "reason": "the score uses tomorrow's closing price to choose today's holdings"}
 ```
 
 Rejections are **valuable output**, not waste: the driver files them in the negative-result ledger

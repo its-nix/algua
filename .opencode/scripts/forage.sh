@@ -243,6 +243,12 @@ Frontmatter schema for every note (all fields required unless noted):
   status      - always "fresh" on a new note
 Body: the claim in your own words (what the source says works and why), one short verbatim quote
 (<= 300 characters), and what you found doubtful about the claim.
+Include a Research recipe: signal/formula/lookback and required fields; source universe/sample;
+decision/fill/holding/rebalance timing; construction, costs and comparison/control; limitations
+and a falsifiable numerical claim. Mark omitted source details unspecified, and separate source
+facts from proposed assumptions. Never invent data, rules, causal evidence or backtest results.
+Prefer implementable recipes; familiar claims can support honest, informative replications.
+Obscurity describes the source, not evidence of profitability or a requirement for admission.
 
 Rules (binding):
 Use ONLY the built-in web search. Write each inspiration as \`kb/inspirations/<yyyy-mm-dd>-<slug>.md\`
