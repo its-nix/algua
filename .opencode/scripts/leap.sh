@@ -513,6 +513,9 @@ except Exception:
 ' "${IMPORT_OUT}" "$1" "$2" 2>/dev/null || echo "$2"
 }
 IMPORTED_JSON="$(_import_field imported '[]')"
+if [[ "${IMPORT_RC}" -eq 0 && "${IMPORTED_JSON}" != '[]' && "${IMPORT_PARSE_ERROR}" -eq 0 ]]; then
+  touch "${AUTH_DATA_DIR}/research-ready"
+fi
 SKIPPED_JSON="$(_import_field skipped '[]')"
 CRITIC_ROWS="$(_import_field critic_rows '0')"
 

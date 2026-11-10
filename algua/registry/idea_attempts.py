@@ -243,7 +243,10 @@ class IdeaAttemptsRepository:
                 raise ClaimTokenMismatch(f"idea {idea_id}: attempt already has an outcome")
             sets = ["updated_at=?"]
             params: list[object] = [now]
-            if outcome in REFUTING_OUTCOMES and row["status"] == IdeaStatus.OPEN.value:
+            if outcome is AttemptOutcome.DATA_BLOCKED and row['status'] == IdeaStatus.OPEN.value:
+                sets.extend(['status=?', 'parked_reason=?'])
+                params.extend([IdeaStatus.NEEDS_DATA.value, 'qualification:data_blocked'])
+            elif outcome in REFUTING_OUTCOMES and row["status"] == IdeaStatus.OPEN.value:
                 sets.append("status=?")
                 params.append(IdeaStatus.REFUTED.value)
             elif (outcome is not AttemptOutcome.CANDIDATE_PREVIEW_PASS

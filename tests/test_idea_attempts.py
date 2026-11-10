@@ -61,6 +61,23 @@ def test_claim_skips_claimed_and_non_open(tmp_path):
     assert len(first) == 1 and len(second) == 1 and first[0].id != second[0].id
 
 
+def test_data_blocked_parks_without_refuting_and_capability_refresh_keeps_it_parked(tmp_path):
+    from algua.registry.idea_import import reclassify
+
+    conn, repo, attempts = _setup(tmp_path)
+    (idea,) = _seed(repo, n=1, category='momentum')
+    (claimed,) = attempts.claim(run_stamp='pilot', limit=1, ttl_minutes=180)
+    attempts.record_outcome(idea.id, token=claimed.claim_token,
+                            outcome=AttemptOutcome('data_blocked'), reason='non-PIT proxy')
+    parked = repo.get(idea.id)
+    assert parked.status is IdeaStatus.NEEDS_DATA
+    assert parked.parked_reason == 'qualification:data_blocked'
+    assert parked.claimed_by is None
+    assert reclassify(conn) == {'reopened': [], 'parked': []}
+    assert repo.get(idea.id) == parked
+    assert attempts.attempts_of(idea.id)[0]['outcome'] == 'data_blocked'
+
+
 def test_claim_rechecks_legacy_open_cadence_before_creating_any_attempt(tmp_path):
     conn, repo, att = _setup(tmp_path)
     (idea,) = _seed(repo, n=1, category='monthly')

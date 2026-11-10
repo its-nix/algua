@@ -21,8 +21,17 @@ never substitute a new hypothesis or silently select different inputs. Keep the 
 Use --snapshot {snapshot_id} --start {start} --end {end}; windows=4, holdout_frac=0.2, 1d,
 closed-bar decisions and next-bar execution. Use long-only top-20 equal weights, max symbol
 weight 0.075, fees=0.0005 and slippage=0.0005 per side. Keep all seven limitations in every report.
-This is pilot_real_proxy exploration only: qualification is integrity_fail, preview_gate: null,
+Use --research-only for author smoke and registered backtests. The configured pilot also enforces
+this development-only scope automatically: requested dates stay pinned, actual backtest end is
+the reserved holdout start. Never inspect that tail for smoke or call prior exposed data fresh.
+Before numerical work, put every mandatory comparison in one research run-all tasks JSON, with
+required_window_metrics: ["total_return"] on each sweep (plus any other required supported metric).
+The real batch preflights all declared tasks before simulation. Retain each trial's window_metrics
+and compare the strategy/control on identical start/end dates, net of the pinned costs. Aggregate
+sweep statistics alone cannot test paired-window falsification; reuse recorded outputs.
+This is pilot_real_proxy exploration only: qualification is data_blocked, preview_gate: null,
 no merge_back, no candidate or paper admission. Empirical falsification remains a separate finding.
+Use integrity_fail only for an actual integrity failure, never merely for this known data limit.
 The daily bar label and collection time do not establish historical availability or verified PIT.
 BEGIN REQUIRED RESEARCH PROFILE JSON
 """
@@ -62,7 +71,8 @@ def validate_proxy_report(path: Path) -> None:
     """Refuse incompatible publication instead of rewriting a model's economic verdict."""
     try:
         rows, gate = read_report(path)
-        if gate is not None or any(row["outcome"] not in {"integrity_fail", "run_error"}
+        if gate is not None or any(row["outcome"] not in {
+                "data_blocked", "integrity_fail", "run_error"}
                 or row["merge_back"] is not None or row["verdict"] == "candidate-preview-pass"
                 for row in rows):
             raise ValueError

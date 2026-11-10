@@ -21,11 +21,11 @@ from algua.backtest.engine import fetch_symbols
 from algua.backtest.errors import BacktestError
 from algua.backtest.model_policy import require_fixed_model_period
 from algua.backtest.run_inputs import RunInputBundle, capture_run_inputs
+from algua.backtest.sweep_windows import public_sweep
 from algua.backtest.walkforward import walk_forward
 from algua.contracts.types import DataProvider, FundamentalsProvider, NewsProvider
 from algua.portfolio.construction import ConstructionError, validate_construction_params
 from algua.portfolio.overlays import OverlayError, resolve_overlays
-from algua.provenance.research_disclosure import public_window_result
 from algua.strategies.base import LoadedStrategy
 
 _MAX_COMBOS = 200
@@ -210,7 +210,7 @@ class SweepResult:
     model_ref: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return public_window_result(dataclasses.asdict(self))
+        return public_sweep(dataclasses.asdict(self))
 
 
 def _evaluate_combo(
@@ -254,6 +254,8 @@ def _evaluate_combo(
         "n_windows": wf.windows,
         "stability": wf.stability,
         "score": wf.stability[rank_by],
+        "window_metrics": wf.to_dict()['window_metrics'],
+        "window_context": {'embargo': wf.embargo, 'execution': wf.execution_semantics},
         "meta": {
             "data_source": wf.data_source,
             "snapshot_id": wf.snapshot_id,
@@ -405,8 +407,7 @@ def sweep(
     )
     results = _run_combos(overridden, eval_kwargs)
 
-    # Build records in COMBO ORDER (zip with the original combos) so _rank_records' stable
-    # tie-break on equal score+std_sharpe stays reproducible regardless of worker completion order.
+    # Combo order makes stable ranking ties reproducible across worker completion orders.
     records = [
         {
             "params": combo,
@@ -414,6 +415,8 @@ def sweep(
             "n_windows": res["n_windows"],
             "stability": res["stability"],
             "score": res["score"],
+            "window_metrics": res['window_metrics'],
+            "window_context": res['window_context'],
             "bars_provenance": res["meta"].get("bars_provenance"),
             "execution_costs": res["meta"].get("execution_costs"),
         }

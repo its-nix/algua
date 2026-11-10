@@ -76,7 +76,7 @@ deploy/systemd/install-user-units.sh            # render + install + daemon-relo
 deploy/systemd/install-user-units.sh --dry-run  # print the rendered units, write nothing
 ```
 
-For each of `algua-research.{service,timer}`, `algua-paper.{service,timer}`,
+For each of `algua-research.{service,timer,path}`, `algua-paper.{service,timer}`,
 `algua-mergeback-drain.{service,timer}`, `algua-forage.{service,timer}`,
 `algua-leap.{service,timer}`, `algua-web.service`
 it renders the `/opt/algua` template to `~/.config/systemd/user/<name>`, replacing `/opt/algua`

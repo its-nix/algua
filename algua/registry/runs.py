@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from algua.provenance.research_disclosure import public_stability
 from algua.registry.db import MAX_PERSISTED_TRIALS
-from algua.registry.research_record import capture_public_record
+from algua.registry.research_record import capture_public_record, capture_sweep_record
 
 if TYPE_CHECKING:
     from algua.backtest.result import BacktestResult
@@ -169,6 +169,7 @@ def record_walk_forward_run(
 
 def record_sweep_run(
     repo: SqliteStrategyRepository, name: str, result: SweepResult,
+    *, research_inputs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Record one `sweep` parent run plus a child `sweep_trial` per ranked combo.
 
@@ -206,7 +207,7 @@ def record_sweep_run(
         extra_metrics=extra_metrics,
         trials_truncated_at=trials_truncated_at,
     )
-    trials = [
+    trials: list[dict[str, Any]] = [
         {
             "config": {"params": record["params"], "run_provenance": {
                 "bars": record.get("bars_provenance"),
@@ -222,6 +223,11 @@ def record_sweep_run(
         }
         for record in result.ranked
     ]
+    for trial, record in zip(trials, result.ranked, strict=True):
+        captured = capture_sweep_record(result, record, provenance_of(result),
+                                        trial['config']['run_provenance'], research_inputs)
+        if captured is not None:
+            trial['config']['public_window_record'] = captured
     n_written, truncated_at = repo.record_sweep_trials(parent, name, trials)
     return {"run_id": parent, "trials_written": n_written, "trials_truncated_at": truncated_at}
 
