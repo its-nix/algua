@@ -161,6 +161,97 @@ def prepared(database, tmp_path, **changes):
     return conn, cycle, args, cycle.campaign_menu(**args)
 
 
+def test_large_history_has_bounded_prompt_but_complete_admission_menu(
+        fixture_pool, fake_runtime, tmp_path):
+    from algua.operator.campaign_choice import MAX_PROMPT_BYTES, choose_campaign
+    from algua.registry.negative_results import record_negative_result
+
+    conn = connect(fixture_pool)
+    for i in range(40):
+        add_idea(conn, f'archived alternative {i}', family=f'archive-{i}',
+                 hypothesis='SYNTHETIC_FIXTURE research description ' * 80)
+        record_negative_result(conn, kind='discard', verdict='CRITIC:fixture', actor='agent',
+            reason='SYNTHETIC_FIXTURE conceptual concern ' * 100,
+            hypothesis='SYNTHETIC_FIXTURE earlier proposed test ' * 100, source='manual',
+            params={'not_needed_for_ranking': 'SYNTHETIC_FIXTURE parameter ' * 100})
+    conn.close()
+    conn, cycle, args, menu = prepared(fixture_pool, tmp_path)
+    assert len(json.dumps(menu).encode()) > MAX_PROMPT_BYTES
+    before = list(conn.iterdump())
+    try:
+        directory = tmp_path / 'bounded-history'
+        campaign = choose_campaign(cycle, menu=menu, directory=directory, **args)
+        prompt = (directory / 'prompt.txt').read_text()
+        view = json.loads(prompt.split('MENU_JSON\n', 1)[1])
+        assert len(prompt.encode()) <= MAX_PROMPT_BYTES
+        assert view['menu_id'] == menu['menu_id']
+        assert view['choices'] == menu['choices'] and view['request'] == menu['request']
+        offered = {c['hypothesis_id'] for c in menu['choices']}
+        assert view['scorecard']['hypotheses'] == [
+            h for h in menu['scorecard']['hypotheses'] if h['id'] in offered]
+        assert view['scorecard']['totals'] == menu['scorecard']['totals']
+        assert view['scorecard']['by_family'] == menu['scorecard']['by_family']
+        assert view['prompt_coverage']['hypotheses']['omitted'] > 0
+        assert view['prompt_coverage']['negative_results']['omitted'] > 0
+        assert view['prompt_coverage']['negative_results']['truncated_fields'] > 0
+        assert json.loads((directory / 'menu.json').read_text()) == menu
+        assert campaign['menu'] == menu and list(conn.iterdump()) == before
+        claimed, result = cycle.start(**args, campaign=campaign)
+        assert result['ok'] and [i.id for i in claimed] == [menu['choices'][-1]['hypothesis_id']]
+    finally:
+        conn.close()
+
+
+def test_prompt_view_keeps_old_evidence_referenced_by_offered_choices(
+        fixture_pool, tmp_path):
+    from algua.operator.campaign_choice import _prompt_menu
+
+    conn, _, _, menu = prepared(fixture_pool, tmp_path)
+    try:
+        menu['choices'][0]['prior_evidence_ids'] += ['idea_attempts:1', 'negative_results:1']
+        for key, prefix in [('attempts', 'idea_attempts'),
+                            ('negative_results', 'negative_results')]:
+            menu['scorecard'][key] = [
+                {'id': i, 'evidence_id': f'{prefix}:{i}', 'reason': 'SYNTHETIC_FIXTURE ' * 80,
+                 'idea_id': 999, 'idea_ids': []} for i in reversed(range(1, 20))]
+            related = next(row for row in menu['scorecard'][key] if row['id'] == 2)
+            offered = menu['choices'][0]['hypothesis_id']
+            related.update(idea_id=offered if key == 'attempts' else 999,
+                           idea_ids=[offered] if key == 'negative_results' else [])
+        view = _prompt_menu(menu)
+        for key in ('attempts', 'negative_results'):
+            ids = [row['id'] for row in view['scorecard'][key]]
+            assert 1 in ids and 2 in ids and 19 in ids and ids == sorted(ids)
+            assert view['prompt_coverage'][key]['required_rows'] == 2
+            assert view['prompt_coverage'][key]['omitted'] == 19 - len(ids)
+            assert view['prompt_coverage'][key]['referenced_rows'] == 1
+            assert view['prompt_coverage'][key]['referenced_rows_omitted'] == 0
+            assert view['prompt_coverage'][key]['truncated_fields'] > 0
+    finally:
+        conn.close()
+
+
+def test_oversized_essential_hypothesis_still_refuses_before_runtime(
+        fixture_pool, fake_runtime, tmp_path):
+    from algua.operator.campaign_choice import choose_campaign
+
+    conn = connect(fixture_pool)
+    add_idea(conn, 'large required specification', family='large',
+             hypothesis='SYNTHETIC_FIXTURE essential specification ' * 4000)
+    conn.close()
+    conn, cycle, args, menu = prepared(fixture_pool, tmp_path, category='large')
+    assert len(menu['choices']) == 1
+    before = list(conn.iterdump())
+    try:
+        directory = tmp_path / 'essential-too-large'
+        with pytest.raises(ValueError, match='chooser prompt exceeds byte bound'):
+            choose_campaign(cycle, menu=menu, directory=directory, **args)
+        assert list(conn.iterdump()) == before
+        assert not fake_runtime.exists() and not directory.exists() and not cycle.path.exists()
+    finally:
+        conn.close()
+
+
 @pytest.mark.parametrize('file_mb', [16, 4])
 def test_native_state_uses_configured_file_budget_without_enlarging_output_bounds(
         fixture_pool, fake_runtime, tmp_path, monkeypatch, file_mb):
