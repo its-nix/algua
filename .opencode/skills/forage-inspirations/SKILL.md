@@ -62,6 +62,9 @@ interpretation; never invent formulas, costs, results, causality or missing inpu
 with enough detail for a bounded test on the supplied data. Preserve requirements the current
 system cannot meet rather than silently adapting a long/short or intraday result to daily longs.
 Leap may later propose explicit assumptions or an adaptation, but must label them as its own.
+Current execution retargets weights on every daily bar. Prefer source recipes that can genuinely
+use daily rebalancing and profile-compatible controls. Daily OHLCV availability does not imply
+support for weekly/monthly fixed-share holding. Preserve the source's actual cadence in its note.
 
 ## Obscurity rubric
 

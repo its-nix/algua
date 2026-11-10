@@ -124,6 +124,29 @@ def cli(*args):
                           capture_output=True, text=True, timeout=30)
 
 
+def test_menu_only_excludes_unsupported_rows_and_can_be_adopted(fixture_pool, tmp_path):
+    conn = connect(fixture_pool)
+    conn.execute("UPDATE ideas SET horizon='monthly' WHERE id=1")
+    conn.commit()
+    before = list(conn.iterdump())
+    menu_result = cli('cycle-start', '--run', 'manual-daily', '--limit', '3', '--menu-only')
+    assert menu_result.returncode == 0, menu_result.stdout
+    menu = json.loads(menu_result.stdout)['menu']
+    assert 1 not in [c['hypothesis_id'] for c in menu['choices']]
+    assert 'horizon:monthly' in menu['exclusions']['1']['reason']
+    assert list(conn.iterdump()) == before
+    selected = menu['choices'][0]
+    campaign = tmp_path / 'selection.json'
+    campaign.write_text(json.dumps({'menu': menu, 'selection': {
+        'menu_id': menu['menu_id'], 'choices': [{**selected, 'reason': 'compatible daily test'}]}}))
+    result = cli('cycle-start', '--run', 'manual-daily', '--limit', '3',
+                 '--campaign', str(campaign))
+    assert result.returncode == 0, result.stdout
+    assert [i['id'] for i in json.loads(result.stdout)['claimed']] == [selected['hypothesis_id']]
+    assert conn.execute('SELECT COUNT(*) FROM idea_attempts WHERE idea_id=1').fetchone()[0] == 0
+    conn.close()
+
+
 def test_executable_opt_in_chooses_only_runtime_selection(fixture_pool, fake_runtime, tmp_path):
     evidence = tmp_path / 'choice'
     result = cli('cycle-start', '--run', 'producer', '--limit', '3',
@@ -147,6 +170,29 @@ def test_executable_opt_in_chooses_only_runtime_selection(fixture_pool, fake_run
     conn = connect(fixture_pool)
     try:
         assert [r[0] for r in conn.execute('SELECT idea_id FROM idea_attempts')] == [3]
+    finally:
+        conn.close()
+
+
+def test_cycle_start_parks_old_unsupported_rows_before_any_chooser_call(
+        fixture_pool, fake_runtime, tmp_path):
+    from algua.contracts.idea import Horizon
+    from algua.registry.ideas import IdeaRepository
+
+    conn = connect(fixture_pool)
+    monthly = add_idea(conn, 'monthly fixed share holding', family='monthly',
+                       horizon=Horizon.MONTHLY)
+    conn.close()
+    result = cli('cycle-start', '--run', 'unsupported-monthly', '--limit', '1',
+                 '--category', 'monthly', '--choose', '--choice-dir', str(tmp_path / 'choice'))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)['claimed'] == []
+    assert not fake_runtime.exists()
+    conn = connect(fixture_pool)
+    try:
+        saved = IdeaRepository(conn).get(monthly.id)
+        assert saved.status.value == 'needs_data' and saved.parked_reason == 'horizon:monthly'
+        assert conn.execute('SELECT COUNT(*) FROM idea_attempts').fetchone()[0] == 0
     finally:
         conn.close()
 

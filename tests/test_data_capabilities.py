@@ -1,6 +1,13 @@
 # tests/test_data_capabilities.py
-from algua.contracts.idea import DataCapability
-from algua.data.capabilities import supported_capabilities
+from algua.contracts.idea import DataCapability, Horizon
+from algua.data.capabilities import supported_capabilities, supported_horizons
+
+
+def test_decision_horizons_match_the_daily_execution_engine():
+    from algua.backtest.engine import _SUPPORTED_CADENCES
+
+    assert _SUPPORTED_CADENCES == {'1d'}
+    assert supported_horizons() == frozenset({Horizon.DAILY})
 
 
 def test_supported_is_ohlcv_only_today():

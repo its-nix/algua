@@ -75,6 +75,26 @@ def test_claim_empty_pool_is_ok_with_empty_list():
     assert r.exit_code == 0 and _json(r)["claimed"] == []
 
 
+@pytest.mark.parametrize('horizon', ['weekly', 'monthly', 'event', 'intraday'])
+def test_add_parks_unsupported_decision_cadences(horizon):
+    result = _run('add', '--title', 'unsupported holding schedule', '--hypothesis',
+                  'requires a distinct execution cadence', '--source-type', 'inspiration',
+                  '--category', 'momentum', '--market', 'us_equities', '--horizon', horizon,
+                  '--falsification', 'refuted if measured return is nonpositive')
+    assert result.exit_code == 0, result.output
+    assert _json(result)['status'] == 'needs_data'
+    assert _json(result)['parked_reason'] == f'horizon:{horizon}'
+
+
+def test_slow_feature_with_daily_execution_stays_admissible():
+    result = _run('add', '--title', 'sixty session feature daily book', '--hypothesis',
+                  'trailing sixty-session score with daily target-weight rebalancing',
+                  '--source-type', 'inspiration', '--category', 'momentum',
+                  '--market', 'us_equities', '--horizon', 'daily',
+                  '--falsification', 'refuted if measured costed return is nonpositive')
+    assert result.exit_code == 0 and _json(result)['status'] == 'open', result.output
+
+
 def test_import_from_scratch_db(tmp_path):
     _seed(1)
     auth = tmp_path / "r.db"
