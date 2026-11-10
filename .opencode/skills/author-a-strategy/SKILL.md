@@ -81,7 +81,17 @@ Rules that matter:
   latter weights by **magnitude**. Produce scores whose sign/scale carry the meaning the policy reads.
 - **Never look ahead.** The `view` contains bars only up to the current timestamp, and the engine
   enforces the `t→t+1` execution lag (`decision_lag_bars=1`). Do not re-implement or weaken this.
-- `rebalance_frequency` is `"1d"` (daily) for now.
+- `rebalance_frequency` is `"1d"` (daily) only. This retargets portfolio weights each day;
+  it does not implement weekly/monthly fixed-share holding. Frozen scores or repeated target
+  weights still rebalance daily. Do not change an admitted holding claim to fit the engine.
+- **Preflight all mandatory controls before numerical work.** The strategy and controls must
+  obey the supplied execution/construction profile. A pinned top-20 book cannot serve as an
+  all-universe equal-weight control. If a required holding rule or control is unsupported,
+  report the actual incompatibility rather than relabeling the experiment or inventing metrics.
+  Record the existing non-refuting `run_error` outcome, with reason prefix `unsupported_cadence:`
+  or `incompatible_control:`. This is an engineering failure, not evidence against the hypothesis.
+  A legacy non-chooser caller may retry a structurally incompatible control up to the existing
+  `MAX_IDEA_ATTEMPTS` cap; do not invent a new outcome or claim that this prompt removes that risk.
 - **Prices: derive returns/momentum from `adj_close`, NEVER raw `close`.** Do **not** rationalize
   raw close/volume as "leak-safe" — raw is corporate-action **CONTAMINATED**: a split inside a
   lookback window fabricates fake momentum, and dividends distort returns. `close` is kept only for

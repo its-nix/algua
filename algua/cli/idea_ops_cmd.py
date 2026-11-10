@@ -101,6 +101,8 @@ def cycle_start(
         if choose:
             assert choice_dir is not None
             cycle.recover_before_choice(choice_directory=choice_dir, **args)
+        if not menu_only and campaign is None and not cycle.path.exists() and not cycle.rows():
+            reclassify(conn)
         captured_menu = None
         if public_memory_context:
             args["context"], captured_menu = prepare_memory_context(
@@ -284,7 +286,7 @@ def import_(
 @idea_ops_app.command("reclassify")
 @json_errors
 def reclassify_() -> None:
-    """Re-open parked ideas whose market/horizon/data became supported (driver only)."""
+    """Park/reopen unclaimed ideas after market/horizon/data support changes (driver only)."""
     with registry_conn() as conn:
         emit(ok(reclassify(conn)))
 

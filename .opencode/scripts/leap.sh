@@ -245,6 +245,13 @@ equivalents and vacuous tests. Do not reopen refuted mechanisms or infer qualifi
 Use replication only for source-specified core score, timing and construction. Label your own
 core rules extension/novel with explicit assumptions, never invented source facts. On collision,
 drop the new proposal; do not reword it or change parameters/families to clear the check.
+Current engine: daily target-weight rebalancing only (rebalance_frequency=1d, horizon=daily).
+Weekly/monthly fixed-share holding is unsupported; slow features do not change execution cadence.
+If preserving such a source-faithful hypothesis, add its true horizon so it parks; parked additions
+consume the run quota. Prioritize runnable daily recipes.
+Check every mandatory control against the supplied profile: an all-universe equal-weight book
+cannot be substituted with top-20. File unsupported mandatory controls in leap-critic.jsonl with
+reason_kind=untestable before adding a runnable idea. Preserve source claims and adaptation differences.
 
 Your registry is a THROWAWAY SCRATCH COPY of the real pool (ALGUA_DB_PATH already points inside
 this worktree): dedup-check and add see the real pool's history, but write only scratch. A trusted
