@@ -4,6 +4,8 @@ from __future__ import annotations
 import sqlite3
 
 from algua.contracts.idea import IdeaStatus
+from algua.registry.idea_eligibility import idea_eligibility
+from algua.registry.ideas import IdeaRepository
 
 
 def select_ideas(conn: sqlite3.Connection, *, limit: int, week_cutoff: str,
@@ -25,7 +27,10 @@ def select_ideas(conn: sqlite3.Connection, *, limit: int, week_cutoff: str,
         " JOIN ideas i ON i.id = a.idea_id WHERE a.claimed_at >= ? GROUP BY i.category",
         (week_cutoff,))}
     by_cat: dict[str | None, list] = {}
+    ideas = IdeaRepository(conn)
     for r in rows:
+        if idea_eligibility(ideas.get(r['id']))[0] is not IdeaStatus.OPEN:
+            continue
         by_cat.setdefault(r["category"], []).append(r)
     for lst in by_cat.values():
         lst.sort(key=lambda r: (r["obs_rank"] if r["obs_rank"] is not None else 3,

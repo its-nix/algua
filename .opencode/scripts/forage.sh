@@ -249,6 +249,9 @@ and a falsifiable numerical claim. Mark omitted source details unspecified, and 
 facts from proposed assumptions. Never invent data, rules, causal evidence or backtest results.
 Prefer implementable recipes; familiar claims can support honest, informative replications.
 Obscurity describes the source, not evidence of profitability or a requirement for admission.
+Execution currently retargets weights daily; prefer genuinely daily-rebalanced recipes with
+controls compatible with the supplied profile. Weekly/monthly fixed-share holding is unsupported.
+Preserve the source's actual cadence; daily OHLCV does not make every holding rule executable.
 
 Rules (binding):
 Use ONLY the built-in web search. Write each inspiration as \`kb/inspirations/<yyyy-mm-dd>-<slug>.md\`

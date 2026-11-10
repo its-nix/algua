@@ -70,6 +70,23 @@ Extensions and new hypotheses can also use these moves:
 For this pilot, prioritize daily `us_equities` ideas whose exploratory test needs only `ohlcv`.
 `algua/data/capabilities.py` remains the eligibility authority. Keep genuinely missing option,
 fundamental, flow or intraday inputs explicit; do not relabel them as OHLCV proxies.
+Only `horizon=daily` is executable today. Horizon means the required decision cadence, not the
+feature lookback: a 20/60-session feature can rank a book daily, but a monthly/weekly fixed-share
+holding recipe is unsupported and parks. The engine supports `rebalance_frequency="1d"` and
+retargets portfolio weights on every daily bar. Repeating the same scores or target weights does
+not implement fixed-share buy-and-hold. Never relabel a monthly holding claim as daily to admit it.
+If preserving a source-faithful unsupported-cadence hypothesis, add it with its true horizon so
+the trusted importer parks it. Parked additions consume the run's quota; prioritize runnable
+daily recipes rather than filling the quota with parked ones.
+
+Check the proposed strategy AND every mandatory comparison/control against the supplied execution
+profile before adding the idea. Under the pinned top-20 profile, each simulated control must use
+the same permitted construction, portfolio size, universe, lag and costs. An all-universe
+equal-weight control is not a top-20 book. If a required control cannot be implemented under the
+profile, reject the recipe in `leap-critic.jsonl` with `reason_kind="untestable"` and name the
+engineering gap; never silently change
+the control or falsification. A separately justified daily adaptation must state what changed
+and still pass the existing dedup/refuted-history checks.
 Declared `pilot_real_proxy` permits numerical exploration, not qualification. Preserve all seven
 caveats: vendor-revisable adjusted prices, unverified corporate actions, missing delisted symbols,
 unavailable event knowledge times, unavailable historical market cap, unavailable PIT universe
