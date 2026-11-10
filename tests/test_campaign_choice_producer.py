@@ -145,6 +145,81 @@ def test_chooser_receives_full_prompt_as_literal_text(fixture_pool, fake_runtime
     assert not marker.exists()
 
 
+@pytest.mark.parametrize('has_unseen_family', [False, True])
+def test_single_slot_can_explore_familiar_work_but_prefers_unseen_family(
+        fixture_pool, fake_runtime, tmp_path, has_unseen_family):
+    from algua.contracts.idea import AttemptOutcome
+    from algua.registry.ideas import IdeaRepository
+    from tests.campaign_fixtures import attempt
+
+    conn = connect(fixture_pool)
+    conn.execute("UPDATE ideas SET status='discarded' WHERE id IN (2,3)")
+    conn.commit()
+    attempt(conn, IdeaRepository(conn).get(1), AttemptOutcome.RUN_ERROR)
+    familiar = add_idea(conn, 'trailing range asymmetry', family='a')
+    expected = (add_idea(conn, 'calendar volume drift', family='unseen')
+                if has_unseen_family else familiar)
+    conn.close()
+    result = cli('cycle-start', '--run', 'single-slot', '--limit', '1', '--choose',
+                 '--choice-dir', str(tmp_path / 'single-slot'))
+    assert result.returncode == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert [i['id'] for i in payload['claimed']] == [expected.id]
+    choice = payload['campaign']['menu']['choices'][0]
+    expected_reason = 'novelty reserve' if has_unseen_family else 'unused novelty reserve'
+    assert expected_reason in choice['reason']
+    if has_unseen_family:
+        assert 'unused novelty reserve' not in choice['reason']
+    assert sum(c['budget'] for c in payload['campaign']['selection']['choices']) == 1
+
+
+@pytest.mark.parametrize('blocked_by', ['refuted', 'duplicate', 'monthly'])
+def test_idle_single_slot_does_not_bypass_exclusions(
+        fixture_pool, fake_runtime, tmp_path, blocked_by):
+    from algua.contracts.idea import AttemptOutcome
+    from algua.registry.ideas import IdeaRepository
+    from tests.campaign_fixtures import attempt
+
+    conn = connect(fixture_pool)
+    conn.execute("UPDATE ideas SET status='discarded' WHERE id IN (2,3)")
+    conn.commit()
+    old = IdeaRepository(conn).get(1)
+    attempt(conn, old, AttemptOutcome.RUN_ERROR)
+    candidate = add_idea(conn, old.title if blocked_by == 'duplicate' else 'range asymmetry',
+                         family='a')
+    if blocked_by == 'refuted':
+        conn.execute("UPDATE ideas SET status='refuted' WHERE id=?", (candidate.id,))
+    elif blocked_by == 'monthly':
+        conn.execute("UPDATE ideas SET horizon='monthly' WHERE id=?", (candidate.id,))
+    conn.commit()
+    result = cli('cycle-start', '--run', 'excluded', '--limit', '1', '--choose',
+                 '--choice-dir', str(tmp_path / 'excluded'))
+    assert result.returncode == 0, result.stdout
+    assert json.loads(result.stdout)['claimed'] == []
+    assert conn.execute('SELECT COUNT(*) FROM idea_attempts').fetchone()[0] == 1
+    assert not fake_runtime.exists()
+    conn.close()
+
+
+def test_multi_slot_cycle_preserves_unspent_novelty_reserve(fixture_pool, tmp_path):
+    from algua.contracts.idea import AttemptOutcome
+    from algua.registry.ideas import IdeaRepository
+    from tests.campaign_fixtures import attempt
+
+    conn = connect(fixture_pool)
+    conn.execute("UPDATE ideas SET status='discarded' WHERE id IN (2,3)")
+    conn.commit()
+    attempt(conn, IdeaRepository(conn).get(1), AttemptOutcome.RUN_ERROR)
+    for title in ['range asymmetry', 'calendar volume drift']:
+        add_idea(conn, title, family='a')
+    conn.close()
+    result = cli('cycle-start', '--run', 'multi', '--limit', '2', '--menu-only')
+    assert result.returncode == 0, result.stdout
+    choices = json.loads(result.stdout)['menu']['choices']
+    assert len(choices) == 1
+    assert 'unused novelty reserve' not in choices[0]['reason']
+
+
 def test_menu_only_excludes_unsupported_rows_and_can_be_adopted(fixture_pool, tmp_path):
     conn = connect(fixture_pool)
     conn.execute("UPDATE ideas SET horizon='monthly' WHERE id=1")

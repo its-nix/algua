@@ -1,4 +1,5 @@
 """Pure policy selection from aggregate lifetime evidence."""
+import json
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 
@@ -148,8 +149,15 @@ def test_newer_outcome_invalidates_preexisting_duplicate_even_with_its_exact_id(
 ])
 def test_declared_changes_are_checked_against_persisted_idea_fields(history_db, field,
                                                                  old_fields, new_fields, eligible):
-    old = add_idea(history_db, "opening imbalance persistence", family="a", **old_fields)
+    # Seed historical metadata after the attempt: today's claim boundary correctly refuses
+    # unsupported capabilities, but this test concerns comparison with an older experiment.
+    old = add_idea(history_db, "opening imbalance persistence", family="a",
+                   **{k: v for k, v in old_fields.items() if k != 'required_data'})
     attempt(history_db, old, AttemptOutcome.HOLDOUT_NEGATIVE)
+    if 'required_data' in old_fields:
+        history_db.execute('UPDATE ideas SET required_data=? WHERE id=?',
+                           (json.dumps(old_fields['required_data']), old.id))
+        history_db.commit()
     candidate = add_idea(history_db, old.title, family="a", duplicate_of_idea_id=old.id,
                          override_reason=f"changed_fields={field}; ideas:1 idea_attempts:1; "
                                          "Measure archived auction-only next-session drift",
