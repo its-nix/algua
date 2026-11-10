@@ -83,6 +83,18 @@ def _report(tmp_path, rows):
     return path
 
 
+def test_data_blockage_finishes_execution_without_qualification_or_refutation(cycle, tmp_path):
+    claimed, _ = _start(cycle)
+    report = _report(tmp_path, [{'idea_id': i.id, 'outcome': 'data_blocked',
+                                'reason': 'known non-PIT pilot'} for i in claimed])
+    result = cycle.finish(phase='completed', worker_exit=0, report=report)
+    assert result['ok'] is True
+    assert result['blocked_count'] == 2 and result['error_count'] == 0
+    assert result['ok_count'] == 0
+    assert result['qualification_status'] == 'blocked'
+    assert all(row['outcome'] == 'data_blocked' for row in cycle.rows())
+
+
 def test_identity_context_is_detached_and_immutable(cycle):
     context = {"snapshot": "fixture-pinned", "nested": {"seed": 42}}
     claimed, running = _start(cycle, context=context)

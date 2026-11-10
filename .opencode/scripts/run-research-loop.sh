@@ -454,6 +454,7 @@ if (isinstance(attempts, list) and len(attempts) <= 40
     outcomes = [a["outcome"] for a in attempts]
     controller = {key: cycle_result.get(key) for key in (
         "research_cycle_id", "phase", "attempts_total", "terminal_count", "unfinished_count",
+        "blocked_count", "qualification_status",
         "invalid_count", "error_count", "ok_count")}
     errors = cycle_result.get("write_errors")
     controller.update(idea_ids=sorted(a["idea_id"] for a in attempts),
@@ -1159,9 +1160,9 @@ kb/research-runs/${STAMP}.md MUST END with a machine-readable trailer — exactl
 block as the FINAL element of the file:
 \`\`\`json
 {"hypotheses": [{"idea_id": <the claimed idea's id>, "title": "<short hypothesis title>",
-  "outcome": "integrity_fail|holdout_negative|walkforward_refuted|sweep_unstable|candidate_preview_pass|run_error",
+  "outcome": "data_blocked|integrity_fail|holdout_negative|walkforward_refuted|sweep_unstable|candidate_preview_pass|run_error",
   "reason": "<why, <= 300 chars>", "falsification_assessment": "refuted|survived|untested",
-  "verdict": "discarded|candidate-preview-pass|error",
+  "verdict": "blocked|discarded|candidate-preview-pass|error",
   "merge_back": {"idea_id": <the claimed idea's id>, "strategy": "<strategy_module_name>", "universe": "<universe>", "start": "YYYY-MM-DD", "end": "YYYY-MM-DD",
     "eval_context": {"snapshot": "<bars snapshot id>", "sweep_grid": {"<param>": [<v1>, <v2>]},
       "rank_by": "mean_sharpe", "windows": 4, "holdout_frac": 0.2}}}],
@@ -1169,7 +1170,8 @@ block as the FINAL element of the file:
 \`\`\`
 EXACTLY one hypotheses[] entry per CLAIMED idea, carrying that idea's "idea_id" (title <= 120
 chars, plain ASCII). "outcome" is what actually happened to the idea and is written straight into
-the authoritative idea ledger, so be honest: "integrity_fail" (preflight/integrity check refused
+the authoritative idea ledger, so be honest: "data_blocked" (known data/provenance exclusion, not a refutation),
+"integrity_fail" (an actual integrity check refused
 it), "holdout_negative" (holdout Sharpe <= 0), "walkforward_refuted" (out-of-sample windows
 refute it), "sweep_unstable" (only isolated parameter combos work), "candidate_preview_pass" (the
 preview gate passed) or "run_error" (you could not test it — say why in "reason", e.g. an

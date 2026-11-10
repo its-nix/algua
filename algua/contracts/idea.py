@@ -74,6 +74,7 @@ OBSCURITY_RANK: dict[Obscurity, int] = {
 class AttemptOutcome(StrEnum):
     """Written once per claim by a trusted driver (never by an agent)."""
     INTEGRITY_FAIL = "integrity_fail"
+    DATA_BLOCKED = "data_blocked"
     HOLDOUT_NEGATIVE = "holdout_negative"
     WALKFORWARD_REFUTED = "walkforward_refuted"
     SWEEP_UNSTABLE = "sweep_unstable"
