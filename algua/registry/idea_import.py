@@ -194,6 +194,10 @@ def reclassify(conn: sqlite3.Connection) -> dict:
             if idea.claimed_by is not None or idea.status not in {
                     IdeaStatus.OPEN, IdeaStatus.NEEDS_DATA}:
                 continue
+            # A manual park has no machine-classified capability gap. Do not infer that its
+            # provenance or experimental-design blocker disappeared from metadata alone.
+            if idea.status is IdeaStatus.NEEDS_DATA and idea.parked_reason is None:
+                continue
             status, parked = idea_eligibility(idea)
             if status is idea.status and parked == idea.parked_reason:
                 continue
