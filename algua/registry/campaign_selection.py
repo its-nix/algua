@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 from algua.contracts.idea import DataCapability, Horizon, Market
 from algua.registry.idea_eligibility import platform_eligibility
@@ -25,7 +25,13 @@ def menu_from_history(history: dict, request: dict) -> dict:
         h if not gaps[h['id']] and (category is None or h["category"] == category)
         else {**h, "claimed_by": "filtered"}
         for h in history["hypotheses"]]}
-    choices = campaign_menu(eligible_history, budget=request["limits"]["max_hypotheses"])
+    budget = request['limits']['max_hypotheses']
+    choices = campaign_menu(eligible_history, budget=budget)
+    # A one-slot operational cycle must not starve eligible replications forever. Keep unseen
+    # families first; borrow only an otherwise idle slot, retaining every normal exclusion.
+    if budget == 1 and not choices:
+        choices = tuple(replace(c, reason=c.reason + '; unused novelty reserve reallocated')
+                        for c in campaign_menu(eligible_history, budget=1, novelty_min=0))
     history = {**history, "hypotheses": [
         {k: v for k, v in h.items() if k != "claim_token"} for h in history["hypotheses"]]}
     body: dict = {"request": request, "scorecard": history,
