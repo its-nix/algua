@@ -282,7 +282,7 @@ def _extract_import_capture_block() -> str:
 _IMPORT_CAPTURE_SRC = _extract_import_capture_block()
 
 
-def _fake_uv_bin(tmp_path: Path, *, stdout: str, stderr: str = "") -> Path:
+def _fake_uv_bin(tmp_path: Path, *, stdout: str, stderr: str = "", exit_code: int = 0) -> Path:
     bindir = tmp_path / "fakebin-uv"
     bindir.mkdir(exist_ok=True)
     fake_uv = bindir / "uv"
@@ -290,7 +290,7 @@ def _fake_uv_bin(tmp_path: Path, *, stdout: str, stderr: str = "") -> Path:
     if stderr:
         script += f"cat >&2 <<'ERR'\n{stderr}\nERR\n"
     script += f"cat <<'OUT'\n{stdout}\nOUT\n"
-    script += "exit 0\n"
+    script += f"exit {exit_code}\n"
     fake_uv.write_text(script, encoding="utf-8")
     fake_uv.chmod(fake_uv.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
     return bindir
@@ -303,6 +303,7 @@ def _run_import_capture(tmp_path: Path, fake_uv_bindir: Path) -> dict:
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         f'REPO_ROOT={tmp_path!s}\n'
+        f'AUTH_DATA_DIR={tmp_path!s}\n'
         f'RUN_LOG={run_log!s}\n'
         "IMPORT_CMD=(uv run algua research idea import --from x --run y --max 1"
         " --seeded-max-id 0 --critic-file z)\n"
@@ -336,6 +337,7 @@ def test_leap_import_stderr_noise_never_corrupts_the_parsed_imported_list(tmp_pa
     assert json.loads(result["RESULT_IMPORTED"]) == [123, 456]
     assert json.loads(result["RESULT_CRITIC"]) == 1
     assert result["RESULT_PARSE_ERROR"] == "0"
+    assert (tmp_path / 'research-ready').is_file()
     # The noise must still be visible somewhere (the run log or the terminal), not swallowed.
     assert "fake noise" in result["run_log"].read_text(encoding="utf-8")
 
@@ -348,6 +350,16 @@ def test_leap_import_output_not_json_fails_loudly_and_flags_the_digest(tmp_path)
     assert "WARNING: import output was not JSON" in result["stderr"]
     # Printed exactly once, not once per field (imported/skipped/critic_rows).
     assert result["stderr"].count("WARNING: import output was not JSON") == 1
+    assert not (tmp_path / 'research-ready').exists()
+
+
+def test_empty_or_failed_import_does_not_wake_research(tmp_path):
+    for case, payload, code in [('empty', '{"ok": true, "imported": []}', 0),
+                                ('failed', '{"ok": false, "imported": [1]}', 1)]:
+        directory = tmp_path / case
+        directory.mkdir()
+        _run_import_capture(directory, _fake_uv_bin(directory, stdout=payload, exit_code=code))
+        assert not (directory / 'research-ready').exists()
 
 
 def test_leap_seeded_max_id_read_and_backup_share_one_python_invocation():

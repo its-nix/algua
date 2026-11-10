@@ -39,6 +39,7 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     research_batch_cmd,
     research_cmd,
     research_memory_cmd,
+    research_ready_cmd,
     risk_cmd,
     runs_cmd,
     strategy_cmd,
@@ -65,6 +66,7 @@ idea_cmd.idea_app.add_typer(idea_ops_cmd.idea_ops_app)
 research_cmd.research_app.add_typer(negative_cmd.log_app, name="log")
 research_cmd.research_app.add_typer(inspirations_cmd.inspirations_app, name="inspirations")
 research_cmd.research_app.add_typer(research_batch_cmd.run_all_app, name="run-all")
+research_cmd.research_app.command('ready')(research_ready_cmd.ready)
 research_cmd.research_app.add_typer(research_memory_cmd.memory_app, name="memory")
 # data_refresh_cmd.refresh_app carries only `refresh-bars`; merged flat (no `name=`) onto
 # data_app so `algua data refresh-bars ...` is unchanged while data_refresh_cmd never imports
