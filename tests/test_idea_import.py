@@ -205,6 +205,16 @@ def test_reclassify_refuses_inside_an_existing_transaction(tmp_path):
     auth.rollback()
 
 
+def test_reclassify_preserves_manual_park_without_a_capability_reason(tmp_path):
+    auth = _db(tmp_path / 'auth.db')
+    repo = IdeaRepository(auth)
+    idea = _add(repo, 'manual provenance hold', 'requires an additional provenance decision',
+                status=IdeaStatus.NEEDS_DATA)
+    before = repo.get(idea.id)
+    assert reclassify(auth) == {'reopened': [], 'parked': []}
+    assert repo.get(idea.id) == before
+
+
 # --- Final fix wave (whole-branch review 2026-09-09) ---------------------------------------------
 
 NOTE = """---
