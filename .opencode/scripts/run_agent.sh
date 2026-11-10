@@ -113,13 +113,18 @@ CMD=(opencode run --pure --agent "$MODE" --dir "$WORKDIR")
 [ -n "$VARIANT" ] && CMD+=(--variant "$VARIANT")
 CMD+=(--print-logs --log-level INFO)
 [ "$MODE" = "chooser" ] && CMD+=(--format json --title "Constrained campaign choice")
-# The prompt is passed as a FILE, never as argv: Linux caps a single argument at 128 KiB and the
-# leap prompt (inspirations + pool state + refuted list) is the one that gets close.
-#
-# ORDER MATTERS. `--file` is an ARRAY flag, so `-f FILE "message"` swallows the message as a
-# second filename and the run dies with `File not found: message`. The message must come FIRST.
-# Measured, not assumed: the first form failed every invocation until a live smoke test caught it.
-CMD+=("Follow the instructions in the attached file." -f "$PROMPT_FILE")
+if [ "$MODE" = "chooser" ]; then
+  # Attachments pass through the runtime reader's 2000-char line / 50-KiB page limits. A bounded
+  # JSON menu can still lose its identity and evidence there. Deliver the chooser's <=96-KiB
+  # prompt literally, below Linux's 128-KiB single-argument limit, without shell evaluation.
+  [ "$(wc -c < "$PROMPT_FILE")" -le 98304 ] || die "chooser prompt exceeds 96 KiB argument bound"
+  CHOOSER_PROMPT="$(cat "$PROMPT_FILE")" || die "cannot read chooser prompt"
+  CMD+=(-- "$CHOOSER_PROMPT")
+else
+  # Unbounded research/leap/forage prompts keep file delivery to avoid Linux's argument limit.
+  # --file is an array flag: the message must precede it or it becomes a second filename.
+  CMD+=("Follow the instructions in the attached file." -f "$PROMPT_FILE")
+fi
 
 # KERNEL WRITE WALL. Confine writes to the worktree plus the runtime's own state, so a model that
 # talks its way past a tool permission still cannot reach the authoritative DB or the real checkout.
