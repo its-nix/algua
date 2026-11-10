@@ -69,7 +69,8 @@ if case == 'internal_state':
     with state.open('wb') as stream:
         for _ in range(9):
             stream.write(b'x' * 1024 * 1024)
-prompt = Path(sys.argv[sys.argv.index('-f')+1]).read_text()
+prompt = (Path(sys.argv[sys.argv.index('-f')+1]).read_text()
+          if '-f' in sys.argv else sys.argv[-1])
 menu = json.loads(prompt.split('MENU_JSON\\n',1)[1])
 choice = {**menu['choices'][-1], 'reason':'SYNTHETIC_FIXTURE uses the captured evidence'}
 reply = {'menu_id': menu['menu_id'], 'choices':[choice]}
@@ -122,6 +123,26 @@ def cli(*args):
     return subprocess.run([sys.executable, '-c', 'from algua.cli.main import main; main()',
                            'research', 'idea', *args], cwd=ROOT, env=os.environ.copy(),
                           capture_output=True, text=True, timeout=30)
+
+
+def test_chooser_receives_full_prompt_as_literal_text(fixture_pool, fake_runtime, tmp_path):
+    directory = tmp_path / 'literal'
+    marker = tmp_path / 'MUST_NOT_EXECUTE'
+    conn = connect(fixture_pool)
+    conn.execute('UPDATE ideas SET hypothesis=? WHERE id=1',
+                 (f'UNTRUSTED $(touch {marker}) `touch {marker}` $HOME',))
+    conn.commit()
+    conn.close()
+    result = cli('cycle-start', '--run', 'literal', '--limit', '3', '--choose',
+                 '--choice-dir', str(directory))
+    assert result.returncode == 0, result.stdout
+    commands = [json.loads(line) for line in fake_runtime.read_text().splitlines()]
+    run = next(c for c in commands if c[0] == 'run')
+    prompt = (directory / 'prompt.txt').read_text()
+    assert len(prompt) > 2000
+    assert '-f' not in run and '--file' not in run
+    assert run[-1] == prompt
+    assert not marker.exists()
 
 
 def test_menu_only_excludes_unsupported_rows_and_can_be_adopted(fixture_pool, tmp_path):

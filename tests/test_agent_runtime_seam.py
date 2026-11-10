@@ -7,7 +7,8 @@ smeared across three scripts plus an untracked file, and the test suite pinned a
 spelling as if it were an invariant.
 
 What is actually invariant is asserted here: one entry point, a hard timeout, a kernel write wall,
-no prompt that can block an unattended run, and a prompt delivered as a FILE rather than as argv.
+no prompt that can block an unattended run, and bounded chooser text / file delivery for
+larger loops.
 """
 
 from __future__ import annotations
@@ -41,6 +42,17 @@ def _dry(mode: str, **env: str) -> str:
 def test_seam_exists_and_is_executable():
     assert SEAM.is_file()
     assert SEAM.stat().st_mode & 0o111, "the drivers invoke the seam directly; it must be +x"
+
+
+def test_oversized_chooser_prompt_stops_before_invoking_runtime(tmp_path):
+    prompt = tmp_path / 'oversized.txt'
+    prompt.write_text('x' * (96 * 1024 + 1))
+    proc = subprocess.run([str(SEAM), '--mode', 'chooser', '--workdir', str(tmp_path),
+                           '--prompt-file', str(prompt), '--dry-run'],
+                          capture_output=True, text=True)
+    assert proc.returncode == 2
+    assert 'chooser prompt exceeds 96 KiB' in proc.stderr
+    assert 'would run:' not in proc.stdout
 
 
 @pytest.mark.parametrize("mode", MODES)
