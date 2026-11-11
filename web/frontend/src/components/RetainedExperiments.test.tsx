@@ -44,6 +44,27 @@ function serve(list: unknown = index, payload: unknown = detail, stale = false) 
   return fetch
 }
 
+it('opens latest metrics with visible evaluation choice and dated benchmark windows', async () => {
+  const value = { ...observation(1, null), kind: 'sweep_trial',
+    inputs: { params: { evaluation_role: 'benchmark', benchmark_for: 'primary_strategy' },
+      public_window_record: { schema_version: 'public-wf-windows/v1', windows: [
+        { start: '2025-01-01', end: '2025-03-31', n_bars: 60, total_return: -0.12, sharpe: -0.4 },
+        { start: '2025-04-01', end: '2025-06-30', n_bars: 63, total_return: 0.08, sharpe: 0.5 },
+      ] } } }
+  serve({ ...index, attempts: [{ ...index.attempts[0], outcome: 'data_blocked' }] },
+    { ...detail, evaluations: [value] })
+  render(<RetainedExperiments />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Open latest result' }))
+  expect(await screen.findByRole('combobox', { name: 'Evaluation' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Download retained metrics CSV' })).toBeTruthy()
+  expect(screen.getByText(/Diagnostic benchmark for primary strategy/)).toBeTruthy()
+  expect(screen.getByText(/Worker completed/)).toBeTruthy()
+  const table = screen.getByRole('region', { name: 'Window metric table' })
+  expect(within(table).getByText('-12.0%')).toBeTruthy()
+  expect(within(table).getByText('2025-04-01')).toBeTruthy()
+  expect(document.querySelector<HTMLDetailsElement>('.retained-more')?.open).toBe(false)
+})
+
 it('shows retained attempts without registered strategies and selects exact cycle observations', async () => {
   const fetch = serve()
   render(<RetainedExperiments />)
@@ -103,6 +124,14 @@ it('does not display metrics when show does not bind the selected attempt', asyn
   expect(screen.queryByText('worker_1')).toBeNull()
 })
 
+it('does not label an absent worker exit as an execution failure', async () => {
+  serve(index, { ...detail, worker_exit: null })
+  render(<RetainedExperiments />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Open latest result' }))
+  expect(await screen.findByText(/does not match the selected attempt/i)).toBeTruthy()
+  expect(screen.queryByText(/Worker failed/)).toBeNull()
+})
+
 it('shows empty and stale index states honestly', async () => {
   serve({ ...index, attempts: [], count: 0 }, detail, true)
   render(<RetainedExperiments />)
@@ -137,7 +166,7 @@ it('formats known in-sample metrics while preserving exact raw values behind dis
   fireEvent.click(summary)
   expect(disclosure.open).toBe(true)
   expect(within(disclosure).getByText('-0.1234')).toBeTruthy()
-  expect(screen.getByText(/lookback/).closest('details')?.open).toBe(false)
+  expect(screen.getByText(/"lookback"/).closest('details')?.open).toBe(false)
   expect(screen.getByText(/fixture-model/).closest('details')?.open).toBe(false)
   expect(document.querySelector('.retained-compact')).toBeTruthy()
 })
