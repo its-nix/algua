@@ -7,6 +7,9 @@ import EvidenceStatus from './EvidenceStatus'
 import RetainedResearchWindows from './RetainedResearchWindows'
 import { downloadRetainedMetrics, metricEntries, retainedParameters } from './retainedMetricExport'
 
+type EmpiricalAssessment = 'refuted' | 'survived' | 'untested' | 'unknown'
+const assessments = new Set(['refuted', 'survived', 'untested', 'unknown'])
+
 interface Attempt {
   attempt_id: number
   evidence_id: string
@@ -15,6 +18,7 @@ interface Attempt {
   outcome: string
   outcome_at: string | null
   archive_reference: string
+  reported_falsification_assessment?: EmpiricalAssessment
 }
 interface Index {
   schema_version: 'retained-research-index/v1'
@@ -68,7 +72,10 @@ function isIndex(v: unknown): v is Index {
     && v.attempts.every((r: unknown) => object(r) && positive(r.attempt_id) && positive(r.idea_id)
       && r.evidence_id === `idea_attempts:${r.attempt_id}`
       && typeof r.research_cycle_id === 'string' && cycleShape.test(r.research_cycle_id)
-      && typeof r.outcome === 'string' && typeof r.archive_reference === 'string')
+      && typeof r.outcome === 'string' && typeof r.archive_reference === 'string'
+      && (r.reported_falsification_assessment === undefined
+        || typeof r.reported_falsification_assessment === 'string'
+          && assessments.has(r.reported_falsification_assessment)))
 }
 
 function isMemory(v: unknown, selected: Attempt): v is Memory {
@@ -153,7 +160,8 @@ export default function RetainedExperiments({ compact = false }: { compact?: boo
         <summary className="retained-trust-badge">Unverified research</summary>
         <p>UNVERIFIED_WORKER · authority: none · cycle-only association.</p>
         <p>Index metadata is not verified. Attempt references are not independent trials or
-          registered strategies. Archive integrity is checked on selection; worker evidence
+          registered strategies. Reported empirical assessments come from the operational run digest
+          and grant no qualification authority. Archive integrity is checked on selection; worker evidence
           remains unverified. Execution and qualification outcomes are separate, and cycle
           observations are not attributed to an individual idea.</p>
       </details>
@@ -181,6 +189,7 @@ export default function RetainedExperiments({ compact = false }: { compact?: boo
                   <span className="retained-row-main">
                     <strong className="retained-row-title">{attemptDate(row.outcome_at)}</strong>
                     <span className="retained-row-meta">Attempt {row.attempt_id} · Idea {row.idea_id}</span>
+                    <span className="retained-row-meta">Reported empirical: {row.reported_falsification_assessment ?? 'unknown'}</span>
                   </span>
                   <span className="retained-outcome">{outcomeLabels[row.outcome] ?? row.outcome.replace(/_/g, ' ')}</span>
                 </button>
@@ -219,6 +228,9 @@ function RetainedDetail({ selected }: { selected: Attempt }) {
     <div className="retained-detail">
       {(detail.data.stale || detail.error !== null) && <EvidenceStatus title="retained archive" state="stale"
         detail={detail.error?.message ?? 'Showing cached verified readback.'} onRetry={detail.refetch} />}
+      <p className="retained-caption">Reported empirical assessment: {selected.reported_falsification_assessment ?? 'unknown'}.
+        {' '}Worker-reported research only; this is separate from qualification. Unknown means no matching
+        completed assessment was available, and survived does not establish profitability.</p>
       {payload.evaluations.length === 0 ? <p>No retained numerical evaluations.</p> : <>
         <header className="retained-detail-header">
           <h3 className="retained-detail-title">{evaluation.strategy_name.replaceAll('_', ' ')}</h3>

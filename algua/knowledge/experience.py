@@ -115,9 +115,11 @@ def render_campaign_experience(scorecard: dict) -> str:
                      + json.dumps(counts, sort_keys=True, indent=2) + "\n```\n")
         for a in scorecard["attempts"]:
             if a["idea_id"] in ids:
+                assessment = a.get("reported_falsification_assessment", "unknown")
                 parts.append(f"- {a['evidence_id']} (ideas:{a['idea_id']}): "
                              f"{a['outcome'] or 'unfinished'} — {a['reason'] or 'no conclusion'}; "
-                             f"evidence_ref={a['evidence_ref']}\n")
+                             f"reported_empirical={assessment} "
+                             f"(worker-reported); evidence_ref={a['evidence_ref']}\n")
         for n in scorecard["negative_results"]:
             if ids.intersection(n.get("idea_ids", [])):
                 parts.append(f"- {n['evidence_id']} (context): {n['reason']}\n")

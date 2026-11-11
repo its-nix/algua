@@ -138,3 +138,7 @@ Web dependencies (fastapi, uvicorn, httpx, ...) must **NEVER** be added to the
 root project: the root `uv.lock` is identity-bearing — its hash is part of the
 `dependency_hash` stamped into gate artifacts, so touching it invalidates
 promotion identity. All web deps live here, locked in `web/uv.lock`.
+
+Retained attempt rows also show `reported_falsification_assessment` separately from qualification.
+This is an advisory worker claim projected from a matching completed operational run digest,
+not a gate result or archive-integrity guarantee. Legacy or unmatched reports display `unknown`.
