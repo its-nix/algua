@@ -14,7 +14,7 @@ from algua.registry.negative_results import list_negative_results
 _MIN_N = 5
 _PAST_INTEGRITY = frozenset(a.value for a in AttemptOutcome) - {
     AttemptOutcome.INTEGRITY_FAIL.value, AttemptOutcome.ABANDONED.value,
-    AttemptOutcome.RUN_ERROR.value}
+    AttemptOutcome.RUN_ERROR.value, AttemptOutcome.DATA_BLOCKED.value}
 _PAST_WALKFORWARD = _PAST_INTEGRITY - {AttemptOutcome.HOLDOUT_NEGATIVE.value,
                                        AttemptOutcome.WALKFORWARD_REFUTED.value,
                                        AttemptOutcome.SWEEP_UNSTABLE.value}
@@ -152,6 +152,7 @@ def _campaign_counts(rows: list[dict]) -> dict[str, int]:
             "unfinished": unfinished,
             "invalid": outcomes.count(AttemptOutcome.INTEGRITY_FAIL.value),
             "run_error": outcomes.count(AttemptOutcome.RUN_ERROR.value),
+            "data_blocked": outcomes.count(AttemptOutcome.DATA_BLOCKED.value),
             "abandoned": outcomes.count(AttemptOutcome.ABANDONED.value),
             "economic_rejected": rejected, "economic_evaluated": rejected + preview + promoted,
             "preview_pass": preview, "promoted_candidate": promoted}

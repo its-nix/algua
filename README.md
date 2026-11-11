@@ -86,6 +86,13 @@ No `--as-of` override backdates collection. The existing source-file ingest path
 
 ## Containerized research-loop runs (local-first)
 
+For event-driven host research, enable `deploy/systemd/algua-research.path` alongside the existing
+six-hour timer. Trusted leap imports touch `ALGUA_DATA_DIR/research-ready`; `research ready` skips
+idle or exhausted invocations without starting a model. Configure the path unit for the installed
+data directory. `ALGUA_RESEARCH_DAILY_CYCLE_LIMIT=4` admits at most four chooser launches per UTC
+day, including failures and existing recorded launches. The worker's per-run CPU, wall-time and
+memory caps still apply. This resource budget grants no paper/live authority.
+
 Reproducible, disposable runs that don't pollute the host. One image runs both the loop and the
 gate. Prerequisite: `cp .env.example .env` (compose loads it; paper creds only — never live).
 

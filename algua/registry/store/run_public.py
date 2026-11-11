@@ -6,6 +6,7 @@ import sqlite3
 from typing import Any
 
 from algua.provenance.research_disclosure import (
+    public_model_components,
     public_number,
     public_numbers,
     public_run_provenance,
@@ -71,7 +72,11 @@ def public_rows(cursor: sqlite3.Cursor) -> list[sqlite3.Row]:
                     public_lineage(json.loads(values["derived_from"])))
             except (ValueError, TypeError):
                 values["derived_from"] = "[]"
-            values["components"] = "[]"  # model-backed WF is unsupported
+            try:
+                values["components"] = json.dumps(
+                    public_model_components(json.loads(values["components"])))
+            except (ValueError, TypeError):
+                values["components"] = "[]"
             values["series_backtest_id"] = values["series_holdout_id"] = None
             row = sqlite3.Row(cursor, tuple(values[key] for key in row.keys()))
         rows.append(row)

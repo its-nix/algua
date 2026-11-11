@@ -104,7 +104,7 @@ def phase_a_binding(
     early: EarlyPlannerInput, *, decision_ts: datetime | None, warming: bool
 ) -> str:
     """Return the normative integrity-only binding for a snapshot-required outcome."""
-    root = {
+    root: dict[str, Any] = {
         "domain": "algua.phase-a-binding",
         "version": "1",
         "early": {
@@ -133,4 +133,10 @@ def phase_a_binding(
             "warming": warming,
         },
     }
+    if early.boundary_version == 2:
+        from algua.live.frozen_model_wire import model_extension
+
+        root["version"] = "2"
+        root["model_profile"] = {"strategy_interface": "context_v1", "protocol_version": 2,
+            **model_extension(early.resolved_config_json, early.bars_snapshot_id)}
     return hashlib.sha256(_canonical(root)).hexdigest()

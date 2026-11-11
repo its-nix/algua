@@ -18,7 +18,8 @@ and `research idea add` see the real pool's whole history — every existing, au
 idea — but everything you write lands in scratch.
 
 **The scratch pool is the only thing you write into**, plus two files at the worktree root
-(`leap-critic.jsonl` and `leap-report.md`). Do not edit anything under `kb/` or `data/`, do not
+(`leap-critic.jsonl` and `leap-report.md`), and a temporary `leap-experiment.json` plan for the
+preflight below. Do not edit anything under `kb/` or `data/`, do not
 commit, and do not try to reach the network (you have none, and web search is disabled this run).
 After you exit, a trusted driver imports your survivors into authority, re-running the collision
 and eligibility checks itself. **An idea counts only if you actually `research idea add` it** —
@@ -87,6 +88,14 @@ profile, reject the recipe in `leap-critic.jsonl` with `reason_kind="untestable"
 engineering gap; never silently change
 the control or falsification. A separately justified daily adaptation must state what changed
 and still pass the existing dedup/refuted-history checks.
+Before adding a runnable hypothesis, write its proposed sweep and every mandatory control to
+`leap-experiment.json` (the existing research task-array format). Names may be future modules.
+Declare `required_window_metrics` on each sweep, e.g. `["total_return"]` for paired returns, and
+run `uv run algua research run-all --tasks leap-experiment.json --preflight-only`. This spends no
+numerical trial and checks supported output names/grid syntax, not unbuilt source or actual data.
+Reject unsupported observables, such as factor alpha that the engine does not compute; the later
+authored batch must pass the actual strategy/profile preflight too. The research loop must retain
+the paired window dates/metrics for both books. This check grants no qualification authority.
 Declared `pilot_real_proxy` permits numerical exploration, not qualification. Preserve all seven
 caveats: vendor-revisable adjusted prices, unverified corporate actions, missing delisted symbols,
 unavailable event knowledge times, unavailable historical market cap, unavailable PIT universe

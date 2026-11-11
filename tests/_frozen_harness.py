@@ -275,6 +275,24 @@ class Store:
             self.built[key] = self._build(key)
         return self.built[key]
 
+    def model_bundle(self, strategy: LoadedStrategy, source: str) -> Path:
+        from algua.registry.frozen_model_assets import pack_model
+
+        asset, model_files = pack_model(strategy.model_handle)
+        key = "model"
+        BUNDLES[key] = ({strategy.name: source}, recorded(strategy),
+            {item.path: item.data for item in _bundle_files(
+                (), recorded(strategy), model_asset=asset)}[PROTOCOL])
+        bundle = self.bundle(key)
+        unseal(bundle)
+        (bundle / "algua/strategies/momentum" / f"{strategy.name}.py").unlink(missing_ok=True)
+        for item in model_files:
+            path = bundle / item.path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(item.data)
+        seal(bundle)
+        return bundle
+
     def _build(self, key: str) -> Path:
         strategies, resolved, stamp = BUNDLES[key]
         bundle_digest = digest(key)

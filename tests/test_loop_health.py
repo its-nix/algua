@@ -6,6 +6,9 @@ the monitor was green, because a dead loop produces no strategy rows to be unhea
 
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import pytest
 
 from algua.operator.loop_health import (
     MERGEBACK_STALE_AFTER_S,
@@ -93,6 +96,16 @@ def test_a_clean_but_ancient_run_is_stale(tmp_path) -> None:
     old = NOW - timedelta(seconds=RESEARCH_STALE_AFTER_S + 60)
     _digest(tmp_path, [_run(finished_at=old.isoformat())])
     assert _status(tmp_path)["loops"]["research"]["health"] == "stale"
+
+
+@pytest.mark.parametrize("age_hours,health", [
+    (6, "ok"), (12, "ok"), (18, "ok"), (18 + 1 / 3600, "stale"),
+])
+def test_research_freshness_matches_six_hour_timer(tmp_path, age_hours, health) -> None:
+    timer = Path(__file__).resolve().parents[1] / "deploy/systemd/algua-research.timer"
+    assert "OnCalendar=*-*-* 00/6:00:00 UTC" in timer.read_text()
+    _digest(tmp_path, [_run(finished_at=(NOW - timedelta(hours=age_hours)).isoformat())])
+    assert _status(tmp_path)["loops"]["research"]["health"] == health
 
 
 def test_consecutive_failures_and_last_ok_are_counted_across_the_window(tmp_path) -> None:

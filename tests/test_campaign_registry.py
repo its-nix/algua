@@ -93,13 +93,13 @@ def test_lifetime_denominators_preserve_all_attempts_and_wal(tmp_path):
         before = {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()}
         sc = read_campaign_scorecard(path)
         assert sc["totals"] == {
-            "attempted": 9, "completed": 8, "unfinished": 1, "invalid": 1,
+            "attempted": 10, "completed": 9, "unfinished": 1, "invalid": 1, "data_blocked": 1,
             "run_error": 1, "abandoned": 1, "economic_rejected": 3,
             "economic_evaluated": 5, "preview_pass": 1, "promoted_candidate": 1,
         }
-        assert len(sc["attempts"]) == 9
+        assert len(sc["attempts"]) == 10
         assert {a["evidence_id"] for a in sc["attempts"]} == {
-            f"idea_attempts:{n}" for n in range(1, 10)}
+            f"idea_attempts:{n}" for n in range(1, 11)}
         assert {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()} == before
     finally:
         conn.close()

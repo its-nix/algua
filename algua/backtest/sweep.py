@@ -19,12 +19,13 @@ from algua.backtest.core_budget import admit, close_lease_fd_in_worker, cpu_budg
 from algua.backtest.delisting import DelistingRecord
 from algua.backtest.engine import fetch_symbols
 from algua.backtest.errors import BacktestError
+from algua.backtest.model_policy import require_fixed_model_period
 from algua.backtest.run_inputs import RunInputBundle, capture_run_inputs
+from algua.backtest.sweep_windows import public_sweep
 from algua.backtest.walkforward import walk_forward
 from algua.contracts.types import DataProvider, FundamentalsProvider, NewsProvider
 from algua.portfolio.construction import ConstructionError, validate_construction_params
 from algua.portfolio.overlays import OverlayError, resolve_overlays
-from algua.provenance.research_disclosure import public_window_result
 from algua.strategies.base import LoadedStrategy
 
 _MAX_COMBOS = 200
@@ -206,9 +207,10 @@ class SweepResult:
     news_snapshot: str | None = None
     bars_provenance: dict[str, Any] | None = None
     execution_costs: dict[str, Any] | None = None
+    model_ref: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return public_window_result(dataclasses.asdict(self))
+        return public_sweep(dataclasses.asdict(self))
 
 
 def _evaluate_combo(
@@ -252,6 +254,8 @@ def _evaluate_combo(
         "n_windows": wf.windows,
         "stability": wf.stability,
         "score": wf.stability[rank_by],
+        "window_metrics": wf.to_dict()['window_metrics'],
+        "window_context": {'embargo': wf.embargo, 'execution': wf.execution_semantics},
         "meta": {
             "data_source": wf.data_source,
             "snapshot_id": wf.snapshot_id,
@@ -373,14 +377,7 @@ def sweep(
     """
     if rank_by not in _RANK_KEYS:
         raise ValueError(f"rank_by must be one of {sorted(_RANK_KEYS)}, got {rank_by!r}")
-    # Model lane (#376) is not supported in sweep (it runs walk_forward per combo, which is not
-    # PIT-safe for a fixed-per-run model across OOS windows). Fail fast at the top with a clear
-    # message rather than surfacing the per-combo walk_forward failure. See walk_forward.
-    if strategy.config.needs_model:
-        raise BacktestError(
-            f"strategy {strategy.name!r} declares needs_model; sweep/walk-forward do not support "
-            f"the model lane yet (#376 follow-up) — refusing to run (fail closed)"
-        )
+    require_fixed_model_period(strategy, start)
     # Parent pre-pass: build + validate EVERY override here so a bad signal key or invalid
     # construction param fails fast (ValueError) BEFORE any worker process spawns — exactly the
     # parent-side behavior the sequential loop had. Shared with external pre-checks via
@@ -410,8 +407,7 @@ def sweep(
     )
     results = _run_combos(overridden, eval_kwargs)
 
-    # Build records in COMBO ORDER (zip with the original combos) so _rank_records' stable
-    # tie-break on equal score+std_sharpe stays reproducible regardless of worker completion order.
+    # Combo order makes stable ranking ties reproducible across worker completion orders.
     records = [
         {
             "params": combo,
@@ -419,6 +415,8 @@ def sweep(
             "n_windows": res["n_windows"],
             "stability": res["stability"],
             "score": res["score"],
+            "window_metrics": res['window_metrics'],
+            "window_context": res['window_context'],
             "bars_provenance": res["meta"].get("bars_provenance"),
             "execution_costs": res["meta"].get("execution_costs"),
         }
@@ -435,6 +433,8 @@ def sweep(
 
     return SweepResult(
         strategy=strategy.name,
+        model_ref=(strategy.config.model_ref.as_dict() if strategy.config.needs_model
+                   and strategy.config.model_ref is not None else None),
         data_source=meta["data_source"],
         snapshot_id=meta["snapshot_id"],
         timeframe=meta["timeframe"],

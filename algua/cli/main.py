@@ -14,6 +14,7 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     audit_cmd,
     backtest_cmd,
     campaign_cmd,
+    capped_live_cmd,
     data_cmd,
     data_context_cmd,
     data_refresh_cmd,
@@ -21,6 +22,7 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     eval_cmd,
     fleet_cmd,
     governance_cmd,
+    handoff_cmd,
     idea_cmd,
     idea_ops_cmd,
     inspirations_cmd,
@@ -30,11 +32,15 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     operator_cmd,
     ops_cmd,
     paper_cmd,
+    paper_mechanics_cmd,
     portfolio_cmd,
     registry_cmd,
+    replay_cmd,
     research_batch_cmd,
     research_cmd,
     research_memory_cmd,
+    research_ready_cmd,
+    risk_cmd,
     runs_cmd,
     strategy_cmd,
 )
@@ -47,6 +53,9 @@ from algua.cli.errors import error_envelope, is_retryable
 # research_batch_cmd (the `run-all` batch worker, #326) is likewise mounted here — it imports the
 # reusable task bodies from backtest_cmd/research_cmd, so mounting at the composition root keeps
 # those listed command modules free of any sibling import.
+live_cmd.live_app.add_typer(capped_live_cmd.capped_live_app)
+paper_cmd.paper_app.add_typer(handoff_cmd.handoff_app)
+paper_cmd.paper_app.add_typer(paper_mechanics_cmd.mechanics_app, name="mechanics")
 research_cmd.research_app.add_typer(idea_cmd.idea_app, name="idea")
 research_cmd.research_app.add_typer(campaign_cmd.campaign_app)
 # idea_ops_cmd carries the driver-facing claim/record-outcome/link/depth/refuted/import/
@@ -57,6 +66,7 @@ idea_cmd.idea_app.add_typer(idea_ops_cmd.idea_ops_app)
 research_cmd.research_app.add_typer(negative_cmd.log_app, name="log")
 research_cmd.research_app.add_typer(inspirations_cmd.inspirations_app, name="inspirations")
 research_cmd.research_app.add_typer(research_batch_cmd.run_all_app, name="run-all")
+research_cmd.research_app.command('ready')(research_ready_cmd.ready)
 research_cmd.research_app.add_typer(research_memory_cmd.memory_app, name="memory")
 # data_refresh_cmd.refresh_app carries only `refresh-bars`; merged flat (no `name=`) onto
 # data_app so `algua data refresh-bars ...` is unchanged while data_refresh_cmd never imports
@@ -64,6 +74,7 @@ research_cmd.research_app.add_typer(research_memory_cmd.memory_app, name="memory
 data_cmd.data_app.add_typer(data_refresh_cmd.refresh_app)
 data_cmd.data_app.add_typer(data_context_cmd.context_data_app)
 backtest_cmd.backtest_app.add_typer(portfolio_cmd.portfolio_app)
+backtest_cmd.backtest_app.add_typer(replay_cmd.replay_app)
 app.add_typer(deployment_cmd.deployment_app, name="deployment")
 app.add_typer(model_cmd.model_app, name="model")
 

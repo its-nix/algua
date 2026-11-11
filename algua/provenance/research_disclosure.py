@@ -191,7 +191,27 @@ def public_window_result(payload: dict[str, Any]) -> dict[str, Any]:
     out["bars_provenance"] = public_bars(payload.get("bars_provenance"))
     out["execution_costs"] = public_run_provenance({
         "execution_costs": payload.get("execution_costs")})["execution_costs"]
+    if payload.get("model_ref") is not None:
+        pins = public_model_components([payload["model_ref"]])
+        out["model_ref"] = pins[0] if pins else {"invalid_fields": True}
     return out
+
+
+def public_model_components(value: Any) -> list[dict[str, Any]]:
+    """Only the supported single model's closed input identity; no artifact/report payloads."""
+    if not isinstance(value, list) or len(value) != 1:
+        return []
+    ref = value[0]
+    if (not isinstance(ref, dict) or set(ref) !=
+            {'name','version','digest','training_as_of','provenance_digest'}
+            or type(ref['version']) is not int or ref['version'] < 1
+            or any(not isinstance(ref[k], str) or not ref[k].strip()
+                   for k in ('name','training_as_of','digest','provenance_digest'))
+            or any(re.fullmatch('[0-9a-f]{16}', ref[k]) is None
+                   for k in ('digest','provenance_digest'))):
+        return []
+    # The cutoff is opaque declared input here; PIT eligibility is checked by the model loader.
+    return [dict(ref)]
 
 
 def public_trial(value: dict[str, Any]) -> dict[str, Any]:

@@ -43,7 +43,9 @@ Follow the `author-a-strategy` skill precisely:
 - Include `GENERATED_BY = "agent"` after imports, preserving any `__future__` import ordering.
 
 After writing, verify it loads and runs with the caller's exact snapshot, interval and required
-sidecars: `uv run algua backtest run <name> <data-options>` must emit metrics JSON. Use `--demo`
+sidecars: `uv run algua backtest run <name> <data-options> --research-only` must emit metrics JSON
+for a real snapshot. This smoke excludes the reserved final holdout; use the caller's holdout
+fraction if supplied. Use `--demo` without `--research-only`
 only for an explicitly synthetic run. If required data or a pinned model is unavailable, report
 that limitation; do not substitute demo data, a different signal or a fabricated pin.
 

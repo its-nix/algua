@@ -125,6 +125,23 @@ def cli(*args):
                           capture_output=True, text=True, timeout=30)
 
 
+def test_daily_budget_refuses_second_chooser_before_runtime(fixture_pool, fake_runtime,
+                                                           tmp_path, monkeypatch):
+    monkeypatch.setenv('ALGUA_RESEARCH_DAILY_CYCLE_LIMIT', '1')
+    first = cli('cycle-start', '--run', 'budget-first', '--limit', '1', '--choose',
+                '--choice-dir', str(tmp_path / 'first'))
+    assert first.returncode == 0, first.stdout
+    calls = fake_runtime.read_text()
+    second = cli('cycle-start', '--run', 'budget-second', '--limit', '1', '--choose',
+                 '--choice-dir', str(tmp_path / 'second'))
+    assert second.returncode == 1, second.stdout
+    assert 'daily research budget exhausted' in second.stdout
+    assert fake_runtime.read_text() == calls
+    conn = connect(fixture_pool)
+    assert conn.execute('SELECT COUNT(*) FROM idea_attempts').fetchone()[0] == 1
+    conn.close()
+
+
 def test_chooser_receives_full_prompt_as_literal_text(fixture_pool, fake_runtime, tmp_path):
     directory = tmp_path / 'literal'
     marker = tmp_path / 'MUST_NOT_EXECUTE'

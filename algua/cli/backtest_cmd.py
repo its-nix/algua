@@ -75,6 +75,9 @@ def run(
     emit_series: str = typer.Option(
         None, "--emit-series",
         help="write the daily return series to a parquet at PATH (for series plots)"),
+    research_only: bool = typer.Option(False, '--research-only',
+                                       help='Smoke only before the reserved holdout'),
+    holdout_frac: float = typer.Option(0.2, '--holdout-frac'),
 ) -> None:
     """Backtest a strategy and emit metrics JSON."""
     emit(ok(run_backtest_task(
@@ -82,6 +85,7 @@ def run(
         fundamentals_snapshot=fundamentals_snapshot, news_snapshot=news_snapshot,
         delistings=delistings, assume_terminal_last_close=assume_terminal_last_close,
         register=register, emit_series=emit_series, track=track,
+        research_only=research_only, holdout_frac=holdout_frac,
     )))
 
 

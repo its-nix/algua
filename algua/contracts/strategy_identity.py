@@ -7,18 +7,28 @@ import json
 from dataclasses import asdict
 from typing import Any
 
-from algua.contracts.strategy_interface import CONTEXT_INTERFACE_V1, uses_context_interface
+from algua.contracts.strategy_interface import (
+    CONTEXT_INTERFACE_V1,
+    LEGACY_INTERFACE,
+    StrategyInterface,
+    is_supported_strategy_interface,
+    uses_context_interface,
+)
 
 
 def loaded_config_hash(strategy: Any) -> str:
-    identity = _identity(strategy.config)
-    if uses_context_interface(strategy.strategy_interface):
+    return strategy_config_hash(strategy.config, strategy_interface=strategy.strategy_interface)
+
+
+def strategy_config_hash(
+    config: Any, *, strategy_interface: StrategyInterface = LEGACY_INTERFACE,
+) -> str:
+    if not is_supported_strategy_interface(strategy_interface):
+        raise ValueError("unsupported strategy interface for config identity")
+    identity = _identity(config)
+    if uses_context_interface(strategy_interface):
         identity["strategy_interface"] = CONTEXT_INTERFACE_V1
     return _hash(identity)
-
-
-def strategy_config_hash(config: Any) -> str:
-    return _hash(_identity(config))
 
 
 def _identity(config: Any) -> dict[str, Any]:

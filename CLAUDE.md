@@ -86,6 +86,12 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   `--min-vol`, `--max-drawdown`, `--max-staleness`) are human-only. A passing run is the ONLY
   agent path to `forward_tested`; re-running at `forward_tested` refreshes the live-wall
   certificate without changing the stage.
+- `uv run algua paper handoff NAME` — unallocate and drain qualified frozen paper exposure;
+  no new tick, kill switch or live authority. `live activate-experimental NAME --capital USD`
+  previews the approved historical-plus-five-session route; `--actor human` only issues its
+  challenge. Only the enrolled human's exact signature activates/allocates the frozen deployment.
+  See [capped live](docs/agent/capped-live.md); raw frozen registry go-live stays refused and no
+  strict forward certificate is manufactured. Capital increases require a new signed request.
 - `uv run algua paper merge-back --branch B --strategy S --universe U --start D --end D` — autonomous
   research-cycle merge-back (#485): one repo-global-locked cycle that gated-merges a candidate branch
   onto `main` (preview-merge → FULL quality gate on the staged tree → commit only on green), runs the
@@ -203,6 +209,16 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   terminal provider error instead of burning the whole timeout. Changing how an agent is launched
   means changing the seam, never a driver.
 ## Lifecycle stages
+
+**Autonomous paper (owner direction, 2026-11-09):** normal paper operation never asks the owner
+to sign. `risk configure paper --policy FILE` applies the valid paper-only account policy directly;
+`risk restore paper --reason TEXT` is an explicit reconciled restoration with immutable history.
+`paper qualify-experimental NAME` records passing historical-plus-five-session evidence as the
+actual agent; `--preview` reads without recording. No human identity is fabricated. These commands
+grant no live authority. Existing historical/forward integrity checks and optional authenticated
+human exceptions retain their meaning. Live activation, live risk-policy changes/restoration and
+capital increases still require their real-money human ceremonies.
+
 `idea -> backtested -> candidate -> paper -> forward_tested -> live -> retired`
 (plus allowed back-steps and `-> retired`). See `algua/contracts/lifecycle.py`.
 `dormant` is a NON-terminal rest state for validated-but-resting strategies (entered only from

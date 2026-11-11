@@ -211,7 +211,8 @@ def recorded_descriptor(
         raise FrozenContentUnavailable(
             "recorded descriptor", deployment_id=deployment.id) from exc
     try:
-        return manifest, decode_tenant_config(manifest, name)
+        config = decode_tenant_config(manifest, name)
+        return manifest, config
     except FrozenTenantUnsupported as exc:
         exc.deployment_id = deployment.id
         raise

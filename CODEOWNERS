@@ -32,6 +32,38 @@
 /algua/contracts/strategy_interface.py @Lior-Nis   # Task 2 closed decision-interface vocabulary
 /algua/contracts/strategy_identity.py @Lior-Nis   # Task 2 interface-aware config identity
 /algua/contracts/strategy_scoring.py @Lior-Nis   # Task 2 context scoring and model-pin checks
+/algua/contracts/frozen_model.py @Lior-Nis   # portable pinned model identity and byte verification
+/algua/risk/layered.py @Lior-Nis   # signed layered exposure policy and exact boundary arithmetic
+/algua/registry/db/drawdown.py @Lior-Nis   # durable independent account risk state and evidence
+/algua/registry/drawdown_store.py @Lior-Nis   # account risk state CAS and independent latches
+/algua/registry/drawdown_auth.py @Lior-Nis   # account policy signatures and restoration baseline
+/algua/execution/alpaca_reductions.py @Lior-Nis   # quote health and exact-identity bounded reductions
+/algua/execution/drawdown_flows.py @Lior-Nis   # cash-flow identity, timing and sign accounting
+/algua/execution/drawdown_actions.py @Lior-Nis   # attributed reduction intents and guarded submissions
+/algua/execution/drawdown_cycle.py @Lior-Nis   # shared account risk intervention ordering
+/algua/execution/drawdown_guard.py @Lior-Nis   # per-order state rechecks and aggregate reservation
+/algua/execution/drawdown_watch.py @Lior-Nis   # risk watcher live-authority reuse
+/algua/cli/layered_runtime.py @Lior-Nis   # account controller integration before strategy effects
+/algua/cli/risk_cmd.py @Lior-Nis   # signed policy and restoration command surface
+/algua/cli/live_cmd.py @Lior-Nis   # live enforcement call sites
+/algua/execution/book_breaker_halt.py @Lior-Nis   # selected profile versus legacy breaker routing
+/algua/execution/alpaca_broker.py @Lior-Nis   # venue selection and guarded reduction transport
+/algua/execution/fleet_health.py @Lior-Nis   # independent account risk halt visibility
+/algua/registry/db/experimental.py @Lior-Nis   # append-only experimental observations and qualifications
+/algua/registry/experimental_sessions.py @Lior-Nis   # real-session eligibility and exact epoch evidence
+/algua/registry/experimental_qualification.py @Lior-Nis   # historical lineage and signed qualification persistence
+/algua/operator/paper_observations.py @Lior-Nis   # non-overridden scheduled observation capture
+/algua/cli/paper_experimental.py @Lior-Nis   # authenticated experimental qualification command
+/algua/backtest/model_policy.py @Lior-Nis   # fixed pre-period model eligibility before holdout use
+/algua/registry/frozen_model_assets.py @Lior-Nis   # bounded immutable model asset packaging and reads
+/algua/primitives/bounded_file.py @Lior-Nis   # no-symlink bounded model file reads
+/algua/strategies/context_inputs.py @Lior-Nis   # shared immutable decision context composition
+/algua/strategies/frozen_model.py @Lior-Nis   # model-only frozen strategy admission
+/algua/live/frozen_model_loading.py @Lior-Nis   # bundle-only model recovery in the child
+/algua/live/frozen_model_wire.py @Lior-Nis   # bundle-only model recovery in the child
+/algua/live/model_context.py @Lior-Nis   # bundle-only model recovery in the child
+/algua/cli/frozen_paper.py @Lior-Nis   # bundle-only model recovery in the child
+/algua/live/planner_context.py @Lior-Nis   # bundle-only model recovery in the child
 /algua/strategies/context_loader.py @Lior-Nis   # Task 2 authored context binding
 /algua/strategies/loader.py     @Lior-Nis   # Task 2 interface selection and model resolution
 /algua/strategies/tradable.py   @Lior-Nis   # Task 2 paper/live/frozen context refusal
@@ -126,3 +158,31 @@
 /algua/portfolio/overlay_policies.py   @Lior-Nis   # bundled overlay policies (trailing_stop, regime_gate), carved out of overlays.py; hashed into strategy identity
 /algua/portfolio/overlay_validation.py @Lior-Nis   # shared OverlayError + param-domain helpers, carved out of overlays.py; hashed into strategy identity
 /algua/portfolio/construction.py       @Lior-Nis   # construction policies hashed into strategy identity (#141); was unprotected until the overlays PR
+
+# Capped experimental live authority and frozen supervisor integration
+/algua/contracts/capped_live.py @Lior-Nis
+/algua/registry/db/capped_live.py @Lior-Nis
+/algua/registry/capped_auth.py @Lior-Nis
+/algua/registry/capped_context.py @Lior-Nis
+/algua/registry/capped_policy.py @Lior-Nis
+/algua/registry/capped_active.py @Lior-Nis
+/algua/registry/capped_qualification.py @Lior-Nis
+/algua/registry/capped_state.py @Lior-Nis
+/algua/registry/capped_allocation.py @Lior-Nis
+/algua/cli/capped_live_cmd.py @Lior-Nis
+/algua/cli/handoff_cmd.py @Lior-Nis
+/algua/cli/experimental_handoff.py @Lior-Nis
+/algua/cli/frozen_live.py @Lior-Nis
+/algua/cli/frozen_planner.py @Lior-Nis
+/algua/cli/capped_runtime.py @Lior-Nis
+/algua/registry/allocations.py @Lior-Nis
+
+# Isolated paper mechanics: cumulative purchase budget, identity/recovery and evidence exclusion.
+/algua/execution/paper_mechanics.py @Lior-Nis
+/algua/execution/paper_mechanics_broker.py @Lior-Nis
+/algua/execution/paper_mechanics_reconcile.py @Lior-Nis
+/algua/execution/paper_mechanics_state.py @Lior-Nis
+/algua/cli/paper_mechanics_cmd.py @Lior-Nis
+/algua/primitives/midcap_universe.py @Lior-Nis # approved paper mechanics universe parser
+/algua/strategies/momentum/midcap_weekly_momentum_smoke.py @Lior-Nis # approved symbol authority
+/algua/operator/paper_account_lock.py @Lior-Nis

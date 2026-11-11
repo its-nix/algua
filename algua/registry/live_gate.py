@@ -164,7 +164,8 @@ class LiveAuthorizationError(RuntimeError):
 
 
 def verify_live_authorization(conn: sqlite3.Connection, repo: StrategyReader, name: str,
-                              allowed_signers_path: Path) -> LiveAuthorization:
+                              allowed_signers_path: Path, *,
+                              frozen_verifier=None) -> LiveAuthorization:
     """Trade-time wall: prove the strategy's CURRENT artifact is human-authorized for live by
     re-verifying a stored signature against the CURRENT trust anchor. Trusts nothing forgeable —
     not the `stage` column, not an `approvals` row. Raises LiveAuthorizationError on any failure;
@@ -175,6 +176,11 @@ def verify_live_authorization(conn: sqlite3.Connection, repo: StrategyReader, na
     rec = repo.get(name)
     if rec.stage is not Stage.LIVE:
         raise LiveAuthorizationError(f"{name} is not live (stage={rec.stage.value})")
+    deployment = getattr(repo, 'active_deployment', lambda _id: None)(rec.id)
+    if deployment is not None and deployment.source_kind == 'frozen':
+        if frozen_verifier is None:
+            raise LiveAuthorizationError("frozen verification requires the data composition seam")
+        return frozen_verifier(conn, repo, name, allowed_signers_path)
     identity = compute_artifact_hashes(name)
     # Newest authorization for this strategy + recomputed identity REGARDLESS of revocation, so a
     # revoked newest row BLOCKS even if an older unrevoked one for the same artifact exists.
@@ -224,6 +230,10 @@ def authorization_active(conn: sqlite3.Connection, authorization: LiveAuthorizat
     of THIS invocation (the real wall, run every tick before any order). It is an in-tick liveness
     check for mid-tick revocation, not protection against a forged row — that is the full
     re-verify's job. (Slice 4 may tie this to the verified row id for defense in depth.)"""
+    from algua.contracts.capped_live import CappedLiveAuthorization
+    if isinstance(authorization,CappedLiveAuthorization):
+        from algua.registry.capped_active import active
+        return active(conn,authorization)
     row = conn.execute(
         "SELECT 1 FROM live_authorizations WHERE strategy_id=? AND code_hash=? AND config_hash=? "
         "AND dependency_hash IS ? AND revoked_at IS NULL LIMIT 1",

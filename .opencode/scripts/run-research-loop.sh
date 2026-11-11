@@ -94,6 +94,7 @@ PUBLIC_MEMORY_CONTEXT=0
 RESEARCH_PUBLIC_MEMORY_CONTEXT=0
 NO_PUBLIC_MEMORY_CONTEXT=0
 RESEARCH_PUBLIC_MEMORY_JSON=""
+RESEARCH_PROFILE_JSON=""
 CYCLE_CAMPAIGN=""
 RECOVER_WORKER_EXIT=""
 
@@ -331,6 +332,10 @@ def _validate_merge_back(mb, *, verdict, strategy_names, seen_strategies, today,
     """Validate ONE hypothesis's merge_back candidacy (slice 3). Returns (validated_dict, strategy)
     on success, or (None, None) — LOGGING why to stdout — on ANY violation. Never raises: a bad
     merge_back candidacy is dropped, never a reason to abort the run or the digest write."""
+    bound_profile = ((cycle_result.get("campaign") or {}).get("menu", {})
+                     .get("request", {}).get("context", {}).get("research_profile"))
+    if bound_profile is not None:
+        return None, None  # A configured proxy campaign never publishes merge-back work.
     if verdict != "candidate-preview-pass":
         return None, None  # merge_back is only meaningful for a preview-pass verdict
     if mb is None:
@@ -449,6 +454,7 @@ if (isinstance(attempts, list) and len(attempts) <= 40
     outcomes = [a["outcome"] for a in attempts]
     controller = {key: cycle_result.get(key) for key in (
         "research_cycle_id", "phase", "attempts_total", "terminal_count", "unfinished_count",
+        "blocked_count", "qualification_status",
         "invalid_count", "error_count", "ok_count")}
     errors = cycle_result.get("write_errors")
     controller.update(idea_ids=sorted(a["idea_id"] for a in attempts),
@@ -591,6 +597,20 @@ PY
 # bounded cycles use the shared controller and its idempotent repository reconciliation.
 record_outcomes() {
   local report="$1" phase="$2" outcomes_ok=0
+  if [[ -n "${RESEARCH_PROFILE_JSON:-}" && -n "${report}" ]]; then
+    if ! "${PYTHON}" -c '
+import sys
+from pathlib import Path
+from algua.operator.research_profile_prompt import validate_proxy_report
+try:
+    validate_proxy_report(Path(sys.argv[1]))
+except ValueError:
+    print("research profile report refused; no proxy candidacy is publishable", file=sys.stderr)
+    raise SystemExit(1) from None
+' "${report}"; then
+      report=""; phase=profile_refused
+    fi
+  fi
   if [[ "${CYCLE_ACTIVE:-0}" -eq 1 ]]; then
     local finish_args=(research idea cycle-finish --run "${STAMP}" --phase "${phase}"
                        --worker-exit "${WORKER_EXIT:-${rc:-1}}")
@@ -779,6 +799,27 @@ PY
 
 if [[ -n "${RECOVER_WORKER_EXIT:-}" ]]; then recover_interrupted_cycle; fi
 
+# Optional pinned research profile is verified before any chooser or claim.
+# An absent setting preserves legacy behavior, including its prompt bytes and I/O.
+if [[ -n "${ALGUA_RESEARCH_PROFILE+x}" ]]; then
+  if [[ "${CHOOSE_CAMPAIGN:-0}" != 1 && -z "${CAMPAIGN:-}" ]]; then
+    echo "research profile requires campaign mode; refusing unbound inputs" >&2
+    exit 2
+  fi
+  RESEARCH_PROFILE_JSON="$("${PYTHON}" -c '
+import sys
+from pathlib import Path
+from algua.operator.research_memory_checkpoint import canonical
+from algua.operator.research_profile import load_research_profile
+try:
+    receipt = load_research_profile(Path(sys.argv[1]))
+except (OSError, ValueError):
+    print("research profile verification refused", file=sys.stderr)
+    raise SystemExit(1) from None
+sys.stdout.buffer.write(canonical(receipt))
+' "${AUTH_DATA_DIR}")" || { rc=1; exit 1; }
+fi
+
 # Lock BEFORE any claim. A losing firing has no authority tokens to clean up.
 if [[ "${DRY_RUN}" -eq 0 ]]; then
   LOCK="${REPO_ROOT}/data/research-loop.lock"
@@ -935,6 +976,28 @@ campaign = json.load(sys.stdin).get("campaign")
 if campaign is not None and not isinstance(campaign, dict):
     raise ValueError("invalid cycle-start campaign")
 print("campaign" if campaign is not None else "")')"
+  # Bind the pinned profile to the same successful campaign admission.
+  if [[ -n "${RESEARCH_PROFILE_JSON:-}" && "${CLAIMED_JSON}" != "[]" ]]; then
+    RESEARCH_PROFILE_JSON="$(printf '%s' "${CLAIM_START_JSON}" | "${PYTHON}" -c '
+import sys
+from algua.operator.research_memory_checkpoint import canonical, strict_json
+from algua.operator.research_profile_prompt import admitted_profile
+try:
+    receipt = admitted_profile(sys.stdin.buffer.read(1024 * 1024 + 1),
+        expected=strict_json(sys.argv[1]), cycle_id=sys.argv[2], database=sys.argv[3])
+except ValueError:
+    print("research profile admission refused", file=sys.stderr)
+    raise SystemExit(1) from None
+sys.stdout.buffer.write(canonical(receipt))
+' "${RESEARCH_PROFILE_JSON}" "${STAMP}" "${AUTH_DB}")" || { rc=1; exit 1; }
+    CLAIMED_PROMPT_JSON="$(printf '%s' "${CLAIMED_JSON}" | "${PYTHON}" -c '
+import sys
+from algua.operator.research_memory_checkpoint import canonical, strict_json
+from algua.operator.research_profile_prompt import profile_claims
+sys.stdout.buffer.write(canonical(profile_claims(strict_json(sys.stdin.buffer.read()),
+                                               strict_json(sys.argv[1]))))
+' "${RESEARCH_PROFILE_JSON}")" || { rc=1; exit 1; }
+  fi
   unset CLAIM_START_JSON
   if [[ ( "${CHOOSE_CAMPAIGN:-0}" == 1 || -n "${CAMPAIGN:-}" ) && -z "${CYCLE_CAMPAIGN}" ]]; then
     echo "cycle-start did not adopt the requested campaign; refusing publication" >&2
@@ -946,7 +1009,8 @@ print("campaign" if campaign is not None else "")')"
   # report, transcript and any authored file are places a token would leak to, and whose DB is
   # scratch anyway). Everything the agent needs to WORK the idea rides along; the driver keeps the
   # full list, tokens included, for its own record-outcome pass.
-  CLAIMED_PROMPT_JSON="$(python3 -c '
+  if [[ -z "${RESEARCH_PROFILE_JSON:-}" ]]; then
+    CLAIMED_PROMPT_JSON="$(python3 -c '
 import json, sys
 KEEP = ("id", "title", "hypothesis", "category", "market", "horizon", "falsification",
         "inspirations", "required_data", "family")
@@ -956,6 +1020,7 @@ except Exception:
     rows = []
 print(json.dumps([{k: r.get(k) for k in KEEP} for r in rows if isinstance(r, dict)]))
 ' "${CLAIMED_JSON}")" || CLAIMED_PROMPT_JSON="[]"
+  fi
   if [[ "${N_CLAIMED}" -eq 0 ]]; then
     echo "idea pool is empty for this run; skipping (the leap timer refills it)."
     # Not a failure: exit 0 with a recorded exit_code so the loop-health digest reader does not
@@ -1095,9 +1160,9 @@ kb/research-runs/${STAMP}.md MUST END with a machine-readable trailer — exactl
 block as the FINAL element of the file:
 \`\`\`json
 {"hypotheses": [{"idea_id": <the claimed idea's id>, "title": "<short hypothesis title>",
-  "outcome": "integrity_fail|holdout_negative|walkforward_refuted|sweep_unstable|candidate_preview_pass|run_error",
+  "outcome": "data_blocked|integrity_fail|holdout_negative|walkforward_refuted|sweep_unstable|candidate_preview_pass|run_error",
   "reason": "<why, <= 300 chars>", "falsification_assessment": "refuted|survived|untested",
-  "verdict": "discarded|candidate-preview-pass|error",
+  "verdict": "blocked|discarded|candidate-preview-pass|error",
   "merge_back": {"idea_id": <the claimed idea's id>, "strategy": "<strategy_module_name>", "universe": "<universe>", "start": "YYYY-MM-DD", "end": "YYYY-MM-DD",
     "eval_context": {"snapshot": "<bars snapshot id>", "sweep_grid": {"<param>": [<v1>, <v2>]},
       "rank_by": "mean_sharpe", "windows": 4, "holdout_frac": 0.2}}}],
@@ -1105,7 +1170,8 @@ block as the FINAL element of the file:
 \`\`\`
 EXACTLY one hypotheses[] entry per CLAIMED idea, carrying that idea's "idea_id" (title <= 120
 chars, plain ASCII). "outcome" is what actually happened to the idea and is written straight into
-the authoritative idea ledger, so be honest: "integrity_fail" (preflight/integrity check refused
+the authoritative idea ledger, so be honest: "data_blocked" (known data/provenance exclusion, not a refutation),
+"integrity_fail" (an actual integrity check refused
 it), "holdout_negative" (holdout Sharpe <= 0), "walkforward_refuted" (out-of-sample windows
 refute it), "sweep_unstable" (only isolated parameter combos work), "candidate_preview_pass" (the
 preview gate passed) or "run_error" (you could not test it — say why in "reason", e.g. an
@@ -1130,6 +1196,21 @@ for preview_gate if no preview ran. The launcher parses this trailer into the du
 that seeds future runs' do-not-retest context, and enqueues every valid "merge_back" for the
 automated authoritative merge-back drainer.
 EOF
+
+# Forward the configured profile before optional public memory.
+if [[ -n "${RESEARCH_PROFILE_JSON:-}" ]]; then
+  GOAL="$(printf '%s' "${GOAL}" | "${PYTHON}" -c '
+import sys
+from algua.operator.research_memory_checkpoint import strict_json
+from algua.operator.research_profile_prompt import render_profile_goal
+try:
+    goal = render_profile_goal(sys.stdin.buffer.read().decode(), strict_json(sys.argv[1]))
+except ValueError:
+    print("research profile prompt refused", file=sys.stderr)
+    raise SystemExit(1) from None
+sys.stdout.buffer.write(goal.encode())
+' "${RESEARCH_PROFILE_JSON}")" || { rc=1; exit 1; }
+fi
 
 # Default-off preserves the existing GOAL bytes and runs no forwarding helper. The enabled
 # complete prompt (including the single newline written below) must fit before scratch setup.
@@ -1269,6 +1350,21 @@ echo "  copying snapshots from ${AUTH_DATA_DIR} ..."
 for item in snapshots manifest.jsonl; do
   [[ -e "${AUTH_DATA_DIR}/${item}" ]] && cp -RL "${AUTH_DATA_DIR}/${item}" "${SCRATCH}/data/" || true
 done
+if [[ -n "${RESEARCH_PROFILE_JSON:-}" ]]; then
+  "${PYTHON}" -c '
+import sys
+from pathlib import Path
+from algua.operator.research_memory_checkpoint import strict_json
+from algua.operator.research_profile import load_research_profile
+try:
+    copied = load_research_profile(Path(sys.argv[1]), root=Path(sys.argv[2]))
+    if copied != strict_json(sys.argv[3]):
+        raise ValueError
+except (OSError, ValueError):
+    print("copied research profile verification refused", file=sys.stderr)
+    raise SystemExit(1) from None
+' "${SCRATCH}/data" "${WORKTREE}" "${RESEARCH_PROFILE_JSON}" || { rc=1; exit 1; }
+fi
 
 # Bind the actual copied data inventory to the context recorded BEFORE the claim.
 ALGUA_DB_PATH="${AUTH_DB}" ALGUA_DATA_DIR="${AUTH_DATA_DIR}" \

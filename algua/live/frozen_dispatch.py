@@ -1,19 +1,9 @@
-"""The frozen planner port: the supervisor side of the Story 1.3c dispatcher (contract §3, §7, §8).
+"""The frozen planner port: current-supervisor walls and one cold child per phase.
 
-`FrozenPlanner` answers the three `PlannerPort` calls for one frozen tenant over one tick, and the
-current supervisor owns every strategy-free wall. Before any child it validates its own input and
-computes the planner's strategy-free verdict with the planner's own code: a breach it finds is
-returned with breach semantics whatever a child would say, with no child launched, and an input
-the planner refuses is `frozen_planner_rejected`. A pending venue belief is answered the same way
-(the pre-belief breach, else `VenueBeliefRequired`); closed bars are computed here too.
-
-Otherwise one fresh child runs the phase from the tenant's bundle (`frozen_invocation`), and its
-result must be the verdict: identical to a no-decision or snapshot (binding included), else a
-decision (cross-checked, its weights re-validated, in `frozen_attempt`) or a breach only the
-strategy's weights can cause (`DECISION_BREACH_KINDS`). Any other disagreement is
-`frozen_result_invalid`. Every fault is a `FrozenTenantFailure` carrying a §8 code, the deployment
-id and a sanitized, bounded diagnostic (raw stderr is read only into its sanitized head). Each such
-child dispatch is an attempt, recorded once judged through the injected `record` (Story 1.3d §1).
+The supervisor validates captured inputs and recomputes strategy-free outcomes before launch.
+The child's typed result must agree, including the Phase A binding; decision weights are checked
+again against current risk rules. Every dispatch is recorded once judged. Faults carry the closed
+frozen-tenant code and bounded diagnostic; the supervisor owns all effects.
 """
 
 from __future__ import annotations
@@ -118,6 +108,7 @@ class FrozenPlanner:
         self._attempts = AttemptRecorder(
             record, deployment_id=target.identity.deployment_id, snapshot_id=snapshot_id,
             bars_start=bars_start, bars_end=bars_end)
+        self._snapshot_id = snapshot_id
         self._content_checked = False
         self._snapshot: SnapshotRequired | None = None
 
@@ -184,6 +175,9 @@ class FrozenPlanner:
     # --- the supervisor's own strategy-free verdict ---------------------------------------------
 
     def _early(self, early: EarlyPlannerInput) -> EarlyVerdict:
+        if (early.boundary_version != self._target.identity.protocol_version
+                or (early.boundary_version == 2 and early.bars_snapshot_id != self._snapshot_id)):
+            raise self._failure("frozen_planner_rejected", "request/target profile mismatch")
         if early.gate_universe != self._target.gate_universe:
             raise self._failure(
                 "frozen_planner_rejected", "the early input's gate universe is not the tenant's"
@@ -192,6 +186,8 @@ class FrozenPlanner:
         if failure is not None:
             raise self._rejected(failure)
         verdict = early_verdict(early, self._target.execution)
+        if isinstance(verdict, PlannerInputFailure):
+            raise self._rejected(verdict)
         if isinstance(verdict, PlannerRiskFailure):
             return self._risk(verdict.kind, verdict.detail)
         return verdict
@@ -262,7 +258,8 @@ class FrozenPlanner:
         if code is not None:
             raise self._failure(code, process_diagnostic(ended))
         try:
-            result = decode_result(ended.stdout, phase=phase, request_id=early.request_id)
+            result = decode_result(ended.stdout, phase=phase, request_id=early.request_id,
+                                   protocol_version=target.identity.protocol_version)
         except WireError as exc:
             raise self._invalid(str(exc)) from exc
         if isinstance(result, PlannerRejected):
@@ -294,4 +291,4 @@ class FrozenPlanner:
 
 
 def _canonical(phase: Phase, early: EarlyPlannerInput, result: object) -> bytes:
-    return encode_result(phase, early.request_id, result)
+    return encode_result(phase, early.request_id, result, protocol_version=early.boundary_version)

@@ -16,7 +16,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from algua.audit.log import append as audit_append
+from algua.execution.drawdown_guard import cycle_active
 from algua.observability import get_logger
+from algua.registry.drawdown_store import account_state
 from algua.risk import global_halt
 from algua.risk.book_breaker import BookBreach
 from algua.risk.book_cycle import evaluate_book_loss_breaker
@@ -49,6 +51,11 @@ def enforce_book_loss_breaker(conn, broker, *, lane: str) -> BookBreakerTrip | N
 
     Returns None when the book is within its limits. The caller emits the envelope and exits
     non-zero on a returned trip (`flatten_error` is set when the close itself failed)."""
+    if account_state(conn, lane) is not None:
+        if not cycle_active(conn, broker, lane):
+            raise ValueError("selected risk policy needs a fresh guarded account cycle")
+        # Its early shared controller handles layered drawdown AND the independent daily limit.
+        return None
     breach = evaluate_book_loss_breaker(conn, broker, lane)
     if breach is None:
         return None

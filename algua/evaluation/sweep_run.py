@@ -83,7 +83,9 @@ def sweep_task(  # noqa: PLR0913
         # The per-combo rows behind `recorded["n_combos"]`. Written in ONE batched transaction at
         # the END of the sweep — sweep() fans combos out across processes, so concurrent
         # per-combo writers against the governance DB would be the wrong shape.
-        recorded_runs = record_sweep_run(repo, name, result)
+        recorded_runs = record_sweep_run(repo, name, result, research_inputs={
+            'delisting_snapshot': _delisting_prov,
+            'assume_terminal_last_close': assume_terminal_last_close})
     payload = result.to_dict()
     payload["ranked"] = payload["ranked"][:top]
     # Surface the MEASURED breadth this sweep contributed (this sweep's n_combos) and the

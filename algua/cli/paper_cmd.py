@@ -4,6 +4,7 @@ import importlib
 import json
 import sqlite3
 import subprocess
+from dataclasses import replace
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -21,8 +22,12 @@ from algua.cli._common import (
     resolve_operator_cycle_window,
 )
 from algua.cli.app import app, emit
+from algua.cli.capped_runtime import live_resume_view
 from algua.cli.errors import json_errors
+from algua.cli.frozen_paper import build_frozen_planner
 from algua.cli.lane_refresh import build_cycle_plan, lane_symbols, refresh_lane_snapshot
+from algua.cli.layered_runtime import paper_cycle
+from algua.cli.paper_experimental import register_experimental
 from algua.cli.paper_venue import live_strategy_flat, paper_broker_net, paper_scoped_cancel
 from algua.config.settings import get_settings
 from algua.contracts.lifecycle import Actor, Stage
@@ -30,7 +35,7 @@ from algua.contracts.types import OrderIntent
 from algua.evaluation.backtest_run import run_backtest_task
 from algua.evaluation.inputs import select_provider as _select_provider
 from algua.evaluation.sweep_run import sweep_task
-from algua.execution import paper_reconcile
+from algua.execution import drawdown_guard, paper_reconcile
 from algua.execution.alpaca_broker import (
     AlpacaLiveReadOnlyBroker,
     AlpacaPaperBroker,
@@ -65,8 +70,7 @@ from algua.execution.peaks import rebase_all_peaks, rebase_strategy_peak
 from algua.execution.sim_broker import SimBroker
 from algua.execution.tick_clock import tick_clock
 from algua.execution.venue_sync import ingest_paper_venue, recover_stranded
-from algua.live.frozen_dispatch import FrozenPlanner, FrozenTarget, FrozenTenantFailure
-from algua.live.frozen_wire import WireIdentity
+from algua.live.frozen_dispatch import FrozenPlanner, FrozenTenantFailure
 from algua.live.live_loop import (
     SubmittedOrder,
     TickHalted,
@@ -96,7 +100,6 @@ from algua.registry.forward_promotion import (
 )
 from algua.registry.frozen_runtime import (
     FrozenContentVerifier,
-    FrozenTenant,
     PaperTenant,
     prepare_paper_book,
     recheck_paper_gates,
@@ -130,6 +133,7 @@ from algua.strategies.loader import load_strategy
 
 paper_app = typer.Typer(help="Paper trading: run a paper-stage strategy", no_args_is_help=True)
 app.add_typer(paper_app, name="paper")
+register_experimental(paper_app)
 
 log = get_logger(__name__)
 
@@ -252,7 +256,7 @@ def resume(name: str) -> None:
     with registry_conn() as conn:
         rec = SqliteStrategyRepository(conn).get(name)
         if rec.stage is Stage.LIVE:
-            strategy = load_strategy(name)
+            strategy = live_resume_view(conn, name, load_strategy)
             broker = _alpaca_live_readonly_from_settings()
             is_flat, residual = live_strategy_flat(conn, name, strategy.universe, broker)
             if not is_flat:
@@ -610,24 +614,8 @@ def _frozen_planner(
     conn: sqlite3.Connection, tenant: PaperTenant, snapshot_id: str | None,
     bounds: tuple[datetime, datetime],
 ) -> FrozenPlanner | None:
-    """A FRESH frozen port for ONE tick of a frozen tenant, built from plain values (the port
-    never reaches the registry; its ``record`` is bound here to this tick's connection, Story 1.3d
-    §3); ``None`` keeps a working-tree tenant on the in-process planner. ``bounds`` are the exact
-    ones ``run_tick`` passes to ``get_bars``; the evidence names them and the snapshot."""
-    if not isinstance(tenant, FrozenTenant):
-        return None
-    if not snapshot_id:  # frozen_invocations.snapshot_id is NOT NULL: refuse before any dispatch
-        raise ValueError(f"{tenant.name}: a frozen tick needs a bars snapshot id")
-    manifest, view = tenant.manifest, tenant.view
-    identity = WireIdentity(tenant.name, tenant.deployment_id, tenant.artifact_id,
-                            tenant.deployment.manifest_digest, manifest.bundle.digest,
-                            manifest.environment.digest)
-    target = FrozenTarget(identity, tenant.bundle_root, tenant.environment_root,
-                          tenant.interpreter, view.execution, tuple(view.universe))
-    return FrozenPlanner(
-        target, invocations_root=get_settings().data_dir / "frozen/invocations",
-        record=partial(record_frozen_invocation, conn), snapshot_id=snapshot_id,
-        bars_start=bounds[0].isoformat(), bars_end=bounds[1].isoformat())
+    return build_frozen_planner(tenant, snapshot_id, bounds, data_dir=get_settings().data_dir,
+                                record=partial(record_frozen_invocation, conn))
 
 
 def _run_paper_strategy_tick(  # noqa: PLR0913
@@ -654,6 +642,7 @@ def _run_paper_strategy_tick(  # noqa: PLR0913
         if alloc is None:
             raise ValueError(f"{name} has no paper allocation")
         allocation = float(alloc["capital"])
+        drawdown_guard.require_cycle(conn, broker, "paper")
 
         # Only coids freshly inserted by this tick are safe to retract on noop (#311).
         freshly_recorded: set[str] = set()
@@ -677,6 +666,9 @@ def _run_paper_strategy_tick(  # noqa: PLR0913
                 freshly_recorded.discard(coid)
 
         port = _frozen_planner(conn, tenant, snapshot_id, bounds)
+        context = planner_context_for_deployment(deployment, get_settings().exchange)
+        if context is not None and context.protocol_version == 2:
+            context = replace(context, bars_snapshot_id=snapshot_id)
         hooks = TickHooks(
             client_order_id_for=client_order_id,
             before_submit=_before_submit,
@@ -684,14 +676,15 @@ def _run_paper_strategy_tick(  # noqa: PLR0913
             on_noop=_on_noop,
             should_halt=lambda: (kill_switch.is_tripped(conn, name)
                                  or global_halt.is_engaged(conn)
+                                 or not drawdown_guard.cycle_active(conn, broker, "paper")
                                  or not _still_paper_allocated(conn, name)),
             cancel=cancel,
-            reserve_buy=reserve_buy,
+            reserve_buy=drawdown_guard.reserve(conn, broker, "paper", reserve_buy),
             peak_equity=get_peak_equity(conn, name),
-            live_snapshot=lambda bars: build_paper_sizing_snapshot(
-                conn, name, allocation, bars, strategy.universe),
+            live_snapshot=lambda bars: drawdown_guard.sizing_snapshot(conn, broker, "paper",
+                build_paper_sizing_snapshot(conn, name, allocation, bars, strategy.universe)),
             live_positions=lambda: paper_believed_positions(conn, name),
-            planner_context=planner_context_for_deployment(deployment, get_settings().exchange),
+            planner_context=context,
             planner=port,
         )
     except (KeyboardInterrupt, SystemExit):
@@ -934,6 +927,7 @@ def run_all(
                                  reason="paper run-all invoked with --disable-drawdown-breaker",
                                  strategy=None)
                 repo = SqliteStrategyRepository(conn)
+                managed_broker = paper_cycle(conn, _alpaca_broker_from_settings)
                 paper = repo.list_strategies(Stage.PAPER) + repo.list_strategies(
                     Stage.FORWARD_TESTED)
                 skipped_unallocated = [prec.name for prec in paper
@@ -966,7 +960,7 @@ def run_all(
                           "error": "every tickable strategy failed pre-effect setup",
                           "strategies": results, "skipped_unallocated": skipped_unallocated})
                     raise typer.Exit(1)
-                broker = _alpaca_broker_from_settings()
+                broker = managed_broker or _alpaca_broker_from_settings()
                 acct = broker.account()
                 tick_ts, clock_source = tick_clock(broker.clock)
                 # ingest fills + recover crash-stranded rows BEFORE reconcile; fail closed on any

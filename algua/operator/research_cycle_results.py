@@ -10,7 +10,7 @@ from algua.contracts.idea import AttemptOutcome
 
 REPORT_OUTCOMES = frozenset({
     "integrity_fail", "holdout_negative", "walkforward_refuted", "sweep_unstable",
-    "candidate_preview_pass", "run_error",
+    "candidate_preview_pass", "run_error", "data_blocked",
 })
 
 
@@ -51,7 +51,8 @@ def completed_research_execution(record: dict[str, Any]) -> bool:
             and result["attempts_total"] == result["terminal_count"] == total
             and result["unfinished_count"] == result["invalid_count"]
             == result["write_error_count"] == 0
-            and result["error_count"] == invalid and result["ok_count"] == total - invalid)
+            and result["error_count"] == invalid
+            and result["ok_count"] == total - invalid - counts.get('data_blocked', 0))
 
 
 def clean_report_text(value: str, limit: int = 120) -> str:
@@ -95,7 +96,7 @@ def read_report(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any] | None
         if outcome is not None and (not isinstance(outcome, str) or outcome not in REPORT_OUTCOMES):
             raise ValueError("invalid outcome")
         if verdict is not None and (not isinstance(verdict, str) or verdict not in {
-            "discarded", "candidate-preview-pass", "error",
+            "discarded", "candidate-preview-pass", "error", "blocked",
         }):
             raise ValueError("invalid verdict")
         if reason is not None and not isinstance(reason, str):

@@ -9,7 +9,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+from algua.config.settings import get_settings
 from algua.operator.research_cycle import ResearchCycle
+from algua.operator.research_daily_budget import DailyResearchBudget
 from algua.registry.campaign_selection import selection_ids
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -138,6 +140,13 @@ def choose_campaign(cycle: ResearchCycle, *, menu: dict, directory: Path | None,
     if directory is None:
         raise ValueError('private chooser directory required')
     directory = directory.resolve()
+    if directory.exists():
+        raise ValueError('private chooser directory already exists')
+    settings = get_settings()
+    if settings.research_daily_cycle_limit is not None and not DailyResearchBudget(
+            settings.data_dir, settings.db_path, settings.research_daily_cycle_limit).reserve(
+                cycle.cycle_id):
+        raise ValueError('daily research budget exhausted; no chooser call')
     directory.mkdir(parents=True, exist_ok=False, mode=0o700)
     prompt_path = directory / 'prompt.txt'
     prompt_path.write_text(prompt)

@@ -26,7 +26,7 @@ def frozen_deployment_manifest(frozen: FrozenManifest) -> DeploymentManifest:
         planner_protocol_version=frozen.to_dict()["planner_protocol_version"],
         source_kind="frozen",
         source_ref=frozen.source_ref,
-        asset_digests_json="[]",
+        asset_digests_json=canonical_json(frozen.to_dict()['assets']),
     )
 
 

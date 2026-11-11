@@ -11,6 +11,7 @@ from pydantic import BaseModel, field_validator
 from algua.contracts import strategy_identity
 from algua.contracts import strategy_interface as strategy_interfaces
 from algua.contracts.model_types import ModelHandle, ModelRef, compute_provenance_digest
+from algua.contracts.strategy_identity import strategy_config_hash as strategy_config_hash
 from algua.contracts.strategy_scoring import ContextStrategyMixin, ScoreFn
 from algua.contracts.types import ExecutionContract
 from algua.portfolio.construction import (
@@ -385,8 +386,3 @@ def config_hash(strategy: LoadedStrategy) -> str:
     collision-proof guarantee — two differing configs are astronomically unlikely, not provably
     unable, to collide."""
     return strategy_identity.loaded_config_hash(strategy)
-
-
-def strategy_config_hash(config: StrategyConfig) -> str:
-    """:func:`config_hash` from the config alone (Story 1.3c: a frozen tenant loads no module)."""
-    return strategy_identity.strategy_config_hash(config)

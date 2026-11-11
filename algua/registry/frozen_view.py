@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from algua.contracts.canonical import canonical_json
+from algua.contracts.frozen_model import parse_model_ref
 from algua.contracts.types import CapacityLimit, ExecutionContract
 from algua.portfolio.overlays import OverlaySpec
 from algua.registry.frozen_manifest_contract import FrozenManifest
@@ -109,8 +110,13 @@ def _execution(value: Any) -> ExecutionContract:
     return ExecutionContract(**record, capacity=capacity)
 
 
-def _config(value: Any) -> StrategyConfig:
-    record = _fields(value, CONFIG_FIELDS, "config")
+def _config(value: Any, *, model: bool = False) -> StrategyConfig:
+    schema = CONFIG_FIELDS if not model else {
+        **CONFIG_FIELDS, 'needs_model': lambda value: value is True, 'model_ref': _is_object,
+    }
+    record = _fields(value, schema, "config")
+    if model:
+        record['model_ref'] = parse_model_ref(record['model_ref'])
     record["execution"] = _execution(record["execution"])
     record["overlays"] = [
         OverlaySpec.model_validate(_fields(item, _OVERLAY_FIELDS, "overlay"), strict=True)
@@ -124,9 +130,14 @@ def decode_frozen_config(manifest: FrozenManifest) -> StrategyConfig:
     recorded = manifest.resolved_config
     try:
         # Decode a private copy so the view can never alias (and mutate) the descriptor's record.
-        config = _config(json.loads(canonical_json(recorded)))
+        config = _config(
+            json.loads(canonical_json(recorded)), model=manifest.model_asset is not None)
+        if manifest.model_asset is not None:
+            if (config.model_ref != manifest.model_asset.ref
+                    or config.execution.rebalance_frequency != '1d'):
+                raise FrozenTenantUnsupported('model config disagrees with its frozen profile')
         dumped = canonical_json(config.model_dump(mode="json"))
-        digest = strategy_config_hash(config)
+        digest = strategy_config_hash(config, strategy_interface=manifest.strategy_interface)
         expected = canonical_json(recorded)
     except FrozenTenantUnsupported:
         raise

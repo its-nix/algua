@@ -35,6 +35,44 @@ def _run_all(tmp_path, tasks):
     return runner.invoke(app, ["research", "run-all", "--tasks", _write_tasks(tmp_path, tasks)])
 
 
+def test_recipe_preflight_requires_no_authored_strategy_or_numerical_run(tmp_path):
+    tasks = [{'action': 'sweep', 'name': 'not_authored_yet', 'demo': True,
+              'param': ['lookback=20'], 'required_window_metrics': ['total_return']}]
+    result = runner.invoke(app, ['research', 'run-all', '--tasks', _write_tasks(tmp_path, tasks),
+                                 '--preflight-only'])
+    assert result.exit_code == 0, result.stdout
+    body = json.loads(result.stdout)
+    assert body['preflight'] is True and body['strategy_checked'] is False
+    assert not (tmp_path / 'r.db').exists()
+
+
+def test_unobservable_comparison_stops_batch_before_any_trial(tmp_path, monkeypatch):
+    from algua.cli import research_batch_cmd
+    calls = []
+    monkeypatch.setitem(research_batch_cmd._DISPATCH, 'backtest', lambda *a, **k: calls.append(1))
+    result = _run_all(tmp_path, [
+        {'action': 'backtest', 'name': 'cross_sectional_momentum', 'demo': True},
+        {'action': 'sweep', 'name': 'cross_sectional_momentum', 'demo': True,
+         'required_window_metrics': ['invented_alpha']},
+    ])
+    assert result.exit_code == 1 and 'not observable' in result.stdout
+    assert calls == []
+    assert not (tmp_path / 'r.db').exists()
+
+
+def test_declared_experiment_checks_parameter_grid_before_any_trial(tmp_path, monkeypatch):
+    from algua.cli import research_batch_cmd
+    calls = []
+    monkeypatch.setitem(research_batch_cmd._DISPATCH, 'backtest', lambda *a, **k: calls.append(1))
+    result = _run_all(tmp_path, [
+        {'action': 'backtest', 'name': 'cross_sectional_momentum', 'demo': True},
+        {'action': 'sweep', 'name': 'cross_sectional_momentum', 'demo': True,
+         'param': ['typo_lookback=20'], 'required_window_metrics': ['total_return']},
+    ])
+    assert result.exit_code == 1, result.stdout
+    assert 'typo_lookback' in result.stdout and calls == []
+
+
 def _seed_bars(tmp_path):
     """Seed ~330 calendar-day bars over the full 5-symbol CONFIG universe so a 0.2 holdout
     clears the 63-obs floor (and a PIT universe can cover CONFIG for the #559 subset guard).

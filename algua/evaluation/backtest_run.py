@@ -27,6 +27,7 @@ from algua.evaluation.inputs import (
     resolve_eval_inputs,
     resolve_universe_inputs,
 )
+from algua.evaluation.research_scope import development_scope
 from algua.evaluation.series import emit_series_file
 from algua.registry.db import registry_conn
 from algua.registry.kb_sync import sync_kb_doc
@@ -43,7 +44,7 @@ def run_backtest_task(  # noqa: PLR0913
     fundamentals_snapshot: str | None = None, news_snapshot: str | None = None,
     delistings: str | None = None, assume_terminal_last_close: bool = False,
     register: bool = False, emit_series: str | None = None, track: bool = False,
-    reload: bool = False,
+    reload: bool = False, research_only: bool = False, holdout_frac: float = 0.2,
 ) -> dict:
     """Backtest a strategy and return the result payload dict (the body of ``backtest run``).
 
@@ -57,6 +58,9 @@ def run_backtest_task(  # noqa: PLR0913
     strategy, provider, start_dt, end_dt = resolve_eval_inputs(
         name, demo, snapshot, start, end, reload=reload)
     universe_by_date, universe_prov = resolve_universe_inputs(universe, start_dt, end_dt)
+    end_dt, scope = development_scope(
+        strategy, provider, start_dt, end_dt, snapshot=snapshot, research_only=research_only,
+        holdout_frac=holdout_frac, universe_by_date=universe_by_date)
     delisting_records, delisting_snapshot_id = resolve_delisting_inputs(delistings, end_dt)
     if fundamentals_snapshot and not strategy.config.needs_fundamentals:
         raise ValueError(
@@ -144,6 +148,8 @@ def run_backtest_task(  # noqa: PLR0913
             series_backtest_id=series_id)
 
     payload = result.to_dict()
+    if scope is not None:
+        payload['research_scope'] = scope
     if emit_series:
         payload["series"] = emit_series_file(result, Path(emit_series))
     if track:
