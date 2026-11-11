@@ -17,8 +17,11 @@ def public_memory_inputs(kind: str, config: Any) -> dict:
     return public_config(config)
 
 
-def context_input_limit(kind: str, inputs: dict) -> int:
+def context_input_limit(kind: str, inputs: dict, *, window_records: bool = False) -> int:
     """Call only after lossless input admission; keep the complete context at24KiB."""
+    if (window_records and kind in {"walk_forward", "sweep_trial"}
+            and "public_window_record" in inputs):
+        return 16 * 1024
     return (16 * 1024 if kind == "backtest" and set(inputs) == {"portfolio_replay"}
             else 4 * 1024)
 

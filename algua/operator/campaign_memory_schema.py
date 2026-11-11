@@ -33,7 +33,9 @@ VIEW_FIELDS = {"source_ref", "archive_ref", "kind", "strategy_name", "parent_ref
 CYCLE = r"[A-Za-z0-9][A-Za-z0-9_-]{0,95}"
 LEGACY_SELECTION_PROTOCOL = "relevant_attempts_desc/v1"
 RECENT_SELECTION_PROTOCOL = "recent_completed_attempts_desc/v1"
-SELECTION_PROTOCOLS = frozenset({LEGACY_SELECTION_PROTOCOL, RECENT_SELECTION_PROTOCOL})
+WINDOW_SELECTION_PROTOCOL = "recent_completed_windows_first/v1"
+SELECTION_PROTOCOLS = frozenset({LEGACY_SELECTION_PROTOCOL, RECENT_SELECTION_PROTOCOL,
+                                 WINDOW_SELECTION_PROTOCOL})
 ATTEMPT = re.compile(r"idea_attempts:([1-9][0-9]*)\Z")
 SOURCE = re.compile(rf"scratch:({CYCLE}):runs:([1-9][0-9]*)\Z")
 REFERENCE = re.compile(r"mlflow:(.+)/public-evidence\.json#sha256=([0-9a-f]{64})\Z", re.DOTALL)
@@ -213,8 +215,12 @@ def validate_snapshot(value: Any) -> dict:
             require(source[1] in cycles and row.get("archive_ref") == cycles[source[1]])
             observation(row, source[1], archived=False)
             require(len(canonical(row["inputs"]))
-                    <= context_input_limit(row["kind"], row["inputs"]))
-            order.append((list(cycles).index(source[1]), int(source[2])))
+                    <= context_input_limit(row["kind"], row["inputs"],
+                        window_records=value["selection_protocol"] == WINDOW_SELECTION_PROTOCOL))
+            priority = (value["selection_protocol"] == WINDOW_SELECTION_PROTOCOL
+                        and not (row["kind"] in {"walk_forward", "sweep_trial"}
+                                 and "public_window_record" in row["inputs"]))
+            order.append((list(cycles).index(source[1]), int(priority), int(source[2])))
         require(order == sorted(set(order)))
         coverage = value["coverage"]
         require(exact(coverage, COVERAGE))

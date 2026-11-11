@@ -98,6 +98,14 @@ numerical trial and checks supported output names/grid syntax, not unbuilt sourc
 Reject unsupported observables, such as factor alpha that the engine does not compute; the later
 authored batch must pass the actual strategy/profile preflight too. The research loop must retain
 the paired window dates/metrics for both books. This check grants no qualification authority.
+Before spending an author/research cycle, check the history budget after the reserved tail and
+common embargo. Walk-forward runs one continuous portfolio and then segments its returns; the
+initial feature warm-up is still inside the early public windows. Count actual closed-bar grid
+sessions, not symbol-row count. Every window required by the falsification needs post-warmup
+observations. For example, 504 sessions with a 20% reserved tail and 253-bar embargo leave 151
+public sessions: a 252-session feature cannot trade in any of them. Park a faithful long-history
+claim with the missing history requirement, or reject it as currently untestable. Never shorten
+the source lookback, embargo or comparison recipe merely to manufacture usable evidence.
 Declared `pilot_real_proxy` permits numerical exploration, not qualification. Preserve all seven
 caveats: vendor-revisable adjusted prices, unverified corporate actions, missing delisted symbols,
 unavailable event knowledge times, unavailable historical market cap, unavailable PIT universe
