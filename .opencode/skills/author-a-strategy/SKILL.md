@@ -84,9 +84,14 @@ Rules that matter:
 - `rebalance_frequency` is `"1d"` (daily) only. This retargets portfolio weights each day;
   it does not implement weekly/monthly fixed-share holding. Frozen scores or repeated target
   weights still rebalance daily. Do not change an admitted holding claim to fit the engine.
-- **Preflight all mandatory controls before numerical work.** The strategy and controls must
-  obey the supplied execution/construction profile. A pinned top-20 book cannot serve as an
-  all-universe equal-weight control. If a required holding rule or control is unsupported,
+- **Preflight all mandatory controls before numerical work.** The traded strategy obeys the
+  supplied top-20 construction. A broad diagnostic control may use equal_weight_positive with
+  positive scores on its stated eligible universe; mark its CONFIG.params evaluation_role=benchmark
+  and benchmark_for=<primary name>, matching its paired sweep task. Keep identical market data,
+  execution, terminal handling and conservative feature_lookback/embargo. Its ordinary smoke,
+  registration and promotion routes refuse the marker; the primary agent tests it in the paired
+  sweep batch. Do not silently substitute top-20 for a broad control. If a required holding rule
+  or control is genuinely unsupported,
   report the actual incompatibility rather than relabeling the experiment or inventing metrics.
   Record the existing non-refuting `run_error` outcome, with reason prefix `unsupported_cadence:`
   or `incompatible_control:`. This is an engineering failure, not evidence against the hypothesis.

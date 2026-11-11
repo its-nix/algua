@@ -24,7 +24,8 @@ propagation is not proof of actual model task receipt/use or a strategy executio
 
 The profile fixes daily static-universe exploration, costs/construction and chronological evaluation
 settings. Conflicting hypothesis inputs produce `run_error`; data substitution is not permitted.
-Proxy reports may record `integrity_fail` or operational `run_error`, with empirical findings kept
+Proxy reports record known data exclusions as `data_blocked`, actual integrity failures as
+`integrity_fail`, or operational `run_error`, with empirical findings kept
 separately. A candidate/merge-back or gate verdict in such a report is refused before controller
 completion; bound proxy campaigns also cannot publish merge-back work. No PIT label, promotion,
 forward session, live authority or source switch follows from a receipt.
@@ -41,3 +42,16 @@ uv run python -c 'import json,os; from pathlib import Path; from algua.operator.
 The dry run verifies configured source inputs but claims no ideas and invokes no model. Deployment,
 retained-memory compatibility, credentials and service activation remain the trusted operator's
 separate checks. Use the existing six-hour cadence and preserve prior checkpoints/receipts unchanged.
+
+## Diagnostic controls
+
+The primary strategy retains the pinned construction. A sweep can declare
+`"evaluation_role":"benchmark","benchmark_for":"<primary strategy name>"`; the control's
+CONFIG.params must contain the same markers so its role/target survive existing archival input
+serialization and identity hashing. Include the primary sweep in the same batch. A diagnostic
+control may use `equal_weight_positive` with empty construction_params, or the usual top-20 policy.
+All other profile inputs/costs/timing remain fixed. Declare a common conservative feature_lookback
+to align effective embargo/windows. Mismatches reject the entire declared batch before simulation.
+Normal measured trial/search-breadth recording still applies. Role labels grant no authority;
+benchmark metadata is sweep-only and cannot request registration or promotion. The pilot remains
+qualification-ineligible, and its report/merge-back refusal boundaries are unchanged.

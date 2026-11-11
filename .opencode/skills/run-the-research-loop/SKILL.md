@@ -39,6 +39,13 @@ including `total_return` when the falsification compares costed window returns. 
 preflights the whole plan and authored configs before running its first numerical task. Pair
 the returned per-trial `window_metrics` on exact start/end dates and preserve them in the report;
 an aggregate Sharpe or mean is not a substitute. Reuse these outputs instead of rerunning trials.
+The batch accepts backtest/sweep/promote, not walk-forward; call that CLI separately. Backtest
+tasks use CONFIG defaults and accept no param grid. A required broad equal-weight control may be
+a diagnostic benchmark sweep under the configured pilot: declare `evaluation_role: "benchmark"`
+and `benchmark_for: "<primary name>"` in its task and CONFIG.params. Include its primary sweep in
+the same batch. Use a common conservative feature_lookback, identical market data/terminal handling,
+lag and costs, and preserve paired dates. Broader construction applies only to the benchmark;
+the primary book keeps top-20. Do not register/promote a diagnostic control or claim authority.
 
 ### Declared real-data pilot
 

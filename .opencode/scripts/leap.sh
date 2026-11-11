@@ -249,9 +249,13 @@ Current engine: daily target-weight rebalancing only (rebalance_frequency=1d, ho
 Weekly/monthly fixed-share holding is unsupported; slow features do not change execution cadence.
 If preserving such a source-faithful hypothesis, add its true horizon so it parks; parked additions
 consume the run quota. Prioritize runnable daily recipes.
-Check every mandatory control against the supplied profile: an all-universe equal-weight book
-cannot be substituted with top-20. File unsupported mandatory controls in leap-critic.jsonl with
-reason_kind=untestable before adding a runnable idea. Preserve source claims and adaptation differences.
+The traded strategy retains the supplied top-20 profile. A mandatory broad equal-weight control
+can run as a diagnostic benchmark: declare evaluation_role=benchmark and benchmark_for=<strategy>
+on its sweep task, with the same markers in the control CONFIG.params. Include the primary strategy
+sweep in that experiment, with identical data, costs, timing and effective embargo/window boundaries.
+Use supported equal_weight_positive construction for a broad benchmark; it grants no qualification
+or merge-back authority. Do not reject an otherwise runnable idea solely for that supported control.
+Reject genuinely unsupported inputs/controls honestly; never silently substitute the benchmark.
 
 Your registry is a THROWAWAY SCRATCH COPY of the real pool (ALGUA_DB_PATH already points inside
 this worktree): dedup-check and add see the real pool's history, but write only scratch. A trusted
