@@ -387,7 +387,7 @@ def test_two_actual_cycles_release_full_payload_before_opening_the_next(memory_c
 
     monkeypatch.setattr(LocalResearchArchive, "read", observed)
     actual = read_batch({"schema_version": "campaign-public-memory-request/v1", "phase": "capture",
-        "selection_protocol": "recent_completed_attempts_desc/v1",
+        "selection_protocol": "recent_completed_windows_first/v1",
         "database": menu["request"]["database"], "cycle_directory": str(first.directory),
         "tracking_uri": archive.tracking_uri, "tracking_backend": "mlflow-sqlite", "cutoff": 2,
         "cycles": cycles, "coverage": coverage})

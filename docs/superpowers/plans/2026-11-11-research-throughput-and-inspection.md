@@ -24,3 +24,10 @@ protected gate edits, historical outcome rewrites or paper/live activation.
 Use focused checks plus Ruff/Mypy/import boundaries, bounded programmatic Claude review and runtime
 readback. Retain four model launches/day and current resource, paper and live limits. Improving
 blocker-aware ideation follows these changes if the corrected control support still leaves churn.
+
+4. Follow-up from actual runtime evidence: 15 KiB lossless public-window inputs exceed the old
+   4 KiB ordinary-record allowance, and preceding aggregate records can then starve the unchanged
+   24 KiB total context. Add a versioned window-first projection with 16 KiB window-record input
+   allowance, stable source-ID order within groups, explicit omission counts, no metric-based
+   selection, and exact old-protocol revalidation. Preserve full input objects and all caveats;
+   incomplete paired comparisons remain incomplete. No archive/schema/gate changes.

@@ -10,6 +10,7 @@ from algua.operator.campaign_memory_schema import (
     LEGACY_SELECTION_PROTOCOL,
     SELECTION_PROTOCOLS,
     VIEW_FIELDS,
+    WINDOW_SELECTION_PROTOCOL,
     MemoryContextError,
     exact,
     integer,
@@ -40,7 +41,8 @@ def normalized_store(uri: str) -> str:
 class _Projection:
     """Keep only a detached bounded prefix while each verified full archive is in scope."""
 
-    def __init__(self) -> None:
+    def __init__(self, selection_protocol: str) -> None:
+        self.window_records = selection_protocol == WINDOW_SELECTION_PROTOCOL
         self.receipts: list[dict] = []
         self.observations: list[dict] = []
         self.truncations: list[dict] = []
@@ -58,8 +60,14 @@ class _Projection:
             "attempt_evidence_ids": sorted((r["evidence_id"] for r in payload["attempt_refs"]),
                 key=lambda ref: int(ref.rsplit(":", 1)[1]))})
         self.retained += len(payload["evaluations"])
-        for row in sorted(payload["evaluations"], key=lambda row: row["source_run_id"]):
-            if len(canonical(row["inputs"])) > context_input_limit(row["kind"], row["inputs"]):
+        def priority(row: dict) -> tuple:
+            window = row["kind"] in {"walk_forward", "sweep_trial"} \
+                and "public_window_record" in row["inputs"]
+            return (self.window_records and not window, row["source_run_id"])
+
+        for row in sorted(payload["evaluations"], key=priority):
+            if len(canonical(row["inputs"])) > context_input_limit(
+                    row["kind"], row["inputs"], window_records=self.window_records):
                 self.omitted_inputs += 1
                 continue
             if not self.slots:
@@ -115,7 +123,7 @@ class _Projection:
 def project_snapshot(items: Iterable[dict], *, coverage: dict, cutoff: int,
                      tracking_uri: str, selection_protocol: str = LEGACY_SELECTION_PROTOCOL,
                      ) -> dict:
-    projection = _Projection()
+    projection = _Projection(selection_protocol)
     for item in items:
         projection.add(item)
         del item  # Release the previous full payload before advancing a producer to its next read.
