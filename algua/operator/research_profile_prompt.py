@@ -29,6 +29,13 @@ required_window_metrics: ["total_return"] on each sweep (plus any other required
 The real batch preflights all declared tasks before simulation. Retain each trial's window_metrics
 and compare the strategy/control on identical start/end dates, net of the pinned costs. Aggregate
 sweep statistics alone cannot test paired-window falsification; reuse recorded outputs.
+A diagnostic control may use broad equal_weight_positive construction. Its sweep task must declare
+evaluation_role=benchmark and benchmark_for=<primary name>. Keep both in control CONFIG.params.
+Include the primary strategy sweep in the same batch. Declare a common conservative feature_lookback
+so effective embargo and research windows match; all other profile inputs/costs/timing stay pinned.
+Benchmarks are numerical diagnostics, never registration, promotion or merge-back instructions.
+run-all supports backtest/sweep/promote actions, not walk-forward. Call walk-forward CLI separately.
+Backtest tasks use CONFIG defaults and accept no param grid; put grids only on sweep tasks.
 This is pilot_real_proxy exploration only: qualification is data_blocked, preview_gate: null,
 no merge_back, no candidate or paper admission. Empirical falsification remains a separate finding.
 Use integrity_fail only for an actual integrity failure, never merely for this known data limit.

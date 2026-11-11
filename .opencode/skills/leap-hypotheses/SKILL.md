@@ -80,14 +80,16 @@ If preserving a source-faithful unsupported-cadence hypothesis, add it with its 
 the trusted importer parks it. Parked additions consume the run's quota; prioritize runnable
 daily recipes rather than filling the quota with parked ones.
 
-Check the proposed strategy AND every mandatory comparison/control against the supplied execution
-profile before adding the idea. Under the pinned top-20 profile, each simulated control must use
-the same permitted construction, portfolio size, universe, lag and costs. An all-universe
-equal-weight control is not a top-20 book. If a required control cannot be implemented under the
-profile, reject the recipe in `leap-critic.jsonl` with `reason_kind="untestable"` and name the
-engineering gap; never silently change
-the control or falsification. A separately justified daily adaptation must state what changed
-and still pass the existing dedup/refuted-history checks.
+Check the proposed strategy AND every mandatory comparison/control before adding the idea. The
+traded strategy keeps the pinned top-20 construction. A broad equal-weight diagnostic control is
+supported with `equal_weight_positive`: its sweep declares `evaluation_role: "benchmark"` and
+`benchmark_for: "<primary strategy name>"`, with identical markers in its CONFIG.params. Include
+the primary strategy sweep in the same experiment. Both use the same universe, dates, lag, costs,
+terminal handling and effective embargo; conservatively declare a common feature_lookback so
+research windows align. These diagnostic results grant no qualification or merge-back authority.
+Do not reject a daily idea solely because it needs that broad control, and never silently replace
+the control with top-20. Reject genuinely unsupported requirements with `reason_kind="untestable"`
+and their actual gap. Label adaptations and retain all dedup/refuted-history checks.
 Before adding a runnable hypothesis, write its proposed sweep and every mandatory control to
 `leap-experiment.json` (the existing research task-array format). Names may be future modules.
 Declare `required_window_metrics` on each sweep, e.g. `["total_return"]` for paired returns, and
