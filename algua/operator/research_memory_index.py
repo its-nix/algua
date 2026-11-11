@@ -11,6 +11,7 @@ from algua.operator.campaign_memory_schema import CYCLE, memory_reference, valid
 from algua.operator.research_memory_checkpoint import load_checkpoint, validate_retained_payload
 from algua.operator.research_memory_projection import MemoryLimits
 from algua.registry.read_snapshot import registry_snapshot
+from algua.registry.reported_empirical import reported_assessments
 from algua.tracking.bounded_local_read import ReadBudget
 from algua.tracking.research_archive import LocalResearchArchive
 
@@ -62,8 +63,22 @@ def list_retained_research(database: Path, *, limit: int = 20) -> dict:
             "ORDER BY id DESC LIMIT ?", (limit + 1,),
         ).fetchall()
         entries = [_entry(row) for row in rows[:limit]]
+        cycles = sorted({row["research_cycle_id"] for row in entries})
+        assessments: dict[int, str] = {}
+        report_status = "not_requested"
+        if cycles:
+            placeholders = ",".join("?" for _ in cycles)
+            cycle_attempts = [dict(row) for row in snapshot.connection.execute(
+                "SELECT id,idea_id,run_stamp,outcome FROM idea_attempts "
+                f"WHERE run_stamp IN ({placeholders})", cycles)]
+            assessments, report_status = reported_assessments(cycle_attempts)
+        for entry in entries:
+            entry["reported_falsification_assessment"] = assessments.get(
+                entry["attempt_id"], "unknown")
     return {"schema_version": "retained-research-index/v1", "metadata_verified": False,
             "evidence_mode": "UNVERIFIED_WORKER", "authority": "none", "association": "cycle_only",
+            "reported_empirical_source": {"status": report_status, "authority": "none",
+                "evidence_mode": "UNVERIFIED_WORKER", "source": "research-runs.jsonl"},
             "count": len(entries), "limit": limit, "has_more": len(rows) > limit,
             "attempts": entries}
 

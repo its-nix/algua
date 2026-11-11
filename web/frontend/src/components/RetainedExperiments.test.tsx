@@ -193,3 +193,24 @@ it('limits the home preview to three rows without duplicating section navigation
   expect(screen.queryByRole('link')).toBeNull()
   expect(document.querySelector<HTMLDetailsElement>('.retained-more')?.open).toBe(false)
 })
+
+it('shows reported refutation separately from qualification without requiring numerical evaluations', async () => {
+  serve({ ...index, attempts: [{ ...index.attempts[0], outcome: 'data_blocked',
+    reported_falsification_assessment: 'refuted' }] }, { ...detail, evaluations: [] })
+  render(<RetainedExperiments />)
+  expect(await screen.findByText('Reported empirical: refuted')).toBeTruthy()
+  expect(screen.getByText('Data qualification blocked')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Open latest result' }))
+  expect(await screen.findByText(/Reported empirical assessment: refuted/)).toBeTruthy()
+  expect(screen.getByText(/No retained numerical evaluations/)).toBeTruthy()
+})
+
+it('keeps legacy assessments unknown and rejects unsupported assessment values', async () => {
+  serve()
+  const view = render(<RetainedExperiments />)
+  expect(await screen.findByText('Reported empirical: unknown')).toBeTruthy()
+  view.unmount(); clearFetchCache()
+  serve({ ...index, attempts: [{ ...index.attempts[0], reported_falsification_assessment: 'profitable' }] })
+  render(<RetainedExperiments />)
+  expect(await screen.findByText(/Unsupported retained index payload/)).toBeTruthy()
+})

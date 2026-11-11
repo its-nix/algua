@@ -55,3 +55,20 @@ to align effective embargo/windows. Mismatches reject the entire declared batch 
 Normal measured trial/search-breadth recording still applies. Role labels grant no authority;
 benchmark metadata is sweep-only and cannot request registration or promotion. The pilot remains
 qualification-ineligible, and its report/merge-back refusal boundaries are unchanged.
+
+### Empirical assessment and qualification
+
+`research campaign-menu` retains the authoritative attempt `outcome` and separately projects
+`reported_falsification_assessment` (`refuted`, `survived`, `untested`, or `unknown`). The completed
+worker report in the existing operational `research-runs.jsonl` supplies this advisory field only
+when cycle, idea, terminal ledger outcomes and controller counts match. It is **UNVERIFIED_WORKER**,
+authority **none**; the digest is not tamper-evident or a verified numerical conclusion. Family and
+category `reported_empirical` counts stay separate from existing economic/gate counters. Selection
+receives both axes; eligibility and automatic priority rules are unchanged.
+
+A qualification-ineligible proxy can report a refuted hypothesis. An untested comparison is not a
+refutation, and survived is not established profitability. Missing/legacy/ambiguous assessments
+stay unknown. Reads do not rewrite attempts, archives or stages. Missing, malformed, concurrently
+changed, linked, or oversized digest files (2 MiB ceiling) yield unavailable coverage and unknowns;
+repair the source separately rather than guessing conclusions. Research results in the dashboard
+show these worker-reported assessments alongside qualification outcomes.
