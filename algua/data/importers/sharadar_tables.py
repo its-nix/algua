@@ -41,8 +41,9 @@ def _dates(col: pd.Series, name: str, *, allow_missing: bool = False) -> pd.Seri
         raise SharadarSchemaError(f"column {name!r} has empty dates")
     try:
         parsed = pd.to_datetime(stripped.replace("", None), format="%Y-%m-%d", utc=True)
-    except (ValueError, TypeError) as exc:
-        raise SharadarSchemaError(f"column {name!r} has a non YYYY-MM-DD date: {exc}") from None
+    except (ValueError, TypeError):
+        # No cell text in the message: errors reach stdout, and cells are licensed vendor data.
+        raise SharadarSchemaError(f"column {name!r} has a non YYYY-MM-DD date") from None
     return parsed
 
 

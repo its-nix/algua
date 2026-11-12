@@ -93,3 +93,11 @@ def test_read_actions_round_trips_fixture(tmp_path):
     got = read_actions(paths["actions"])
     assert got["action"].tolist() == expected["action"].tolist()
     assert got["contraticker"].tolist() == expected["contraticker"].tolist()
+
+
+def test_bad_date_error_does_not_echo_the_cell(tmp_path):
+    p = tmp_path / "sep.csv"
+    p.write_text(",".join(SEP_COLUMNS) + "\nZZA,123.456,1,1,1,1,10,1,1,2020-01-03\n")
+    with pytest.raises(SharadarSchemaError) as info:
+        read_sep(p)
+    assert "123.456" not in str(info.value)

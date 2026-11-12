@@ -173,3 +173,66 @@ def test_summary_has_no_findings():
     s = run_sharadar_check(*sample_tables()).summary()
     assert s["passed"] is True
     assert all(set(c) == {"name", "status", "counts"} for c in s["checks"])
+
+
+def _ts(d):
+    return pd.Timestamp(d, tz="UTC")
+
+
+def test_sample_coverage_accepts_suffixed_reused_ticker():
+    sep, actions, tickers = sample_tables()
+    tickers = tickers.copy()
+    tickers.loc[tickers["permaticker"] == 900004, "ticker"] = "ZZRU1"
+    res = check_sample_coverage(sep, actions, tickers)
+    assert res.status == "pass" and res.counts["reused_ticker"] == 1
+
+
+def test_terminal_accepts_action_dated_before_last_price():
+    _, actions, tickers = sample_tables()
+    actions = actions.copy()
+    actions.loc[actions["action"] == "bankruptcyliquidation", "date"] = _ts("2020-01-03")
+    res = check_terminal(actions, tickers)
+    assert res.status == "pass" and res.counts["zero_recovery"] == 1
+
+
+def test_raw_units_tolerates_rounded_close_on_large_split():
+    sep, actions, _ = sample_tables()
+    extra = sep[sep["ticker"] == "ZZBK"].copy()
+    extra["ticker"] = "ZZMS"
+    extra["closeunadj"] = 11.3
+    split_day = _ts("2020-01-07")
+    extra["close"] = [round(11.3 / 480, 2) if d < split_day else 11.3 for d in extra["date"]]
+    split = pd.DataFrame([{"date": split_day, "action": "split", "ticker": "ZZMS", "name": "ZZ MS",
+                           "value": 480.0, "contraticker": None, "contraname": None}])
+    res = check_raw_units(pd.concat([sep, extra], ignore_index=True),
+                          pd.concat([actions, split], ignore_index=True))
+    assert res.status == "pass", res.findings
+
+
+def test_raw_units_keeps_reused_ticker_split_histories_apart():
+    sep, actions, tickers = sample_tables()
+    sep = sep.copy()
+    succ = (sep["ticker"] == "ZZRU") & (sep["date"] == _ts("2020-01-08"))
+    sep.loc[succ, "close"] = sep.loc[succ, "closeunadj"] / 2
+    split = pd.DataFrame([{"date": _ts("2020-01-09"), "action": "split", "ticker": "ZZRU",
+                           "name": "ZZ New Co", "value": 2.0, "contraticker": None,
+                           "contraname": None}])
+    res = check_raw_units(sep, pd.concat([actions, split], ignore_index=True), tickers)
+    assert res.status == "pass", res.findings
+
+
+def test_raw_units_fails_on_non_finite_split_value():
+    sep, actions, _ = sample_tables()
+    actions = actions.copy()
+    actions.loc[actions["action"] == "split", "value"] = float("nan")
+    res = check_raw_units(sep, actions)
+    assert res.status == "fail"
+    assert any(f.get("problem") == "invalid_split_value" for f in res.findings)
+
+
+def test_sample_coverage_ignores_valueless_split_and_dividend():
+    sep, actions, tickers = sample_tables()
+    actions = actions.copy()
+    actions.loc[actions["action"].isin(["split", "dividend"]), "value"] = float("nan")
+    res = check_sample_coverage(sep, actions, tickers)
+    assert {"missing": "split"} in res.findings and {"missing": "dividend"} in res.findings

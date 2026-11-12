@@ -26,6 +26,10 @@ misses one, because an easy sample proves nothing.
 
 If you can, add a stock-only acquisition and a reverse split.
 
+A vendor may rename the delisted holder of a reused ticker with a numeric suffix (`XYZ` becomes
+`XYZ1`). The check counts both layouts as a reused ticker. When you export, include both spellings,
+and note in your private KB which layout Sharadar uses.
+
 ## 3. Export the three tables
 
 Export SEP, ACTIONS and TICKERS as CSV, filtered to the sample tickers. Use the acquirer's ticker too.
@@ -67,7 +71,7 @@ VPS or inside a Linux container until that is fixed.
 | `terminal` | a delisted security has no terminal action within 30 days of its last price | Delisted names can't be resolved, and the survivorship check fails. |
 
 Two checks are **for information only** and never fail the run:
-- `adjusted_close`: whether the vendor's `closeadj` matches Algua's own back-adjustment. This decides spec §4.10, use `closeadj` or compute `adj_close`.
+- `adjusted_close`: whether the vendor's `closeadj` matches Algua's own back-adjustment. This decides spec §4.10, use `closeadj` or compute `adj_close`. Spinoffs are not modelled, so a stock that had a spinoff shows as inconsistent here. That is expected.
 - `revisions`: how many old rows changed between the two pulls. This is the accepted restatement residual of spec §4.6.
 
 ## 6. Record the decision
@@ -75,4 +79,5 @@ Two checks are **for information only** and never fail the run:
 Record pass or fail, the report path, and anything notable from the findings in your **private KB**,
 not in this repository.
 - **Pass:** Plan 2 (importer and universe) gets written next.
-- **Fail** on `identity`, `raw_units` or `terminal`: the roadmap stops and the provider choice reopens.
+- **Fail** on `identity`, `raw_units` or `terminal`: the roadmap stops and the provider choice reopens. There is one exception. If `raw_units` fails and **every** one of its findings carries `hint: inverted_split_ratio`, the vendor only writes ratios the other way round. Record that as the vendor's convention, treat the run as a pass, and Plan 2's importer inverts the ratio.
+- **Fail** on `sample_coverage`: the sample, not the vendor, is the problem. Pick a better sample and rerun.
