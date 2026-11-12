@@ -85,3 +85,51 @@ def test_large_windows_omit_whole_or_malformed_refuse_before_budget(memory_case,
         view = project_snapshot([dict(receipt=receipt, payload=payload)], **kwargs)
         assert not any(r['kind'] == 'walk_forward' for r in view['observations'])
         assert view['coverage']['omitted_for_input_bytes'] == 1
+
+
+def test_complete_three_leg_comparison_fits_new_protocol_without_changing_old_context(memory_case):
+    from algua.operator.campaign_memory_schema import validate_snapshot
+
+    _, _, worker, source, archive, memory = memory_case
+    conn = connect(source)
+    repo = SqliteStrategyRepository(conn)
+    for name in ['primary', 'benchmark_one', 'benchmark_two']:
+        record_walk_forward_run(repo, name, sentinel_result(),
+            params={'padding': 'x' * 3500, 'evaluation_role':
+                    'strategy' if name == 'primary' else 'benchmark', 'benchmark_for': 'primary'},
+            research_inputs={'delisting_snapshot': None, 'assume_terminal_last_close': False})
+    conn.close()
+    receipt = memory.capture(worker, worker_exit=0, source_commit='b' * 40)
+    payload = memory.read()
+    kwargs = dict(coverage=COVERAGE, cutoff=1, tracking_uri=archive.tracking_uri)
+    old = project_snapshot([dict(receipt=receipt, payload=payload)],
+        selection_protocol='recent_completed_windows_first/v1', **kwargs)
+    assert len(old['observations']) == 1
+    current = project_snapshot([dict(receipt=receipt, payload=payload)],
+        selection_protocol='recent_completed_comparisons_first/v1', **kwargs)
+    assert [r['strategy_name'] for r in current['observations']] == [
+        'primary', 'benchmark_one', 'benchmark_two']
+    assert [r['inputs'] for r in current['observations']] == [
+        r['inputs'] for r in payload['evaluations']]
+    assert 24 * 1024 < len(canonical(current)) <= 64 * 1024
+    assert current['coverage']['omitted_observations'] == 0
+    assert validate_snapshot(old) == old
+    from copy import deepcopy
+    relabeled = deepcopy(current)
+    relabeled['selection_protocol'] = 'recent_completed_windows_first/v1'
+    with pytest.raises(ValueError):
+        validate_snapshot(relabeled)
+
+
+    # The larger valid wrapper still obeys the unchanged whole-goal limit.
+    import hashlib
+
+    from algua.operator.research_prompt_memory import render_research_goal
+    wrapper = dict(schema_version='research-public-memory/v1',
+        research_cycle_id='fixture-memory', menu_id='f' * 64,
+        snapshot_sha256=hashlib.sha256(canonical(current)).hexdigest(), snapshot=current)
+    overhead = len(render_research_goal('G', wrapper).encode()) + 1
+    exact = 'G' + 'x' * (96 * 1024 - overhead)
+    assert len(render_research_goal(exact, wrapper).encode()) + 1 == 96 * 1024
+    with pytest.raises(ValueError, match='goal_too_large'):
+        render_research_goal(exact + 'x', wrapper)

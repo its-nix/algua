@@ -318,3 +318,15 @@ not claim, query archives, write a prompt or launch research. Empty/restarted cy
 existing behavior. The original worker pipeline exit, trailer grammar, gates, resources,
 retention and publication paths are unchanged. This opt-in adds no third memory read batch,
 agent tool, model setting or scheduled service.
+
+### Complete comparison contexts (November 12)
+
+Fresh captures use `recent_completed_comparisons_first/v1`: the window-first ordering and
+16 KiB complete window-input allowance remain, while the complete context is capped at 64 KiB
+and its wire/research wrapper at 65 KiB. This accommodates the actual primary plus two diagnostic
+controls without stripping repeated provenance or parameters. The chooser/research complete
+prompt remains capped at 96 KiB, with unchanged two-cycle/24-observation and artifact-read bounds.
+Overflow still omits whole tail observations with explicit coverage; no sign/value-based
+selection or complete-evidence claim follows from partial context. The earlier three protocols
+revalidate with their original 24 KiB context/25 KiB wire limits and ordering. Archives, public
+window disclosure, registry schema and qualification authority are unchanged.
