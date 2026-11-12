@@ -54,3 +54,13 @@ def test_cli_drive_error_is_a_json_envelope(tmp_path, drive):
     assert r.exit_code == 1
     body = _json(r)
     assert body["ok"] is False and body["error"] == "drive_unavailable"
+
+
+def test_cli_inbox_intake(drive):
+    drive.seed(*tables.INBOX, tables.INBOX_HEADER, [{"idea": "buy quiet small caps",
+                                                     "category": "momentum"}])
+    r = runner.invoke(app, ["research", "inbox", "intake"])
+    assert r.exit_code == 0, r.output
+    body = _json(r)
+    assert body["ok"] is True and len(body["taken"]) == 1
+    assert drive.rows(*tables.INSPIRATIONS)[0]["category"] == "momentum"
