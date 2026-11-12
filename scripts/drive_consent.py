@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""One-time Google consent for the Algua Drive bot account (docs/agent/drive.md).
+"""One-time Google consent for Algua's Drive access (docs/agent/drive.md).
 
-Run on a machine with a browser, signed in as the BOT account (not your personal one):
+Run on a machine with a browser, signed in as the Drive owner:
 
-    python3 scripts/drive_consent.py --client-secrets client_secret.json --out drive.json
+    python3 scripts/drive_consent.py --client-secrets client_secret.json --out drive.json \
+        [--create-folder "Algua"]
+
+Scope is `drive.file` ONLY: the token can touch files THIS OAuth client created and nothing else
+in the account. Everything it creates is owned by (and stored in) the signing-in account.
+`--create-folder` creates the app's own folder with the fresh token and prints its id — use it as
+ALGUA_DRIVE_FOLDER_ID (a drive.file app cannot reliably write into a folder it did not create).
 
 `client_secret.json` is the "Desktop app" OAuth client downloaded from Google Cloud Console.
 Writes `{"client_id", "client_secret", "refresh_token"}` (mode 0600); copy it to the VPS as
@@ -20,7 +26,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-SCOPES = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets"
+SCOPES = "https://www.googleapis.com/auth/drive.file"
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 
@@ -29,6 +35,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--client-secrets", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
+    ap.add_argument("--create-folder", metavar="NAME",
+                    help="create the app's own Drive folder and print its id")
     args = ap.parse_args()
 
     raw = json.loads(args.client_secrets.read_text(encoding="utf-8"))
@@ -57,7 +65,7 @@ def main() -> int:
     url = AUTH_URL + "?" + urllib.parse.urlencode({
         "client_id": client_id, "redirect_uri": redirect, "response_type": "code",
         "scope": SCOPES, "access_type": "offline", "prompt": "consent", "state": state})
-    print("Open this URL signed in as the Algua bot account:\n\n" + url + "\n", flush=True)
+    print("Open this URL signed in as the Drive owner:\n\n" + url + "\n", flush=True)
     while "code" not in result:
         server.handle_request()
 
@@ -73,6 +81,16 @@ def main() -> int:
                                     "refresh_token": token["refresh_token"]}), encoding="utf-8")
     os.chmod(args.out, 0o600)
     print(f"wrote {args.out} (mode 0600)")
+    if args.create_folder:
+        body = json.dumps({"name": args.create_folder,
+                           "mimeType": "application/vnd.google-apps.folder"}).encode()
+        req = urllib.request.Request(
+            "https://www.googleapis.com/drive/v3/files", data=body, method="POST",
+            headers={"Authorization": f"Bearer {token['access_token']}",
+                     "Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as resp:  # noqa: S310
+            folder = json.loads(resp.read())
+        print(f"created folder {args.create_folder!r}: ALGUA_DRIVE_FOLDER_ID={folder['id']}")
     return 0
 
 
