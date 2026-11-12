@@ -73,6 +73,9 @@ def test_actual_launcher_gate_skips_model_on_third_identical_context(tmp_path, m
 @pytest.mark.parametrize('import_rc,body,counts', [
     ('0', '{"ok":true,"imported":[],"critic_errors":0}', True),
     ('1', '{"ok":false,"imported":[]}', False),
+    ('1', '', False),
+    ('0', '[]', False),
+    ('0', '{"ok":true,"imported":null}', False),
     ('0', '{"ok":true,"imported":[],"critic_errors":1}', False),
 ])
 def test_actual_result_adapter_never_counts_failed_import_as_clean(

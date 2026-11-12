@@ -666,9 +666,14 @@ PY
 import json,sys
 from pathlib import Path
 from algua.operator.leap_progress import record_result
-result = json.loads(sys.argv[3])
-record_result(Path(sys.argv[1]), sys.argv[2], imported=len(result.get("imported", [])),
-              clean=sys.argv[4:] == ["0","0","0","0","0"]
+try:
+    result = json.loads(sys.argv[3])
+except ValueError:
+    result = None
+valid = isinstance(result, dict) and isinstance(result.get("imported"), list)
+record_result(Path(sys.argv[1]), sys.argv[2],
+              imported=len(result["imported"]) if valid else 0,
+              clean=valid and sys.argv[4:] == ["0","0","0","0","0"]
               and result.get("ok") is True and result.get("critic_errors", 0) == 0)
 ' "${AUTH_DATA_DIR}" "${LEAP_CONTEXT_KEY}" "${IMPORT_OUT}" "${rc}" "${timed_out}" \
   "${rate_limited}" "${IMPORT_PARSE_ERROR}" "${IMPORT_RC}")
