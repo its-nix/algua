@@ -25,6 +25,7 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     handoff_cmd,
     idea_cmd,
     idea_ops_cmd,
+    idea_publish_cmd,
     inbox_cmd,
     inspirations_cmd,
     live_cmd,
@@ -65,6 +66,7 @@ research_cmd.research_app.add_typer(campaign_cmd.campaign_app)
 # the same idiom data_refresh_cmd.refresh_app uses onto data_app below, so idea_cmd never
 # imports its sibling.
 idea_cmd.idea_app.add_typer(idea_ops_cmd.idea_ops_app)
+idea_cmd.idea_app.add_typer(idea_publish_cmd.idea_publish_app)
 research_cmd.research_app.add_typer(negative_cmd.log_app, name="log")
 research_cmd.research_app.add_typer(inspirations_cmd.inspirations_app, name="inspirations")
 research_cmd.research_app.add_typer(steering_cmd.steering_app, name="steering")

@@ -64,3 +64,48 @@ def test_cli_inbox_intake(drive):
     body = _json(r)
     assert body["ok"] is True and len(body["taken"]) == 1
     assert drive.rows(*tables.INSPIRATIONS)[0]["category"] == "momentum"
+
+
+def _seed_idea(link_id: str) -> int:
+    from algua.contracts.idea import (
+        DataCapability,
+        Horizon,
+        IdeaStatus,
+        Market,
+        Obscurity,
+        SourceType,
+    )
+    from algua.registry.db import registry_conn
+    from algua.registry.ideas import IdeaRepository, InspirationLink
+    with registry_conn() as conn:
+        idea = IdeaRepository(conn).add(
+            title="quiet drift alpha", hypothesis="quiet drift hypothesis words", family=None,
+            tags=[], source_type=SourceType.INSPIRATION, source_ref=None, source_date=None,
+            source_note=None, required_data=[DataCapability.OHLCV], status=IdeaStatus.OPEN,
+            category="momentum", market=Market.US_EQUITIES, horizon=Horizon.DAILY,
+            falsification="f", created_by_run="t",
+            inspirations=[InspirationLink(link_id, "inbox", Obscurity.HUMAN)])
+    return int(idea.id) if hasattr(idea, "id") else int(idea)
+
+
+def test_publish_writes_ideas_and_only_changed_inbox_rows(drive):
+    drive.seed(*tables.INBOX, tables.INBOX_HEADER, [
+        {"id": "r1", "idea": "mine", "status": "taken → inspiration 2026-11-12-inbox-mine-aaaaaa"},
+        {"id": "r2", "idea": "other", "status": "keep me"}])
+    drive.seed(*tables.INSPIRATIONS, tables.INSPIRATION_HEADER, [
+        {"id": "2026-11-12-inbox-mine-aaaaaa", "inbox_row_id": "r1"}])
+    idea_id = _seed_idea("2026-11-12-inbox-mine-aaaaaa")
+    r = runner.invoke(app, ["research", "idea", "publish"])
+    assert r.exit_code == 0, r.output
+    assert _json(r) == {"ok": True, "ideas": 1, "inbox_updated": 1}
+    assert [row["id"] for row in drive.rows(*tables.IDEAS)] == [str(idea_id)]
+    inbox = drive.rows(*tables.INBOX)
+    assert inbox[0]["status"] == f"#{idea_id} open" and inbox[1]["status"] == "keep me"
+    r = runner.invoke(app, ["research", "idea", "publish"])
+    assert _json(r)["inbox_updated"] == 0
+
+
+def test_publish_disabled_is_noop_exit_zero():
+    r = runner.invoke(app, ["research", "idea", "publish"])
+    assert r.exit_code == 0
+    assert _json(r) == {"ok": True, "skipped": "drive_disabled"}
