@@ -84,6 +84,8 @@ def list_cmd(
         False, "--rare-first", help="sort rare>niche>common>canon, then newest id first"),
     source_kind: str = typer.Option(
         None, "--source-kind", help="keep only this source kind (e.g. human)"),
+    found_since: str = typer.Option(
+        None, "--found-since", help="keep only notes with found_at >= this YYYY-MM-DD"),
 ) -> None:
     """Bare JSON array of frontmatter dicts (collection convention).
 
@@ -93,17 +95,19 @@ def list_cmd(
     if status is not None and exclude_status is not None and status == exclude_status:
         raise ValueError(
             f"--status {status} and --exclude-status {exclude_status} contradict each other")
+    if found_since is not None and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", found_since):
+        raise ValueError(f"--found-since {found_since!r} must be YYYY-MM-DD")
+    whole = rare_first or found_since is not None  # filter/sort BEFORE applying the limit
+    notes = list_notes(settings, status=status, exclude_status=exclude_status,
+                       limit=None if whole else limit, source_kind=source_kind)
+    if found_since is not None:
+        notes = [n for n in notes if str(n.get("found_at") or "")[:10] >= found_since]
     if rare_first:
-        notes = list_notes(settings, status=status, exclude_status=exclude_status, limit=None,
-                           source_kind=source_kind)
         notes.sort(key=lambda n: str(n.get("id") or ""), reverse=True)
         notes.sort(key=lambda n: _OBSCURITY_RANK.get(
             str(n.get("obscurity")), len(_OBSCURITY_RANK)))
-        if limit is not None:
-            notes = notes[:limit]
-    else:
-        notes = list_notes(settings, status=status, exclude_status=exclude_status, limit=limit,
-                           source_kind=source_kind)
+    if whole and limit is not None:
+        notes = notes[:limit]
     emit(notes)
 
 

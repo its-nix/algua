@@ -730,6 +730,7 @@ def test_snapshot_dir_is_outside_agent_workdir():
 def test_leap_human_ideas_bypass_the_depth_gate_in_source():
     src = LEAP.read_text()
     assert "--source-kind human" in src and "depth gate bypassed: fresh owner ideas" in src
+    assert "--found-since" in src  # review I7: the bypass is age-bounded
 
 
 def test_research_loop_publishes_after_its_digest():

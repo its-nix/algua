@@ -133,9 +133,12 @@ print("%d %s %s" % (1 if d.get("below_refill") else 0,
   # overfilling the pool; a deliberate owner idea must not wait days because the pool is "deep".
   # The per-run idea cap still applies.
   HUMAN_FRESH=0
+  # Bounded to owner ideas taken in within the last 2 days: one the critic rejects stays `fresh`,
+  # and must not keep bypassing the gate on every firing forever (review I7).
   if [[ "${BELOW}" -ne 1 && "${DRIVE:-0}" -eq 1 ]]; then
+    HUMAN_SINCE="$(python3 -c 'import datetime as d; print(d.date.today() - d.timedelta(days=2))')"
     HUMAN_FRESH="$(cd "${REPO_ROOT}" && uv run algua research inspirations list --status fresh \
-      --source-kind human --limit 1 2>/dev/null \
+      --source-kind human --found-since "${HUMAN_SINCE}" --limit 1 2>/dev/null \
       | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)"
   fi
   if [[ "${BELOW}" -ne 1 && "${HUMAN_FRESH}" -gt 0 ]]; then

@@ -261,3 +261,19 @@ def test_cli_list_source_kind_flag(tmp_path):
     r = _run("list", "--source-kind", "human")
     assert r.exit_code == 0, r.output
     assert [n["id"] for n in _json(r)] == ["2026-09-09-inbox-mine-abc123"]
+
+
+def test_cli_list_found_since_bounds_by_found_at(tmp_path):
+    """Review I7: the leap depth-gate bypass only counts RECENT owner ideas, so one the critic
+    rejected (it stays fresh) cannot keep bypassing the gate forever."""
+    d = tmp_path / "kb" / "inspirations"
+    d.mkdir(parents=True)
+    for note_id, found in (("2026-11-01-inbox-old-aaaaaa", "2026-11-01"),
+                           ("2026-11-11-inbox-new-bbbbbb", "2026-11-11")):
+        (d / f"{note_id}.md").write_text(
+            GOOD.replace("2026-09-08-quiet-turnover-drift", note_id)
+                .replace("found_at: 2026-09-08", f"found_at: {found}")
+                .replace("source_kind: blog", "source_kind: human"))
+    r = _run("list", "--source-kind", "human", "--found-since", "2026-11-10")
+    assert r.exit_code == 0, r.output
+    assert [n["id"] for n in _json(r)] == ["2026-11-11-inbox-new-bbbbbb"]
