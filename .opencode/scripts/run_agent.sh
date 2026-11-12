@@ -149,11 +149,19 @@ if [ "$SANDBOX" = "bwrap" ]; then
         --bind "${HOME}/.cache" "${HOME}/.cache"
         --bind "$XDG_DIR" "$XDG_DIR"
         --new-session --die-with-parent)
+  # Agents never call Drive (spec 2026-11-12 §5): hide the owner's refresh token from the agent,
+  # which runs model-written code and, for forage, reads untrusted web pages.
+  if [ -n "${ALGUA_DRIVE_CREDENTIALS:-}" ] && [ -e "${ALGUA_DRIVE_CREDENTIALS}" ]; then
+    WRAP+=(--ro-bind /dev/null "${ALGUA_DRIVE_CREDENTIALS}")
+  fi
 elif [ "$SANDBOX" != "none" ]; then
   die "unknown ALGUA_AGENT_SANDBOX: $SANDBOX (expected auto|bwrap|none)"
 fi
 
-FULL=(timeout "$TIMEOUT" env "${ENVV[@]}" "${WRAP[@]}" "${CMD[@]}")
+# Strip the Drive backend from the agent's environment: with these unset every ideation CLI call
+# the agent makes stays on its snapshot/scratch files and cannot write the owner's Sheets.
+FULL=(timeout "$TIMEOUT" env -u ALGUA_DRIVE_FOLDER_ID -u ALGUA_DRIVE_CREDENTIALS "${ENVV[@]}"
+      "${WRAP[@]}" "${CMD[@]}")
 
 if [ "$DRY_RUN" = "1" ]; then
   printf 'would run:'
