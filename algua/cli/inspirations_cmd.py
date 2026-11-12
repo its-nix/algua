@@ -34,7 +34,7 @@ inspirations_app = typer.Typer(
 )
 
 _KEY_RE = re.compile(r"^[a-z0-9_]+/[A-Za-z0-9_.-]+$")
-_OBSCURITY_RANK = {"rare": 0, "niche": 1, "common": 2, "canon": 3}
+_OBSCURITY_RANK = {"human": -1, "rare": 0, "niche": 1, "common": 2, "canon": 3}
 _MIN_VENUE_N = 5
 
 
@@ -81,6 +81,8 @@ def list_cmd(
     limit: int = typer.Option(None, "--limit", min=1, help="cap after any sort"),
     rare_first: bool = typer.Option(
         False, "--rare-first", help="sort rare>niche>common>canon, then newest id first"),
+    source_kind: str = typer.Option(
+        None, "--source-kind", help="keep only this source kind (e.g. human)"),
 ) -> None:
     """Bare JSON array of frontmatter dicts (collection convention).
 
@@ -91,14 +93,16 @@ def list_cmd(
         raise ValueError(
             f"--status {status} and --exclude-status {exclude_status} contradict each other")
     if rare_first:
-        notes = list_notes(settings, status=status, exclude_status=exclude_status, limit=None)
+        notes = list_notes(settings, status=status, exclude_status=exclude_status, limit=None,
+                           source_kind=source_kind)
         notes.sort(key=lambda n: str(n.get("id") or ""), reverse=True)
         notes.sort(key=lambda n: _OBSCURITY_RANK.get(
             str(n.get("obscurity")), len(_OBSCURITY_RANK)))
         if limit is not None:
             notes = notes[:limit]
     else:
-        notes = list_notes(settings, status=status, exclude_status=exclude_status, limit=limit)
+        notes = list_notes(settings, status=status, exclude_status=exclude_status, limit=limit,
+                           source_kind=source_kind)
     emit(notes)
 
 

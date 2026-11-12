@@ -248,3 +248,16 @@ def test_list_exclude_status_combines_with_rare_first_and_limit(tmp_path, catego
     r = _run("list", "--status", "fresh", "--exclude-status", "fresh")
     assert r.exit_code == 1
     assert _json(r)["ok"] is False
+
+
+def test_cli_list_source_kind_flag(tmp_path):
+    d = tmp_path / "kb" / "inspirations"
+    d.mkdir(parents=True)
+    (d / "2026-09-08-quiet-turnover-drift.md").write_text(GOOD)
+    human = (GOOD.replace("2026-09-08-quiet-turnover-drift", "2026-09-09-inbox-mine-abc123")
+                 .replace("source_kind: blog", "source_kind: human")
+                 .replace("obscurity: niche", "obscurity: human"))
+    (d / "2026-09-09-inbox-mine-abc123.md").write_text(human)
+    r = _run("list", "--source-kind", "human")
+    assert r.exit_code == 0, r.output
+    assert [n["id"] for n in _json(r)] == ["2026-09-09-inbox-mine-abc123"]

@@ -21,10 +21,14 @@ from algua.knowledge.sync import _safe_path, kb_sync_lock
 from algua.primitives.atomic_io import write_text_atomic
 
 NOTE_ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]{2,60}$")
-SOURCE_KINDS = frozenset({"book_summary", "paper", "forum", "video", "blog", "other"})
+SOURCE_KINDS = frozenset({"book_summary", "paper", "forum", "video", "blog", "other",
+                          "human"})
 MARKETS = frozenset({"us_equities", "crypto", "forex", "prediction", "any"})
 HORIZONS = frozenset({"intraday", "daily", "weekly", "monthly", "event"})
-OBSCURITY = frozenset({"canon", "common", "niche", "rare"})
+OBSCURITY = frozenset({"canon", "common", "niche", "rare", "human"})
+#: Category an owner inbox idea gets when it names none (or an unknown one); legal ONLY for
+#: `source_kind: human` notes — leap still assigns the idea a real category.
+RESERVED_HUMAN_CATEGORY = "uncategorized_human"
 NOTE_STATUSES = frozenset({"fresh", "used", "exhausted"})
 REQUIRED = ("id", "found_at", "source_url", "venue", "source_kind", "category", "market",
             "horizon", "mechanism", "obscurity", "status")
@@ -33,6 +37,10 @@ _TRACKING = re.compile(r"^(utm_.*|fbclid|gclid|mc_cid|mc_eid)$")
 
 
 def inspirations_dir(settings: Settings) -> Path:
+    """The vault's inspirations domain — or, when a driver exported a run-start Drive snapshot
+    (`settings.steering_dir`), that snapshot's copy (spec 2026-11-12 §4)."""
+    if settings.steering_dir is not None:
+        return settings.steering_dir / "inspirations"
     return settings.knowledge_dir / "inspirations"
 
 
@@ -60,7 +68,9 @@ def validate_note(fm: dict[str, Any], *, stem: str, categories: set[str]) -> lis
     for key, allowed in checks:
         if fm.get(key) and str(fm[key]) not in allowed:
             problems.append(f"{key}: {fm[key]}")
-    if fm.get("category") and str(fm["category"]) not in categories:
+    human_reserved = (fm.get("source_kind") == "human"
+                      and fm.get("category") == RESERVED_HUMAN_CATEGORY)
+    if fm.get("category") and str(fm["category"]) not in categories and not human_reserved:
         problems.append(f"category: {fm['category']}")
     if fm.get("status") not in (None, "fresh"):
         problems.append("status must be fresh on acceptance")
@@ -184,15 +194,24 @@ def mark_exhausted(settings: Settings, inspiration_id: str) -> dict[str, Any]:
 
 def list_notes(settings: Settings, *, status: str | None = None,
                exclude_status: str | None = None,
-               limit: int | None = None) -> list[dict[str, Any]]:
-    """Frontmatter of every well-named note, newest id first. `status` keeps only that status;
-    `exclude_status` drops it (what the leap driver wants: everything not yet `exhausted`)."""
+               limit: int | None = None,
+               source_kind: str | None = None) -> list[dict[str, Any]]:
+    """Frontmatter of every well-named note: the owner's own (`source_kind: human`) first, then
+    newest id first. `status` keeps only that status; `exclude_status` drops it (what the leap
+    driver wants: everything not yet `exhausted`); `source_kind` keeps only that kind."""
     d = inspirations_dir(settings)
-    notes = []
-    for path in sorted(d.glob("*.md"), reverse=True) if d.exists() else []:
+    paths = sorted(d.glob("*.md"), reverse=True) if d.exists() else []
+    parsed = []
+    for path in paths:
         if not NOTE_ID_RE.match(path.stem):
             continue
         fm, _ = parse_note(path.read_text(encoding="utf-8"))
+        parsed.append(fm)
+    parsed.sort(key=lambda fm: fm.get("source_kind") != "human")  # stable: keeps newest-first
+    notes = []
+    for fm in parsed:
+        if source_kind is not None and fm.get("source_kind") != source_kind:
+            continue
         note_status = fm.get("status")
         if status is not None and note_status != status:
             continue
