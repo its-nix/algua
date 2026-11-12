@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     # Root of the Obsidian-mountable knowledge base (vault). Strategy docs live under
     # `<knowledge_dir>/strategies/`; other domains (research, news, …) are added as they arrive.
     knowledge_dir: Path = Path("kb")
+    # Drive as the ideation backend (spec 2026-11-12). Enabled iff the folder id is set; unset
+    # keeps every ideation path on the files above. `steering_dir` is the run-start snapshot a
+    # driver exports from Drive; when set, steering/inspiration READS come from it.
+    drive_folder_id: str | None = None
+    drive_credentials: Path | None = None
+    steering_dir: Path | None = None
     exchange: str = "XNYS"
     alpaca_api_key: str | None = None
     alpaca_api_secret: str | None = None
