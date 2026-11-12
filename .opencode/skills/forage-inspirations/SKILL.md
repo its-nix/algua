@@ -66,6 +66,14 @@ Current execution retargets weights on every daily bar. Prefer source recipes th
 use daily rebalancing and profile-compatible controls. Daily OHLCV availability does not imply
 support for weekly/monthly fixed-share holding. Preserve the source's actual cadence in its note.
 
+Prefer grounded daily long-only OHLCV recipes with modest lookbacks for the current pilot;
+include every mandatory control when judging history/data requirements. Keep other useful sources
+honestly labeled. Do not shorten original recipes to fit the sample. Optionally add `pilot_recipe`
+frontmatter when all required rules can be grounded: `market`, `horizon`, `required_data` (array),
+`construction`, `feature_lookback` (integer), and `controls` (1–4 objects with those same fields
+except controls). Omit it when unspecified; absence is unknown, not rejection. This is advisory
+ranking metadata, not measured performance or qualification evidence.
+
 ## Obscurity rubric
 
 | level | test |

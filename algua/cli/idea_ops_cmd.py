@@ -252,12 +252,10 @@ def import_(
     critic_file: Path = typer.Option(None, "--critic-file", help="leap-critic.jsonl"),
     categories_file: Path = typer.Option(
         None, "--categories-file", help="default: .opencode/categories.txt at the repo root"),
+    critic_only: bool = typer.Option(
+        False, "--critic-only", help="Archive criticism; admit no ideas"),
 ) -> None:
-    """Move scratch ideas into authority under a dedup + eligibility check (driver only).
-
-    The critic file is model output: every line is parsed and filed INSIDE its own try/except and
-    counted in `critic_errors`, so a malformed line can never abort the command AFTER the ideas
-    have already been committed (which reported a failed run whose real work had succeeded)."""
+    """Import survivors and archive isolated critic rows; --critic-only admits no ideas."""
     s = get_settings()
     ceiling = s.research_runs_per_day * s.research_hypotheses_per_run * s.idea_pool_ceiling_days
     categories = set(load_categories(categories_file))
@@ -268,9 +266,10 @@ def import_(
             if seeded_max_id is None:
                 seeded_max_id = auth.execute(
                     "SELECT COALESCE(MAX(id),0) FROM ideas").fetchone()[0]
-            result = import_ideas(auth, scratch, settings=s, categories=categories,
-                                  run_stamp=run, max_new=max_new, ceiling=ceiling,
-                                  seeded_max_id=seeded_max_id)
+            result = ({"imported": [], "skipped": []} if critic_only else
+                      import_ideas(auth, scratch, settings=s, categories=categories,
+                                   run_stamp=run, max_new=max_new, ceiling=ceiling,
+                                   seeded_max_id=seeded_max_id))
             critic_rows, critic_errors = 0, 0
             if critic_file is not None and critic_file.exists():
                 rows, critic_errors = _critic_rows(critic_file)

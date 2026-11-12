@@ -420,14 +420,15 @@ def _fake_algua_bin(tmp_path: Path) -> Path:
     return bindir
 
 
-def _run_exhausted_block(tmp_path: Path, report_text: str | None) -> subprocess.CompletedProcess:
+def _run_exhausted_block(tmp_path: Path, report_text: str | None,
+                         source_plan: str = "") -> subprocess.CompletedProcess:
     report_path = tmp_path / "leap-report.md"
     if report_text is not None:
         report_path.write_text(report_text, encoding="utf-8")
     bindir = _fake_algua_bin(tmp_path)
     env = {**os.environ, "PATH": f"{bindir}{os.pathsep}{os.environ.get('PATH', '')}"}
     return subprocess.run(
-        [sys.executable, "-", "[]", str(report_path), str(tmp_path)],
+        [sys.executable, "-", "[]", str(report_path), str(tmp_path), source_plan],
         input=_EXHAUSTED_SRC, capture_output=True, text=True, env=env, timeout=30)
 
 
@@ -681,3 +682,34 @@ def test_env_example_documents_the_driver_timeouts():
     env = (REPO / "deploy/systemd/algua.env.example").read_text()
     for line in ("# LEAP_TIMEOUT=25m", "# FORAGE_TIMEOUT=20m", "# SYNC_TIMEOUT=5m"):
         assert line in env
+
+
+def test_configured_source_backlog_ignores_permanent_exhaustion(tmp_path):
+    plan = tmp_path / 'plan.json'
+    plan.write_text('{"sources":[]}')
+    proc = _run_exhausted_block(tmp_path,
+        '## Exhausted inspirations\n- 2026-09-07-index-add-crowding\n', str(plan))
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout) == []
+    assert 'source backlog' in proc.stderr
+
+
+def test_source_plan_failure_has_digest_and_never_calls_model(tmp_path):
+    source = LEAP.read_text()
+    block = source[source.index('# Configured pilots'):source.index('CATEGORY_LINES=')]
+    binary = tmp_path / 'bin'
+    binary.mkdir()
+    uv = binary / 'uv'
+    uv.write_text('#!/bin/sh\nexit 1\n')
+    uv.chmod(0o700)
+    values = dict(DRY_RUN='0', FORCE='0', REPO_ROOT=str(REPO), STAMP='fixture',
+                  DIGEST=str(tmp_path / 'digest.jsonl'))
+    command = 'set -euo pipefail\n' + '\n'.join(
+        f'{key}={shlex.quote(value)}' for key, value in values.items()) + '\n' + block
+    env = {**os.environ, 'PATH': str(binary) + os.pathsep + os.environ['PATH'],
+           'ALGUA_RESEARCH_PROFILE': 'fixture'}
+    result = subprocess.run(['bash', '-c', command], cwd=REPO, env=env,
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == 1
+    row = json.loads((tmp_path / 'digest.jsonl').read_text())
+    assert row['outcome'] == 'source_plan_error' and row['model_called'] is False
