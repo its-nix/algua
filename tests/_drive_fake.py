@@ -51,8 +51,14 @@ class FakeDrive:
                 out.append({**{h: r.get(h, "") for h in t["header"]}, "_row": str(i)})
         return out
 
-    def ensure_header(self, sheet: str, tab: str, header: Sequence[str]) -> None:
+    def ensure_header(self, sheet: str, tab: str, header: Sequence[str],
+                      required: Sequence[str] = ()) -> None:
+        # Same contract as DriveClient.ensure_header: empty -> write; missing required -> error.
         t = self._tab(sheet, tab)
+        if t["header"]:
+            for h in required:
+                if h not in t["header"]:
+                    raise DriveError("drive_schema", f"{sheet}/{tab}: missing header {h}")
         t["header"] += [h for h in header if h not in t["header"]]
 
     def append_rows(self, sheet: str, tab: str, rows: Sequence[Mapping[str, str]]) -> None:
@@ -70,5 +76,7 @@ class FakeDrive:
 
     def replace_tab(self, sheet: str, tab: str, header: Sequence[str],
                     rows: Sequence[Mapping[str, str]]) -> None:
+        # Same contract as DriveClient.replace_tab: keep the current header's extra columns.
         self._tick("replace_tab")
-        self.seed(sheet, tab, header, rows)
+        current = self._tab(sheet, tab)["header"]
+        self.seed(sheet, tab, current + [h for h in header if h not in current], rows)

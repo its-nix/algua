@@ -59,7 +59,7 @@ def _note(row: dict[str, str], rid: str, *, today: date,
 
 
 def intake(client: Client, *, today: date, categories: set[str]) -> dict[str, Any]:
-    client.ensure_header(*INBOX, INBOX_HEADER)
+    client.ensure_header(*INBOX, INBOX_HEADER, required=["id", "idea"])
     rows = client.read_tab(*INBOX, required=["id", "idea"])
     table = InspirationsTable(client)
     taken_by = {r["inbox_row_id"]: r["id"] for r in table.rows() if r.get("inbox_row_id")}

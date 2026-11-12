@@ -40,6 +40,16 @@ def test_export_writes_files_readable_by_existing_readers(tmp_path):
     assert SourcesRegistry(s).load()[0]["key"] == "ssrn"
 
 
+def test_export_keeps_the_first_row_of_a_duplicated_id(tmp_path):
+    d = _seeded()
+    first = d.rows(*tables.INSPIRATIONS)[0]
+    d.tabs[tables.INSPIRATIONS]["rows"].append({**first, "status": "fresh", "body": "dup"})
+    d.tabs[tables.INSPIRATIONS]["rows"][0]["status"] = "exhausted"
+    export_snapshot(d, tmp_path / "s")
+    text = (tmp_path / "s" / "inspirations" / "2026-11-12-quiet-drift.md").read_text()
+    assert "status: exhausted" in text and "dup" not in text
+
+
 def test_export_is_all_or_nothing(tmp_path):
     dest = tmp_path / "steering-1"
     dest.mkdir()
@@ -72,3 +82,18 @@ def test_migrate_is_idempotent(tmp_path):
     assert len(d.rows(*tables.INSPIRATIONS)) == 1
     assert d.rows(*tables.INSPIRATIONS)[0]["leaps"] == "[1]"
     assert [r["slug"] for r in d.rows(*tables.CATEGORIES)] == ["momentum", "seasonality"]
+
+
+def test_migrate_appends_all_notes_in_one_call(tmp_path):
+    cats = tmp_path / "categories.txt"
+    cats.write_text("momentum\n")
+    kb = tmp_path / "kb"
+    kb.mkdir()
+    for i in range(5):
+        (kb / f"2026-11-0{i + 1}-note-{i}.md").write_text(
+            f"---\nid: 2026-11-0{i + 1}-note-{i}\nstatus: fresh\nsource_url: https://a/{i}\n"
+            "---\nB\n")
+    d = FakeDrive()
+    migrate_files(d, categories_file=cats, inspirations_dir=kb)
+    assert len(d.rows(*tables.INSPIRATIONS)) == 5
+    assert d.counts["append_rows"] == 2  # one for categories, one for all five notes

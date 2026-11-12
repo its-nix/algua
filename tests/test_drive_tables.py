@@ -1,6 +1,8 @@
 """Inspirations, sources and categories as Sheets behind the existing writers (spec §6.2–6.6)."""
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from algua.config.settings import Settings
@@ -134,6 +136,33 @@ def test_file_backend_untouched_without_a_store(tmp_path, monkeypatch):
                                    run_stamp="r", max_notes=5)
     assert result["accepted"] == ["2026-11-12-foo"]
     assert (tmp_path / "kb" / "inspirations" / "2026-11-12-foo.md").exists()
+
+
+def test_update_touches_every_duplicate_row(drive):
+    drive.seed(*tables.INSPIRATIONS, tables.INSPIRATION_HEADER, [
+        {"id": "2026-11-12-dup", "status": "fresh"}, {"id": "2026-11-12-dup", "status": "fresh"}])
+    tables.InspirationsTable(drive).update("2026-11-12-dup", lambda fm: fm.update(status="used"))
+    assert [r["status"] for r in drive.rows(*tables.INSPIRATIONS)] == ["used", "used"]
+
+
+def test_owner_columns_in_sources_survive_a_save(drive):
+    drive.seed(*tables.SOURCES, [*tables.SOURCES_HEADER, "my notes"],
+               [{"key": "ssrn", "kind": "paper", "my notes": "great venue"}])
+    t = tables.SourcesTable(drive)
+    venues = t.load()
+    venues[0]["yield"] = {"n": 7}
+    t.save(venues)
+    row = drive.rows(*tables.SOURCES)[0]
+    assert row["my notes"] == "great venue" and json.loads(row["yield"]) == {"n": 7}
+    assert row["extra"] == ""
+
+
+def test_renamed_inbox_idea_column_is_a_schema_error(drive):
+    drive.seed(*tables.INBOX, ["id", "Idea", "status"], [{"Idea": "x"}])
+    from algua.knowledge.drive.inbox import intake
+    with pytest.raises(DriveError) as exc:
+        intake(drive, today=__import__("datetime").date(2026, 11, 12), categories=CATS)
+    assert exc.value.code == "drive_schema" and "missing header idea" in str(exc.value)
 
 
 def test_malformed_json_cell_is_a_schema_error_naming_the_row(drive):

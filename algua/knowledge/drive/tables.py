@@ -29,7 +29,8 @@ _SOURCE_TEXT = ("key", "kind", "url", "added_by", "added_at")
 
 class Client(Protocol):
     def read_tab(self, sheet: str, tab: str, required: Any) -> list[dict[str, str]]: ...
-    def ensure_header(self, sheet: str, tab: str, header: Any) -> None: ...
+    def ensure_header(self, sheet: str, tab: str, header: Any,
+                      required: Any = ()) -> None: ...
     def append_rows(self, sheet: str, tab: str, rows: Any) -> None: ...
     def update_cells(self, sheet: str, tab: str, row: int, values: Any) -> None: ...
     def replace_tab(self, sheet: str, tab: str, header: Any, rows: Any) -> None: ...
@@ -64,7 +65,7 @@ def note_from_row(row: dict[str, str]) -> tuple[dict[str, Any], str]:
 class InspirationsTable:
     def __init__(self, client: Client) -> None:
         self._c = client
-        self._c.ensure_header(*INSPIRATIONS, INSPIRATION_HEADER)
+        self._c.ensure_header(*INSPIRATIONS, INSPIRATION_HEADER, required=["id"])
 
     def rows(self) -> list[dict[str, str]]:
         return self._c.read_tab(*INSPIRATIONS, required=["id"])
@@ -73,23 +74,36 @@ class InspirationsTable:
         return {r["id"] for r in self.rows()}
 
     def append(self, fm: dict[str, Any], body: str, *, inbox_row_id: str = "") -> None:
-        row = {k: str(fm.get(k, "")) for k in REQUIRED}
-        row.update(leaps=json.dumps(list(fm.get("leaps") or [])), body=body,
-                   url_hash=url_hash(str(fm.get("source_url", ""))), inbox_row_id=inbox_row_id)
-        self._c.append_rows(*INSPIRATIONS, [row])
+        self.append_many([(fm, body)], inbox_row_id=inbox_row_id)
+
+    def append_many(self, notes: list[tuple[dict[str, Any], str]], *,
+                    inbox_row_id: str = "") -> None:
+        """Append several notes in ONE API call (quota: one write, not one per note)."""
+        rows = []
+        for fm, body in notes:
+            row = {k: str(fm.get(k, "")) for k in REQUIRED}
+            row.update(leaps=json.dumps(list(fm.get("leaps") or [])), body=body,
+                       url_hash=url_hash(str(fm.get("source_url", ""))),
+                       inbox_row_id=inbox_row_id)
+            rows.append(row)
+        self._c.append_rows(*INSPIRATIONS, rows)
 
     def update(self, note_id: str, mutate: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
-        for row in self.rows():
-            if row["id"] == note_id:
-                fm, _ = note_from_row(row)
-                mutate(fm)
-                new = {k: str(fm.get(k, "")) for k in REQUIRED}
-                new["leaps"] = json.dumps(list(fm.get("leaps") or []))
-                changed = {k: v for k, v in new.items() if row.get(k, "") != v}
-                if changed:
-                    self._c.update_cells(*INSPIRATIONS, int(row["_row"]), changed)
-                return fm
-        raise KeyError(note_id)
+        """Mutate a note's frontmatter. The FIRST row with the id is the source of truth (the
+        snapshot reads it too); every duplicate row gets the same cells, so a duplicate left by
+        an interrupted write can never resurrect an old status."""
+        matches = [r for r in self.rows() if r["id"] == note_id]
+        if not matches:
+            raise KeyError(note_id)
+        fm, _ = note_from_row(matches[0])
+        mutate(fm)
+        new = {k: str(fm.get(k, "")) for k in REQUIRED}
+        new["leaps"] = json.dumps(list(fm.get("leaps") or []))
+        for row in matches:
+            changed = {k: v for k, v in new.items() if row.get(k, "") != v}
+            if changed:
+                self._c.update_cells(*INSPIRATIONS, int(row["_row"]), changed)
+        return fm
 
 
 class SourcesTable:
@@ -98,12 +112,19 @@ class SourcesTable:
 
     def __init__(self, client: Client) -> None:
         self._c = client
-        self._c.ensure_header(*SOURCES, SOURCES_HEADER)
+        self._c.ensure_header(*SOURCES, SOURCES_HEADER, required=["key"])
+        self._owner_cols: set[str] = set()
 
     def load(self) -> list[dict[str, Any]]:
+        """Venues; columns the owner added to the tab ride along as plain string fields."""
         venues = []
         for row in self._c.read_tab(*SOURCES, required=["key"]):
             v: dict[str, Any] = {k: row[k] for k in _SOURCE_TEXT if row.get(k, "")}
+            for col, val in row.items():
+                if col not in SOURCES_HEADER and col != "_row":
+                    self._owner_cols.add(col)
+                    if val:
+                        v[col] = val
             if row.get("categories", ""):
                 v["categories"] = [c.strip() for c in row["categories"].split(",") if c.strip()]
             if row.get("yield", ""):
@@ -119,7 +140,7 @@ class SourcesTable:
             row: dict[str, str] = {}
             extra: dict[str, Any] = {}
             for k, val in v.items():
-                if k in _SOURCE_TEXT and isinstance(val, str) and val:
+                if (k in _SOURCE_TEXT or k in self._owner_cols) and isinstance(val, str):
                     row[k] = val
                 elif (k == "categories" and isinstance(val, list) and val
                       and all(isinstance(c, str) and "," not in c for c in val)):
@@ -137,7 +158,7 @@ class SourcesTable:
 class CategoriesTable:
     def __init__(self, client: Client) -> None:
         self._c = client
-        self._c.ensure_header(*CATEGORIES, CATEGORY_HEADER)
+        self._c.ensure_header(*CATEGORIES, CATEGORY_HEADER, required=["slug"])
 
     def lines(self) -> list[str]:
         """Rows rendered as `categories.txt` lines; disabled rows as comments."""

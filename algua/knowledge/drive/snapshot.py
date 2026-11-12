@@ -47,10 +47,12 @@ def export_snapshot(client: Client, dest: Path) -> dict[str, int]:
     (notes_dir / "_sources.yaml").write_text(
         yaml.safe_dump({"venues": venues}, sort_keys=False), encoding="utf-8")
     written = skipped = 0
+    seen: set[str] = set()
     for row in rows:
-        if not NOTE_ID_RE.match(row.get("id", "")):
-            skipped += 1
+        if not NOTE_ID_RE.match(row.get("id", "")) or row["id"] in seen:
+            skipped += 1  # first row wins, matching InspirationsTable.update
             continue
+        seen.add(row["id"])
         fm, body = note_from_row(row)
         (notes_dir / f"{row['id']}.md").write_text(render_doc(fm, body), encoding="utf-8")
         written += 1
@@ -83,7 +85,7 @@ def migrate_files(client: Client, *, categories_file: Path,
     out: dict[str, dict[str, int]] = {}
 
     cat_rows = _category_rows(categories_file)
-    client.ensure_header(*CATEGORIES, CATEGORY_HEADER)
+    client.ensure_header(*CATEGORIES, CATEGORY_HEADER, required=["slug"])
     if client.read_tab(*CATEGORIES, required=["slug"]):
         out["categories"] = {"added": 0, "already_present": len(cat_rows)}
     else:
@@ -104,7 +106,8 @@ def migrate_files(client: Client, *, categories_file: Path,
 
     table = InspirationsTable(client)
     ids = table.ids()
-    added = present = 0
+    present = 0
+    new_notes: list[tuple[dict[str, Any], str]] = []
     for note in sorted(inspirations_dir.glob("*.md")):
         if not NOTE_ID_RE.match(note.stem):
             continue
@@ -112,8 +115,9 @@ def migrate_files(client: Client, *, categories_file: Path,
             present += 1
             continue
         fm, body = parse_note(note.read_text(encoding="utf-8"))
-        table.append(fm, body)
+        new_notes.append((fm, body))
         ids.add(note.stem)
-        added += 1
-    out["notes"] = {"added": added, "already_present": present}
+    if new_notes:
+        table.append_many(new_notes)
+    out["notes"] = {"added": len(new_notes), "already_present": present}
     return out

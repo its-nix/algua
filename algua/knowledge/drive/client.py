@@ -27,8 +27,9 @@ _DRIVE = "https://www.googleapis.com/drive/v3/files"
 _SHEETS = "https://sheets.googleapis.com/v4/spreadsheets"
 _SHEET_MIME = "application/vnd.google-apps.spreadsheet"
 _RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
-_ATTEMPTS = 4
-_BACKOFF = 1.0
+# 2+4+8+16+32 = 62s of backoff: long enough to outlast Sheets' per-minute quota window.
+_ATTEMPTS = 6
+_BACKOFF = 2.0
 _TIMEOUT_S = 30
 
 _log = get_logger("algua.drive")
@@ -79,6 +80,7 @@ class DriveClient:
         self._token_expiry = 0.0
         self._sheet_ids: dict[str, str] = {}
         self._tabs: dict[str, set[str]] = {}
+        self._headers: dict[tuple[str, str], list[str]] = {}
 
     @classmethod
     def from_settings(cls, settings: Settings) -> DriveClient:
@@ -126,8 +128,14 @@ class DriveClient:
 
     # --- transport --------------------------------------------------------------------------
     def _call(self, method: str, url: str, *, op: str, file: str = "", tab: str = "",
-              rows: int = 0, body: Any = None) -> Any:
+              rows: int = 0, body: Any = None, idempotent: bool = True) -> Any:
+        """One API call. A non-idempotent call (append, create) is retried ONLY on 429: a 5xx or a
+        timeout may mean the server already committed it, and a second send would duplicate rows
+        or files. The id-keyed callers converge on a re-run instead."""
         data = None if body is None else json.dumps(body).encode()
+        retry_status = _RETRY_STATUS if idempotent else frozenset({429})
+        retry_exc: tuple[type[BaseException], ...] = (
+            (urllib.error.URLError, TimeoutError, ConnectionError) if idempotent else ())
 
         def send_once() -> tuple[int, bytes]:
             headers = {"Authorization": f"Bearer {self._access_token()}",
@@ -155,9 +163,9 @@ class DriveClient:
         try:
             status, raw = call_with_backoff(
                 send, attempts=_ATTEMPTS, backoff_base=_BACKOFF,
-                retryable_exceptions=(urllib.error.URLError, TimeoutError, ConnectionError),
-                retry_result=lambda r: r[0] in _RETRY_STATUS, sleep=self._sleep)
-        except RetriesExhausted as exc:
+                retryable_exceptions=retry_exc,
+                retry_result=lambda r: r[0] in retry_status, sleep=self._sleep)
+        except (RetriesExhausted, urllib.error.URLError, TimeoutError, ConnectionError) as exc:
             raise DriveError("drive_unavailable", f"{op}: network failure") from exc
         if status in _RETRY_STATUS:
             raise DriveError("drive_unavailable", f"{op}: HTTP {status} after retries")
@@ -175,11 +183,16 @@ class DriveClient:
                  "and trashed=false")
             found = self._call("GET", f"{_DRIVE}?{urlencode({'q': q, 'fields': 'files(id,name)'})}",
                                op="find_sheet", file=name).get("files") or []
+            if len(found) > 1:
+                raise DriveError("drive_schema", f"{len(found)} spreadsheets named {name!r} in "
+                                 "the Algua folder; keep one (trash the others)")
             if found:
                 sid = str(found[0]["id"])
             else:
-                sid = str(self._call("POST", _DRIVE, op="create_sheet", file=name, body={
-                    "name": name, "mimeType": _SHEET_MIME, "parents": [self._folder]})["id"])
+                sid = str(self._call("POST", _DRIVE, op="create_sheet", file=name,
+                                     idempotent=False, body={
+                                         "name": name, "mimeType": _SHEET_MIME,
+                                         "parents": [self._folder]})["id"])
             self._sheet_ids[name] = sid
         if name not in self._tabs:
             meta = self._call("GET", f"{_SHEETS}/{sid}?fields=sheets.properties.title",
@@ -197,11 +210,22 @@ class DriveClient:
         sid = self.sheet_id(sheet, [tab])
         got = self._call("GET", f"{_SHEETS}/{sid}/values/{_range(tab)}", op="read",
                          file=sheet, tab=tab)
-        return [[str(c) for c in row] for row in got.get("values") or []]
+        values = [[str(c) for c in row] for row in got.get("values") or []]
+        self._headers[(sheet, tab)] = [h.strip() for h in values[0]] if values else []
+        return values
 
     def _header(self, sheet: str, tab: str) -> list[str]:
-        values = self._values(sheet, tab)
-        return [h.strip() for h in values[0]] if values else []
+        """The tab's header, read once per client: re-reading the whole tab for every write
+        burns the per-minute Sheets quota."""
+        if (sheet, tab) not in self._headers:
+            self._values(sheet, tab)
+        return self._headers[(sheet, tab)]
+
+    def _write_header(self, sheet: str, tab: str, header: list[str]) -> None:
+        sid = self.sheet_id(sheet, [tab])
+        self._call("PUT", f"{_SHEETS}/{sid}/values/{_range(tab, 'A1')}?valueInputOption=RAW",
+                   op="write_header", file=sheet, tab=tab, body={"values": [header]})
+        self._headers[(sheet, tab)] = list(header)
 
     def read_tab(self, sheet: str, tab: str, required: Sequence[str]) -> list[dict[str, str]]:
         values = self._values(sheet, tab)
@@ -218,13 +242,21 @@ class DriveClient:
             rows.append(row)
         return rows
 
-    def ensure_header(self, sheet: str, tab: str, header: Sequence[str]) -> None:
+    def ensure_header(self, sheet: str, tab: str, header: Sequence[str],
+                      required: Sequence[str] = ()) -> None:
+        """Write `header` into an empty tab. On an existing tab a missing REQUIRED column is a
+        `drive_schema` error (the owner renamed or deleted it; adding a fresh empty column would
+        silently ignore their data). Missing optional columns are appended on the right."""
         current = self._header(sheet, tab)
+        if not current:
+            self._write_header(sheet, tab, list(header))
+            return
+        for h in required:
+            if h not in current:
+                raise DriveError("drive_schema", f"{sheet}/{tab}: missing header {h}")
         merged = current + [h for h in header if h not in current]
         if merged != current:
-            sid = self.sheet_id(sheet, [tab])
-            self._call("PUT", f"{_SHEETS}/{sid}/values/{_range(tab, 'A1')}?valueInputOption=RAW",
-                       op="write_header", file=sheet, tab=tab, body={"values": [merged]})
+            self._write_header(sheet, tab, merged)
 
     def append_rows(self, sheet: str, tab: str, rows: Sequence[Mapping[str, str]]) -> None:
         if not rows:
@@ -234,7 +266,8 @@ class DriveClient:
         values = [[str(r.get(h, "")) for h in header] for r in rows]
         self._call("POST", f"{_SHEETS}/{sid}/values/{_range(tab, 'A1')}:append?"
                    "valueInputOption=RAW&insertDataOption=INSERT_ROWS",
-                   op="append", file=sheet, tab=tab, rows=len(rows), body={"values": values})
+                   op="append", file=sheet, tab=tab, rows=len(rows), body={"values": values},
+                   idempotent=False)
 
     def update_cells(self, sheet: str, tab: str, row: int, values: Mapping[str, str]) -> None:
         header = self._header(sheet, tab)
@@ -250,9 +283,15 @@ class DriveClient:
 
     def replace_tab(self, sheet: str, tab: str, header: Sequence[str],
                     rows: Sequence[Mapping[str, str]]) -> None:
+        """Rewrite a machine-owned tab in ONE write: the current header (with any columns the
+        owner added) is kept, `header` columns are ensured, and leftover old rows are blanked.
+        Never clear-then-write: a failure between the two would leave the tab empty."""
         sid = self.sheet_id(sheet, [tab])
-        self._call("POST", f"{_SHEETS}/{sid}/values/{_range(tab)}:clear", op="clear",
-                   file=sheet, tab=tab, body={})
-        values = [list(header)] + [[str(r.get(h, "")) for h in header] for r in rows]
+        old = self._values(sheet, tab)
+        current = [h.strip() for h in old[0]] if old else []
+        merged = current + [h for h in header if h not in current]
+        values = [merged] + [[str(r.get(h, "")) for h in merged] for r in rows]
+        values += [[""] * len(merged) for _ in range(max(0, len(old) - len(values)))]
         self._call("PUT", f"{_SHEETS}/{sid}/values/{_range(tab, 'A1')}?valueInputOption=RAW",
                    op="replace", file=sheet, tab=tab, rows=len(rows), body={"values": values})
+        self._headers[(sheet, tab)] = merged

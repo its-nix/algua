@@ -40,7 +40,7 @@ def publish() -> None:
         client.replace_tab(*IDEAS, IDEAS_HEADER, rows)
         note_of = {r["inbox_row_id"]: r["id"] for r in InspirationsTable(client).rows()
                    if r.get("inbox_row_id")}
-        client.ensure_header(*INBOX, INBOX_HEADER)
+        client.ensure_header(*INBOX, INBOX_HEADER, required=["id"])
         now = datetime.now(UTC).isoformat(timespec="seconds")
         updated = 0
         for row in client.read_tab(*INBOX, required=["id"]):
