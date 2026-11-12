@@ -628,7 +628,11 @@ def test_leap_reads_every_non_exhausted_note_not_only_fresh():
     # holds more than one leap. Reading `--status fresh` starved leap of material after one pass.
     src = LEAP.read_text(encoding="utf-8")
     assert "--exclude-status exhausted --limit 20 --rare-first" in src
-    assert "--status fresh" not in src
+    # The only `--status fresh` read is the owner-idea depth-gate bypass (spec 2026-11-12 §6.4):
+    # an owner idea already leapt once must not keep bypassing the gate every firing.
+    fresh_lines = [ln for ln in src.splitlines() if "--status fresh" in ln]
+    assert len(fresh_lines) == 1 and "inspirations list --status fresh" in fresh_lines[0]
+    assert "--source-kind human" in src.split("--status fresh", 1)[1].splitlines()[1]
 
 
 def test_leap_dry_run_prints_the_material_gate():
@@ -681,3 +685,54 @@ def test_env_example_documents_the_driver_timeouts():
     env = (REPO / "deploy/systemd/algua.env.example").read_text()
     for line in ("# LEAP_TIMEOUT=25m", "# FORAGE_TIMEOUT=20m", "# SYNC_TIMEOUT=5m"):
         assert line in env
+
+
+# --- Drive ideation backend (spec 2026-11-12 §4, §6.4): intake -> snapshot -> leap -> publish ---
+
+def _dry_drive(script, *args):
+    env = {**os.environ, "ALGUA_DRIVE_FOLDER_ID": "x"}
+    return subprocess.run(["bash", str(script), "--dry-run", *args], cwd=REPO,
+                          capture_output=True, text=True, check=True, env=env).stdout
+
+
+def test_leap_dry_run_drive_mode_prints_intake_export_publish_in_order():
+    out = _dry_drive(LEAP, "--max-ideas", "5")
+    assert out.index("would intake owner inbox via: uv run algua research inbox intake") \
+        < out.index("would export steering snapshot via: uv run algua research steering export") \
+        < out.index("would check depth: ") \
+        < out.index("would publish via: uv run algua research idea publish")
+
+
+def test_leap_dry_run_without_drive_is_unchanged():
+    env = {k: v for k, v in os.environ.items() if k != "ALGUA_DRIVE_FOLDER_ID"}
+    out = subprocess.run(["bash", str(LEAP), "--dry-run", "--max-ideas", "5"], cwd=REPO,
+                         capture_output=True, text=True, check=True, env=env).stdout
+    assert "inbox intake" not in out and "steering export" not in out
+    assert "idea publish" not in out
+
+
+def test_forage_dry_run_drive_mode_uses_snapshot_paths():
+    out = _dry_drive(FORAGE, "--categories", "momentum")
+    line = [ln for ln in out.splitlines() if ln.startswith("would read steering from: ")][0]
+    assert "/.runs/steering-forage/categories.txt" in line
+    assert "/.runs/steering-forage/inspirations/_sources.yaml" in line
+    assert "would seed sources registry" not in out
+
+
+def test_snapshot_dir_is_outside_agent_workdir():
+    out = _dry_drive(LEAP, "--max-ideas", "5")
+    snap = out.split("steering export --to ")[1].split()[0]
+    workdir = out.split("would create worktree: ")[1].split()[0]
+    assert not snap.startswith(workdir.rstrip("/") + "/")
+    assert "/.runs/" in snap
+
+
+def test_leap_human_ideas_bypass_the_depth_gate_in_source():
+    src = LEAP.read_text()
+    assert "--source-kind human" in src and "depth gate bypassed: fresh owner ideas" in src
+
+
+def test_research_loop_publishes_after_its_digest():
+    src = (REPO / ".opencode/scripts/run-research-loop.sh").read_text()
+    tail = src.split("append_digest completed", 1)[1]
+    assert "research idea publish" in tail
