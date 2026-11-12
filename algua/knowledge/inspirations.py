@@ -99,12 +99,17 @@ class SeenFile:
 
 
 def accept_new_notes(*, staged_dir: Path, settings: Settings, seen_path: Path,
-                     categories: set[str], run_stamp: str, max_notes: int) -> dict:
-    """Trusted acceptance of what the forage agent staged (spec §5 policy)."""
+                     categories: set[str], run_stamp: str, max_notes: int,
+                     store: Any = None) -> dict:
+    """Trusted acceptance of what the forage agent staged (spec §5 policy).
+
+    `store` (optional, `ids()` + `append(fm, body)`) is where accepted notes land instead of the
+    vault — the CLI passes the Drive Inspirations table (spec 2026-11-12). This module never
+    chooses a backend itself, so nothing that imports it can reach Drive."""
     seen = SeenFile(seen_path)
     seen_hashes = seen.hashes()
     dest = inspirations_dir(settings)
-    table = _drive_inspirations(settings)
+    table = store
     sheet_ids = table.ids() if table is not None else set()
     accepted: list[str] = []
     rejected: list[dict] = []
@@ -168,12 +173,12 @@ def accept_new_notes(*, staged_dir: Path, settings: Settings, seen_path: Path,
 
 def _edit_frontmatter(
     settings: Settings, inspiration_id: str, mutate: Callable[[dict[str, Any]], None],
+    store: Any = None,
 ) -> dict[str, Any]:
     if not NOTE_ID_RE.match(inspiration_id):
         raise ValueError(f"bad inspiration id {inspiration_id!r}")
-    table = _drive_inspirations(settings)
-    if table is not None:
-        return table.update(inspiration_id, mutate)
+    if store is not None:
+        return store.update(inspiration_id, mutate)
     path = _safe_path(inspirations_dir(settings), f"{inspiration_id}.md")
     with kb_sync_lock(settings):
         fm, body = parse_note(path.read_text(encoding="utf-8"))
@@ -182,7 +187,8 @@ def _edit_frontmatter(
     return fm
 
 
-def mark_used(settings: Settings, inspiration_id: str, *, idea_id: int) -> dict[str, Any]:
+def mark_used(settings: Settings, inspiration_id: str, *, idea_id: int,
+              store: Any = None) -> dict[str, Any]:
     def _m(fm):
         leaps = list(fm.get("leaps") or [])
         if idea_id not in leaps:
@@ -190,13 +196,14 @@ def mark_used(settings: Settings, inspiration_id: str, *, idea_id: int) -> dict[
         fm["leaps"] = leaps
         if fm.get("status") == "fresh":
             fm["status"] = "used"
-    return _edit_frontmatter(settings, inspiration_id, _m)
+    return _edit_frontmatter(settings, inspiration_id, _m, store)
 
 
-def mark_exhausted(settings: Settings, inspiration_id: str) -> dict[str, Any]:
+def mark_exhausted(settings: Settings, inspiration_id: str, *,
+                   store: Any = None) -> dict[str, Any]:
     def _m(fm):
         fm["status"] = "exhausted"
-    return _edit_frontmatter(settings, inspiration_id, _m)
+    return _edit_frontmatter(settings, inspiration_id, _m, store)
 
 
 def list_notes(settings: Settings, *, status: str | None = None,
@@ -247,10 +254,3 @@ def load_note(settings: Settings, inspiration_id: str) -> dict[str, Any] | None:
         return None
     return fm if isinstance(fm, dict) and fm else None
 
-
-# --- Drive backend (spec 2026-11-12): lazy, so the file path never imports algua.knowledge.drive.
-def _drive_inspirations(settings: Settings) -> Any:
-    if not settings.drive_folder_id:
-        return None
-    from algua.knowledge.drive.tables import InspirationsTable, client_for
-    return InspirationsTable(client_for(settings))

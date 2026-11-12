@@ -101,15 +101,26 @@ class DriveClient:
                               "grant_type": "refresh_token"}).encode()
         except (OSError, ValueError, KeyError) as exc:
             raise DriveError("drive_auth", f"credentials unreadable: {type(exc).__name__}") from exc
-        try:
-            status, raw = self._transport(
+        def send() -> tuple[int, bytes]:
+            return self._transport(
                 "POST", _TOKEN_URL, {"Content-Type": "application/x-www-form-urlencoded"}, form)
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+
+        try:
+            status, raw = call_with_backoff(
+                send, attempts=_ATTEMPTS, backoff_base=_BACKOFF,
+                retryable_exceptions=(urllib.error.URLError, TimeoutError, ConnectionError),
+                retry_result=lambda r: r[0] in _RETRY_STATUS, sleep=self._sleep)
+        except RetriesExhausted as exc:
             raise DriveError("drive_unavailable", "token endpoint unreachable") from exc
+        if status in _RETRY_STATUS:
+            raise DriveError("drive_unavailable", f"token endpoint HTTP {status} after retries")
         if status != 200:
             raise DriveError("drive_auth", f"token refresh failed (HTTP {status})")
-        payload = json.loads(raw or b"{}")
-        self._token = str(payload["access_token"])
+        try:
+            payload = json.loads(raw or b"{}")
+            self._token = str(payload["access_token"])
+        except (ValueError, KeyError, TypeError) as exc:
+            raise DriveError("drive_auth", "token response has no access_token") from exc
         self._token_expiry = time.time() + float(payload.get("expires_in", 3600))
         return self._token
 

@@ -38,7 +38,8 @@ def _json(r):
 def test_cli_export_disabled_without_folder(tmp_path):
     r = runner.invoke(app, ["research", "steering", "export", "--to", str(tmp_path / "s")])
     assert r.exit_code == 1
-    assert _json(r) == {"ok": False, "error": "drive_disabled", "code": "drive_disabled"}
+    body = _json(r)
+    assert body["ok"] is False and body["code"] == "drive_disabled" and body["retryable"] is False
 
 
 def test_cli_export_writes_snapshot(tmp_path, drive):
@@ -53,7 +54,7 @@ def test_cli_drive_error_is_a_json_envelope(tmp_path, drive):
     r = runner.invoke(app, ["research", "steering", "export", "--to", str(tmp_path / "s")])
     assert r.exit_code == 1
     body = _json(r)
-    assert body["ok"] is False and body["error"] == "drive_unavailable"
+    assert body["ok"] is False and body["code"] == "drive_unavailable" and body["retryable"]
 
 
 def test_cli_inbox_intake(drive):
@@ -109,3 +110,28 @@ def test_publish_disabled_is_noop_exit_zero():
     r = runner.invoke(app, ["research", "idea", "publish"])
     assert r.exit_code == 0
     assert _json(r) == {"ok": True, "skipped": "drive_disabled"}
+
+
+# --- review I8: the CLI (not the knowledge layer) routes inspiration writes to Drive -------------
+
+def test_cli_mark_exhausted_and_write_yield_go_to_drive(tmp_path, drive):
+    drive.seed(*tables.INSPIRATIONS, tables.INSPIRATION_HEADER,
+               [{"id": "2026-11-12-foo", "status": "fresh", "source_url": "https://x"}])
+    r = runner.invoke(app, ["research", "inspirations", "mark-exhausted", "2026-11-12-foo"])
+    assert r.exit_code == 0, r.output
+    assert drive.rows(*tables.INSPIRATIONS)[0]["status"] == "exhausted"
+    drive.seed(*tables.SOURCES, tables.SOURCES_HEADER, [{"key": "ssrn", "kind": "paper"}])
+    card = tmp_path / "card.json"
+    card.write_text(json.dumps({"days": 90, "by_venue": {"ssrn": {"n": 6}}}))
+    r = runner.invoke(app, ["research", "inspirations", "write-yield", "--from-scorecard",
+                            str(card)])
+    assert r.exit_code == 0, r.output
+    assert json.loads(drive.rows(*tables.SOURCES)[0]["yield"])["n"] == 6
+    assert not (tmp_path / "kb" / "inspirations").exists()
+
+
+def test_cli_drive_failure_in_inspirations_is_a_coded_envelope(drive):
+    drive.fail["read_tab"] = 1
+    r = runner.invoke(app, ["research", "inspirations", "mark-exhausted", "2026-11-12-foo"])
+    assert r.exit_code != 0
+    assert _json(r)["code"] == "drive_unavailable"

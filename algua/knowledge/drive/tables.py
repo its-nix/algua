@@ -40,10 +40,22 @@ def client_for(settings: Settings) -> Client:
     return DriveClient.from_settings(settings)
 
 
+def _json_cell(row: dict[str, str], col: str, where: str) -> Any:
+    """A JSON cell, or `drive_schema` naming the tab and row — a hand-mangled cell must give a
+    clear error, not a traceback that fails every run until someone finds it."""
+    try:
+        return json.loads(row[col])
+    except ValueError as exc:
+        raise DriveError("drive_schema",
+                         f"{where}: row {row.get('_row', '?')} column {col} is not valid JSON"
+                         ) from exc
+
+
 def note_from_row(row: dict[str, str]) -> tuple[dict[str, Any], str]:
     """A Sheet row back into (frontmatter, body), the shape the vault notes have."""
     fm: dict[str, Any] = {k: row[k] for k in REQUIRED if row.get(k, "").strip()}
-    leaps = json.loads(row["leaps"]) if row.get("leaps", "").strip() else []
+    leaps = (_json_cell(row, "leaps", "Inspirations/notes")
+             if row.get("leaps", "").strip() else [])
     if leaps:
         fm["leaps"] = leaps
     return fm, row.get("body", "")
@@ -95,9 +107,9 @@ class SourcesTable:
             if row.get("categories", ""):
                 v["categories"] = [c.strip() for c in row["categories"].split(",") if c.strip()]
             if row.get("yield", ""):
-                v["yield"] = json.loads(row["yield"])
+                v["yield"] = _json_cell(row, "yield", "Steering/Sources")
             if row.get("extra", ""):
-                v.update(json.loads(row["extra"]))
+                v.update(_json_cell(row, "extra", "Steering/Sources"))
             venues.append(v)
         return venues
 

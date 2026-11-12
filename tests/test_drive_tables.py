@@ -50,7 +50,8 @@ def _stage(tmp_path, *ids):
 def _accept(tmp_path, staged):
     return insp.accept_new_notes(staged_dir=staged, settings=_settings(tmp_path),
                                  seen_path=tmp_path / "seen.jsonl", categories=CATS,
-                                 run_stamp="r1", max_notes=10)
+                                 run_stamp="r1", max_notes=10,
+                                 store=tables.InspirationsTable(tables.client_for(None)))
 
 
 def test_accept_appends_rows_and_skips_ids_already_in_sheet(tmp_path, drive):
@@ -79,12 +80,13 @@ def test_accept_rerun_after_partial_failure_does_not_duplicate(tmp_path, drive):
 def test_mark_used_appends_leap_and_flips_status_in_sheet(tmp_path, drive):
     _accept(tmp_path, _stage(tmp_path, "2026-11-12-foo"))
     s = _settings(tmp_path)
-    fm = insp.mark_used(s, "2026-11-12-foo", idea_id=7)
+    store = tables.InspirationsTable(drive)
+    fm = insp.mark_used(s, "2026-11-12-foo", idea_id=7, store=store)
     assert fm["leaps"] == [7] and fm["status"] == "used"
-    insp.mark_used(s, "2026-11-12-foo", idea_id=7)
+    insp.mark_used(s, "2026-11-12-foo", idea_id=7, store=store)
     row = drive.rows(*tables.INSPIRATIONS)[0]
     assert row["leaps"] == "[7]" and row["status"] == "used"
-    insp.mark_exhausted(s, "2026-11-12-foo")
+    insp.mark_exhausted(s, "2026-11-12-foo", store=store)
     assert drive.rows(*tables.INSPIRATIONS)[0]["status"] == "exhausted"
 
 
@@ -101,7 +103,7 @@ def test_sources_roundtrip_is_lossless(tmp_path, drive):
 
 
 def test_sources_registry_dispatches_to_sheet(tmp_path, drive):
-    reg = SourcesRegistry(_settings(tmp_path))
+    reg = SourcesRegistry(_settings(tmp_path), backend=tables.SourcesTable(drive))
     reg.propose({"key": "blog/new", "kind": "blog", "url": "https://n", "categories": ["momentum"]})
     reg.write_yields({"blog/new": {"n": 9}})
     loaded = tables.SourcesTable(drive).load()
@@ -122,7 +124,7 @@ def test_categories_lines_render_disabled_as_comments_and_require_one_enabled(dr
     assert exc.value.code == "drive_schema"
 
 
-def test_file_backend_untouched_when_drive_disabled(tmp_path, monkeypatch):
+def test_file_backend_untouched_without_a_store(tmp_path, monkeypatch):
     def boom(_s):
         raise AssertionError("Drive must not be touched when disabled")
     monkeypatch.setattr(tables, "client_for", boom)
@@ -132,3 +134,13 @@ def test_file_backend_untouched_when_drive_disabled(tmp_path, monkeypatch):
                                    run_stamp="r", max_notes=5)
     assert result["accepted"] == ["2026-11-12-foo"]
     assert (tmp_path / "kb" / "inspirations" / "2026-11-12-foo.md").exists()
+
+
+def test_malformed_json_cell_is_a_schema_error_naming_the_row(drive):
+    with pytest.raises(DriveError) as exc:
+        tables.note_from_row({"id": "2026-11-12-bad", "leaps": "[1,", "_row": "2"})
+    assert exc.value.code == "drive_schema" and "row 2" in str(exc.value)
+    drive.seed(*tables.SOURCES, tables.SOURCES_HEADER, [{"key": "k", "yield": "{oops"}])
+    with pytest.raises(DriveError) as exc:
+        tables.SourcesTable(drive).load()
+    assert exc.value.code == "drive_schema" and "Steering/Sources" in str(exc.value)

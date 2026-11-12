@@ -24,21 +24,24 @@ class SourcesRegistry:
     interleaved write would corrupt a surface nobody is watching between runs.
     """
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, backend: Any = None) -> None:
+        """`backend` (optional, `load()` + `save(venues)`) replaces the YAML file — the CLI passes
+        the Drive Sources table (spec 2026-11-12); this module never picks one itself."""
         self._settings = settings
+        self._backend = backend
         self.path = inspirations_dir(settings) / "_sources.yaml"
 
     def load(self) -> list[dict[str, Any]]:
-        if self._settings.drive_folder_id:
-            return _drive_sources(self._settings).load()
+        if self._backend is not None:
+            return list(self._backend.load())
         if not self.path.exists():
             return []
         data = yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}
         return list(data.get("venues") or [])
 
     def _save(self, venues: list[dict[str, Any]]) -> None:
-        if self._settings.drive_folder_id:
-            _drive_sources(self._settings).save(venues)
+        if self._backend is not None:
+            self._backend.save(venues)
             return
         write_text_atomic(yaml.safe_dump({"venues": venues}, sort_keys=False), self.path)
 
@@ -61,8 +64,3 @@ class SourcesRegistry:
             venues.append({**venue, "added_by": "forage",
                            "added_at": datetime.now(UTC).date().isoformat()})
             self._save(venues)
-
-
-def _drive_sources(settings: Settings) -> Any:
-    from algua.knowledge.drive.tables import SourcesTable, client_for
-    return SourcesTable(client_for(settings))

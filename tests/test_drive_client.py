@@ -201,3 +201,35 @@ def test_settings_drive_fields_from_env(monkeypatch, tmp_path):
 def test_settings_drive_fields_default_off():
     s = Settings(_env_file=None)
     assert (s.drive_folder_id, s.drive_credentials, s.steering_dir) == (None, None, None)
+
+
+# --- review I4: error envelopes ------------------------------------------------------------------
+
+def test_cli_error_code_uses_the_drive_error_code():
+    from algua.cli.errors import error_envelope
+    env = error_envelope(DriveError("drive_unavailable", "Inspirations/notes: HTTP 503"))
+    assert env == {"ok": False, "error": "Inspirations/notes: HTTP 503",
+                   "code": "drive_unavailable", "retryable": True}
+    assert error_envelope(DriveError("drive_schema", "x"))["retryable"] is False
+
+
+def test_token_endpoint_5xx_is_retried_then_succeeds(tmp_path):
+    state = {"n": 0}
+
+    class Flaky(FakeTransport):
+        def __call__(self, method, url, headers, body):
+            if url.startswith("https://oauth2.googleapis.com/token"):
+                state["n"] += 1
+                if state["n"] <= 2:
+                    return 503, b"{}"
+            return super().__call__(method, url, headers, body)
+
+    rows = _client(tmp_path, Flaky(_sheet_router([["id"], ["a"]]))).read_tab("S", "t", [])
+    assert rows == [{"id": "a", "_row": "2"}] and state["n"] == 3
+
+
+def test_token_response_without_access_token_is_auth_error(tmp_path):
+    t = FakeTransport(_sheet_router([["id"]]), token_body={"expires_in": 3600})
+    with pytest.raises(DriveError) as exc:
+        _client(tmp_path, t).read_tab("S", "t", required=[])
+    assert exc.value.code == "drive_auth"
