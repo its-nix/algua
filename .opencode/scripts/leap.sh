@@ -816,6 +816,8 @@ if len(sys.argv) > 16:
         try:
             with open(sys.argv[16]) as stream:
                 review = json.load(stream)
+            if not isinstance(review, dict) or review.get("ok") is not True:
+                raise ValueError("source review failed")
             source_summary.update(reviews=review.get("reviews", []),
                                   missing_sources=review.get("missing_sources", []))
         except (OSError, ValueError):

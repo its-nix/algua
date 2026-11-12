@@ -42,7 +42,8 @@ def test_agent_exit_survives_the_logging_pipeline(tmp_path, driver, agent_exit):
     assert result.stdout == str(agent_exit)
 
 
-def _run_leap_memory_context(tmp_path, response, *, memory_exit=0, dry_run=False):
+def _run_leap_memory_context(tmp_path, response, *, memory_exit=0, dry_run=False,
+                             source_values=None):
     """Execute the actual context/GOAL and digest adapters; never enter the agent seam."""
     tmp_path.mkdir(parents=True, exist_ok=True)
     response_path = tmp_path / "memory-response.json"
@@ -77,6 +78,7 @@ print(json.dumps({{'by_category':{{}}}}) if 'scorecard' in args else '[]')
               'rate_limited': '0', 'IMPORT_PARSE_ERROR': '0',
               'INSPIRATIONS_JSON': '[]', 'REFUTED_JSON': '[]', 'NEGATIVE_JSON': '[]',
               'SCORECARD_BY_CATEGORY': '{}'}
+    values.update(source_values or {})
     command = 'set -euo pipefail\n' + '\n'.join(
         f'{key}={shlex.quote(value)}' for key, value in values.items()) + '\n'
     goal_path = tmp_path / 'goal.txt'
@@ -713,3 +715,15 @@ def test_source_plan_failure_has_digest_and_never_calls_model(tmp_path):
     assert result.returncode == 1
     row = json.loads((tmp_path / 'digest.jsonl').read_text())
     assert row['outcome'] == 'source_plan_error' and row['model_called'] is False
+
+
+def test_failed_source_review_digest_retains_all_missing_source_ids(tmp_path):
+    plan = tmp_path / 'plan.json'
+    plan.write_text(json.dumps({'sources': [{'source_id': 'offered-source'}]}))
+    receipt = tmp_path / 'review.json'
+    receipt.write_text('{"ok":false,"error":"invalid review"}')
+    result = _run_leap_memory_context(tmp_path, 'unused', dry_run=True, source_values={
+        'SOURCE_PLAN_FILE': str(plan), 'SOURCE_RESULT_FILE': str(receipt),
+        'SOURCE_REVIEW_COMPLETE': '0'})
+    assert result['digest']['outcome'] == 'source_review_incomplete'
+    assert result['digest']['source_selection']['missing_sources'] == ['offered-source']

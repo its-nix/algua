@@ -368,3 +368,36 @@ def test_critic_only_import_archives_rejections_without_any_idea_admission(tmp_p
     assert conn.execute("SELECT count(*) FROM ideas").fetchone()[0] == 0
     assert conn.execute("SELECT count(*) FROM negative_results").fetchone()[0] == 1
     conn.close()
+
+
+def test_unknown_recipes_prefer_daily_market_match_and_unused_notes(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data", knowledge_dir=tmp_path / "kb")
+    monthly = note(settings, "aaa-monthly")
+    used = note(settings, "bbb-used")
+    fresh = note(settings, "zzz-daily")
+    folder = settings.knowledge_dir / "inspirations"
+    path = folder / f"{monthly}.md"
+    path.write_text(path.read_text().replace("horizon: daily", "horizon: monthly"))
+    path = folder / f"{used}.md"
+    path.write_text(path.read_text().replace("status: fresh", "status: used"))
+    assert [s["source_id"] for s in source_plan(settings, PROFILE, code="v1")["sources"]] == [
+        fresh,
+        used,
+        monthly,
+    ]
+
+
+def test_feasible_recipe_order_preserves_retry_priority_over_source_metadata(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data", knowledge_dir=tmp_path / "kb")
+    used = note(settings, "aaa-used", recipe())
+    fresh = note(settings, "zzz-fresh", recipe())
+    path = settings.knowledge_dir / "inspirations" / f"{used}.md"
+    path.write_text(
+        path.read_text()
+        .replace("status: fresh", "status: used")
+        .replace("horizon: daily", "horizon: monthly", 1)
+    )
+    assert [s["source_id"] for s in source_plan(settings, PROFILE, code="v1")["sources"]] == [
+        used,
+        fresh,
+    ]
