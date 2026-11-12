@@ -200,7 +200,7 @@ pool depth):
 1. Read the Inbox; for each row with `idea` set and **no `id`**: assign a UUID into `id`.
 2. For each row whose `id` is **not** already an `inbox_row_id` in the Inspirations Sheet: create
    an inspiration row: `id` = `<date>-inbox-<slug-from-idea>`, `source_kind: human`,
-   `venue: inbox`, `source_url: inbox:<row id>`, `category` from the row or `uncategorized-human`
+   `venue: inbox`, `source_url: inbox:<row id>`, `category` from the row or `uncategorized_human`
    (see §8), `market: us_equities`, `horizon: daily`, `obscurity: human`, `mechanism` = idea
    text, `body` = idea + why + links, `status: fresh`.
 3. Write `status = taken → inspiration <id>` on the Inbox row.
@@ -268,11 +268,11 @@ says Drive is not a sync process). Update the CLAUDE.md lines describing `catego
 
 Calls already made on the builder's behalf (owner may overrule): the run-start steering snapshot
 (§4), inspirations as Sheet rows rather than Docs (§4), human inspirations bypassing the depth
-gate (§6.4), `uncategorized-human` default category (below), `obscurity: human` (§6.4), accepting
+gate (§6.4), `uncategorized_human` default category (below), `obscurity: human` (§6.4), accepting
 `algua-web` seeing the Drive variables in step 1 (§5).
 
 - Exact module/file split inside `algua/knowledge/drive/` and the interface names.
-- Category for inbox rows with no category: my call is a reserved slug `uncategorized-human`
+- Category for inbox rows with no category: my call is a reserved slug `uncategorized_human`
   accepted by validation only for `source_kind: human`; builder may instead have leap assign one.
   Must not break the round-robin claim.
 - Column order and header text (headers are the contract; order is not).
