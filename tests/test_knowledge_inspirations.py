@@ -1,6 +1,5 @@
 from algua.config.settings import Settings
 from algua.knowledge.inspirations import (
-    SourcesRegistry,
     accept_new_notes,
     canonical_url,
     list_notes,
@@ -9,6 +8,7 @@ from algua.knowledge.inspirations import (
     mark_used,
     validate_note,
 )
+from algua.knowledge.sources_registry import SourcesRegistry
 
 CATS = {"momentum", "mean_reversion"}
 GOOD = """---

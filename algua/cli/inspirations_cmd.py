@@ -18,12 +18,12 @@ from algua.cli.errors import json_errors
 from algua.config.settings import get_settings
 from algua.knowledge.inspirations import (
     SOURCE_KINDS,
-    SourcesRegistry,
     accept_new_notes,
     list_notes,
     mark_exhausted,
     mark_used,
 )
+from algua.knowledge.sources_registry import SourcesRegistry
 from algua.primitives.timeparse import now_iso
 from algua.research.categories import categories_file_default, load_categories
 

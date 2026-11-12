@@ -196,7 +196,7 @@ def test_propose_rejects_non_https_url(categories_file):
 def test_write_yield_from_scorecard_file(tmp_path):
     # Seed the sources registry directly (write-yield only updates an existing venue row).
     from algua.config.settings import get_settings
-    from algua.knowledge.inspirations import SourcesRegistry
+    from algua.knowledge.sources_registry import SourcesRegistry
     settings = get_settings()
     SourcesRegistry(settings).propose(
         {"key": "blog/quant", "kind": "blog", "url": "https://q", "categories": ["momentum"]})
