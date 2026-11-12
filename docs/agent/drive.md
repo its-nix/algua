@@ -15,29 +15,60 @@ market data never touch it. Everything is off until `ALGUA_DRIVE_FOLDER_ID` is s
 | `Inspirations` | `notes`: one row per inspiration note | forage acceptance, inbox intake, leap's mark-used/exhausted |
 | `Ideas` | `pool`: one row per idea with its latest outcome | Algua rewrites it after every leap/research run |
 
-Headers are the contract; column order is free. Algua creates a missing Sheet or tab with its
-header on first use.
+Headers are the contract; column order is free, and you may add your own columns. Renaming or
+deleting a required column (`id`/`idea` in Inbox, `slug` in Categories, `key` in Sources, `id` in
+Inspirations) stops runs with a `drive_schema` error naming the tab and column — rename it back.
+
+**Never create, copy, re-upload or duplicate these Sheets yourself.** Algua's token can only see
+files Algua created (`drive.file`, see below): a Sheet you make by hand — even one named `Inbox` —
+is invisible to it, and two Sheets with the same name in the folder is a `drive_schema` error.
+Edit the ones Algua made.
 
 **Inbox rules.** Write one idea per row. Within one leap period (~2h) the row gets an `id` and
 `status: taken → inspiration <id>`; later the status shows the idea's fate
 (`#17 refuted: walkforward_refuted — …`). Editing a taken row changes nothing; add a new row to
 revisit an idea. Clearing a row's `id` cell resubmits it. Owner ideas go through leap like foraged
-ones (critic + dedup) but are processed first and skip leap's pool-depth gate.
+ones (critic + dedup), are processed first, and skip leap's pool-depth gate for 2 days after they
+are taken in. Don't sort or delete Inbox rows while a leap run is taking them in.
+
+## How access works
+
+- **Your own Google account**, so everything Algua creates is owned by you and uses your storage.
+- **Narrow permission (`drive.file`)**: the token can read and change only files *this app*
+  created — its own `Algua` folder and the Sheets in it. The rest of your Drive is invisible to it.
+- **One OAuth client per component** inside one Google Cloud project: `algua-ideation` now; a
+  future backup job gets its own client, and neither can see the other's files.
+- **Agents never hold the token**: the agent runtime seam strips the Drive variables and masks the
+  credential file inside the sandbox; only the trusted driver scripts call Drive.
 
 ## One-time setup
 
-1. **Bot account.** Create a Google account for Algua (e.g. a dedicated Gmail). Share the
-   `Algua/` Drive folder with it as **Editor** — and nothing else. That share is the boundary.
-2. **OAuth client.** In Google Cloud Console (any project): enable the Drive API and Sheets API,
-   create an OAuth client of type *Desktop app*, download its JSON.
-3. **Consent** on a machine with a browser, signed in as the bot account:
-   `python3 scripts/drive_consent.py --client-secrets client_secret.json --out drive.json`
+1. **Google Cloud project** (one for all of Algua): enable the *Google Drive API* and *Google
+   Sheets API*. Configure the Google Auth Platform: External audience, your email as support and
+   developer contact, home page `https://github.com/its-nix/algua`, privacy policy
+   `https://github.com/its-nix/algua/blob/main/PRIVACY.md`, authorised domain `github.com`.
+   **Publish the app** (Audience → Publish app). While it is in *Testing*, Google expires refresh
+   tokens after 7 days and every run fails with `drive_auth`. `drive.file` needs no Google review;
+   you will see an "unverified app" notice once, at consent.
+2. **OAuth client**: Clients → Create → *Desktop app* named `algua-ideation`. Save the client JSON
+   **outside the repository**, owner-only, e.g. `~/.config/algua/algua-ideation-client.json`
+   (`chmod 600`). `client_secret*.json` and `drive.json` are gitignored as a backstop.
+3. **Consent** on a machine with a browser (signed in as you), from the checkout:
+   ```
+   python3 scripts/drive_consent.py \
+     --client-secrets ~/.config/algua/algua-ideation-client.json \
+     --out ~/.config/algua/drive.json --create-folder Algua
+   ```
+   Click **Allow** after checking it asks only for "Drive files that you use with this app". The
+   script writes the token (mode 0600) and creates Algua's own `Algua` folder, printing
+   `ALGUA_DRIVE_FOLDER_ID=...`. Re-running consent later (e.g. after revoking access) omits
+   `--create-folder` and keeps the same folder.
 4. **VPS.** Copy `drive.json` to `/home/algua/.config/algua/drive.json` (`chmod 600`, owner
    `algua`) and add to `/home/algua/.config/algua/research.env` — the ideation units' env file,
    **not** the trading lane's:
    ```
    ALGUA_DRIVE_CREDENTIALS=/home/algua/.config/algua/drive.json
-   ALGUA_DRIVE_FOLDER_ID=<the Algua folder id from its URL>
+   ALGUA_DRIVE_FOLDER_ID=<printed by step 3>
    ```
    Never commit either value: this repository is public.
 5. **Migrate** today's files (safe to re-run), as the `algua` user from the checkout:
@@ -52,7 +83,7 @@ ones (critic + dedup) but are processed first and skip leap's pool-depth gate.
 
 ## Failure behaviour
 
-- Drive unreachable or credentials revoked: the run's snapshot export fails, the run ends before
+- Drive unreachable, credentials revoked, or the app left in Testing (7-day token): the run's snapshot export fails, the run ends before
   any agent call, and the next timer retries. Research claims also pause (they need categories).
 - Publish failures never fail a run; the Ideas Sheet is stale until the next one.
 - Errors are JSON envelopes: `drive_disabled`, `drive_auth`, `drive_unavailable`,

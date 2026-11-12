@@ -51,6 +51,9 @@ def main() -> int:
             if query.get("state") == state and "code" in query:
                 result["code"] = query["code"]
                 msg = b"Algua: consent received. You can close this tab."
+            elif query.get("state") == state and "error" in query:
+                result["error"] = query["error"]
+                msg = b"Algua: consent was not granted. You can close this tab."
             else:
                 msg = b"Algua: unexpected callback."
             self.send_response(200)
@@ -66,8 +69,11 @@ def main() -> int:
         "client_id": client_id, "redirect_uri": redirect, "response_type": "code",
         "scope": SCOPES, "access_type": "offline", "prompt": "consent", "state": state})
     print("Open this URL signed in as the Drive owner:\n\n" + url + "\n", flush=True)
-    while "code" not in result:
+    while "code" not in result and "error" not in result:
         server.handle_request()
+    if "error" in result:
+        print(f"consent not granted ({result['error']}); nothing written.")
+        return 1
 
     form = urllib.parse.urlencode({
         "code": result["code"], "client_id": client_id, "client_secret": client_secret,
@@ -77,9 +83,12 @@ def main() -> int:
     if "refresh_token" not in token:
         print("No refresh_token returned; revoke the app's access and re-run.")
         return 1
-    args.out.write_text(json.dumps({"client_id": client_id, "client_secret": client_secret,
-                                    "refresh_token": token["refresh_token"]}), encoding="utf-8")
-    os.chmod(args.out, 0o600)
+    # Created owner-only from the first byte (no window at the umask's mode).
+    fd = os.open(args.out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps({"client_id": client_id, "client_secret": client_secret,
+                             "refresh_token": token["refresh_token"]}))
+    os.chmod(args.out, 0o600)  # an existing file keeps its old mode through O_CREAT
     print(f"wrote {args.out} (mode 0600)")
     if args.create_folder:
         body = json.dumps({"name": args.create_folder,

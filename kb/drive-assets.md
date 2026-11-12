@@ -23,9 +23,10 @@ A Drive document or company KB summary must never override existing human go-liv
 
 ## Exception: the ideation backend (2026-11-12)
 
-The ideation component reads and writes four Sheets in the Algua folder — `Inbox`, `Steering`,
-`Inspirations` and a read-only `Ideas` mirror — through the CLI only, using a bot account that can
-see nothing but that folder ([setup](../docs/agent/drive.md),
+The ideation component reads and writes four Sheets in Algua's own app-created `Algua` folder (not
+the shared Nix/Ventures/Algua folder linked above) — `Inbox`, `Steering`,
+`Inspirations` and a read-only `Ideas` mirror — through the CLI only, using the owner's account with Google's narrow
+`drive.file` permission (it can see only the files Algua itself created) ([setup](../docs/agent/drive.md),
 [design](../docs/superpowers/specs/2026-11-12-drive-ideation-design.md)). This is the one
 sanctioned Drive data path. It carries no trade, account, gate, capital or market data, and the
 folder id and credentials stay on the VPS, never in this repository. Everything else in the

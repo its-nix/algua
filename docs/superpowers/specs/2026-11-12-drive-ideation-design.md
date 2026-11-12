@@ -126,6 +126,12 @@ A missing file is created on first use with its header row (except the folder it
 
 ## 5. Access and credential
 
+> **Superseded during rollout (owner decision, 2026-11-12):** the owner's personal Google account
+> with the narrow `drive.file` scope, an app-created `Algua` folder, one OAuth client per
+> component, and a published (non-Testing) app. Agents never hold the token: the runtime seam
+> strips the Drive env and masks the credential file. Current setup: `docs/agent/drive.md`. The
+> bot-account text below is kept as the original design.
+
 - **One Google account dedicated to Algua** (e.g. an `algua-bot` Gmail), with **only** the
   `Algua/` folder shared to it as **Editor**. Works whether the owner's Drive is personal or
   Workspace. (A service account cannot create files in a personal My Drive — no storage quota —

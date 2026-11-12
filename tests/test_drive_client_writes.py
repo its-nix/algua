@@ -119,3 +119,15 @@ def test_header_is_read_once_for_many_writes(tmp_path):
 def test_429_backoff_outlasts_a_one_minute_quota_window():
     from algua.knowledge.drive import client as mod
     assert sum(mod._BACKOFF * 2 ** i for i in range(mod._ATTEMPTS - 1)) >= 60
+
+
+def test_drive_secret_files_are_gitignored():
+    """Review I6: the consent output and the OAuth client file must never be committed to this
+    public repository, wherever an operator runs the consent script from."""
+    import subprocess
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    for name in ("drive.json", "client_secret.json", "client_secret_123.apps.json",
+                 "scripts/drive.json"):
+        proc = subprocess.run(["git", "check-ignore", "-q", name], cwd=repo)
+        assert proc.returncode == 0, f"{name} is not gitignored"
