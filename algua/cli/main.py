@@ -41,6 +41,7 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     source_cmd,
     steering_cmd,
     strategy_cmd,
+    vendor_check_cmd,
 )
 from algua.cli.app import app, emit
 from algua.cli.errors import error_envelope, is_retryable
@@ -72,6 +73,7 @@ research_cmd.research_app.add_typer(source_cmd.source_app, name="sources")
 # data_app so `algua data refresh-bars ...` is unchanged while data_refresh_cmd never imports
 # data_cmd (#556 review finding 2).
 data_cmd.data_app.add_typer(data_refresh_cmd.refresh_app)
+data_cmd.data_app.add_typer(vendor_check_cmd.vendor_check_app)
 backtest_cmd.backtest_app.add_typer(portfolio_cmd.portfolio_app)
 app.add_typer(deployment_cmd.deployment_app, name="deployment")
 app.add_typer(model_cmd.model_app, name="model")
