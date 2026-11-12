@@ -89,6 +89,11 @@ def source_plan(
         key=lambda r: (
             r["waiting"],
             r["assessment"]["status"] != "feasible",
+            # Soft cold-start preferences for the fixed US-equity daily pilot only.
+            r["assessment"]["status"] != "feasible"
+            and r["metadata"].get("market") != "us_equities",
+            r["assessment"]["status"] != "feasible" and r["metadata"].get("horizon") != "daily",
+            r["assessment"]["status"] != "feasible" and r["metadata"].get("status") == "used",
             r["passes"],
             r["source_id"],
         )
