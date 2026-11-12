@@ -132,11 +132,29 @@ def test_revoked_refresh_token_raises_auth(tmp_path):
     assert exc.value.code == "drive_auth"
 
 
-def test_every_call_logs_drive_call_without_ids(tmp_path, caplog):
+class _Collect(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__(logging.DEBUG)
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+
+def test_every_call_logs_drive_call_without_ids(tmp_path):
+    # A handler on the logger itself, not caplog: once anything configures the `algua` root
+    # logger (propagate=False), records never reach pytest's capture handler.
     t = FakeTransport(_sheet_router([["id"], ["a"]]))
-    with caplog.at_level(logging.INFO, logger="algua.drive"):
+    logger = logging.getLogger("algua.drive")
+    handler, old_level = _Collect(), logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    try:
         _client(tmp_path, t).read_tab("S", "t", required=[])
-    records = [r for r in caplog.records if r.name == "algua.drive"]
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(old_level)
+    records = handler.records
     api_calls = [c for c in t.calls if "oauth2" not in c[1]]
     assert len(records) == len(api_calls) > 0
     for r in records:
