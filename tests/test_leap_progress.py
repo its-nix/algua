@@ -89,7 +89,7 @@ def test_actual_result_adapter_never_counts_failed_import_as_clean(
     root = Path(__file__).resolve().parents[1]
     source = (root / '.opencode/scripts/leap.sh').read_text()
     block = source[source.index('# Preserve failed-run uncertainty'):
-                   source.index('# --- Per-venue yield')]
+                   source.index('# End legacy progress adapter.')]
     binary = tmp_path / 'bin'
     binary.mkdir()
     uv = binary / 'uv'
