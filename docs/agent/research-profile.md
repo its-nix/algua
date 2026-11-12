@@ -72,3 +72,30 @@ stay unknown. Reads do not rewrite attempts, archives or stages. Missing, malfor
 changed, linked, or oversized digest files (2 MiB ceiling) yield unavailable coverage and unknowns;
 repair the source separately rather than guessing conclusions. Research results in the dashboard
 show these worker-reported assessments alongside qualification outcomes.
+
+### Scratch data visibility and history capacity
+
+The leap driver seeds its isolated data directory with only the configured, payload-verified
+snapshot's manifest entry and a payload symlink. The runtime seam mounts the source outside the
+worktree read-only; registry, KB and tracking routes remain scratch-only. `data inspect` and bar
+reads therefore resolve the declared snapshot inside the worker without redirecting to authority.
+`.verified-research-inputs.json` and the injected receipt contain `coverage`: actual observed grid
+session count, observed endpoints, per-symbol row counts and number of grid-complete symbols.
+These are observed coverage facts, not calendar completeness, valid feature guarantees or PIT proof.
+
+Authored configured sweeps check post-warmup capacity in every required window before any batch
+simulation. The partition remains the existing continuous portfolio, reserved tail and common
+embargo. No source lookback, embargo or falsification is shortened to fit. Missing or inadequate
+history is reported as a data prerequisite, never an economic refutation. Structural plan-only
+preflight still cannot certify unbuilt source; it grants no qualification authority.
+
+Leap permits two clean zero-import attempts on identical inspirations, pool/scorecard, verified
+profile/coverage, categories and source commit. It then records `unchanged_inputs` with
+`model_called=false` until these inputs change; failed workers/imports never count as clean empty
+passes. This uses the existing leap lock plus one bounded durable `leap-progress.json`, not an idea
+status or research ledger rewrite. `--force` retains its explicit operator bypass. New forage
+material, research results, data/profile or implementation changes reset this input identity.
+
+PIT eligibility is still a separate unmet source requirement. Longer source-faithful history,
+corporate-action/delisting coverage and historical membership must be acquired and verified under
+their own reviewed data scope; this repair never relabels the pilot or relaxes promotion.

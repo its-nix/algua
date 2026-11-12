@@ -27,6 +27,7 @@ def experiment(monkeypatch, tmp_path):
     execution = original.config.execution
     profile = {'snapshot_id': 'pinned', 'start': '2024-01-01', 'end': '2025-01-01',
         'windows': 4, 'holdout_frac': 0.2, 'symbols': original.config.universe,
+        'coverage': {'grid_sessions': 504},
         'execution': {'construction': 'top_k_equal_weight', 'top_k': 3,
             **{k: getattr(execution, k) for k in
                ('decision_lag_bars', 'max_weight_per_symbol', 'fees', 'slippage')}}}

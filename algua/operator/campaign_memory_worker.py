@@ -10,13 +10,14 @@ from algua.operator.campaign_memory_schema import (
     LEGACY_SELECTION_PROTOCOL,
     SELECTION_PROTOCOLS,
     VIEW_FIELDS,
-    WINDOW_SELECTION_PROTOCOL,
     MemoryContextError,
+    context_limit,
     exact,
     integer,
     require,
     validate_payload,
     validate_snapshot,
+    window_protocol,
 )
 from algua.operator.research_memory_checkpoint import (
     CheckpointError,
@@ -42,7 +43,8 @@ class _Projection:
     """Keep only a detached bounded prefix while each verified full archive is in scope."""
 
     def __init__(self, selection_protocol: str) -> None:
-        self.window_records = selection_protocol == WINDOW_SELECTION_PROTOCOL
+        self.window_records = window_protocol(selection_protocol)
+        self.context_bytes = context_limit(selection_protocol)
         self.receipts: list[dict] = []
         self.observations: list[dict] = []
         self.truncations: list[dict] = []
@@ -79,7 +81,7 @@ class _Projection:
                 continue
             view = {k: row[k] for k in VIEW_FIELDS if k != "archive_ref"}
             raw = canonical(view | {"archive_ref": receipt["reference"]})
-            if len(raw) > 24 * 1024:
+            if len(raw) > self.context_bytes:
                 # This record and every later candidate must leave via tail trimming; no backfill.
                 self.prefix_closed = True
                 self.omitted_context += 1
@@ -113,7 +115,7 @@ class _Projection:
                 truncated_sweeps=markers,
                 omitted_truncation_markers=self.total_markers - len(markers))
             snapshot["status"] = "available" if self.observations else "unavailable"
-            if len(canonical(snapshot)) <= 24 * 1024:
+            if len(canonical(snapshot)) <= self.context_bytes:
                 return validate_snapshot(snapshot)
             require(self.observations, "context_bytes_exceeded")
             self.observations.pop()

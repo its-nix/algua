@@ -34,8 +34,18 @@ CYCLE = r"[A-Za-z0-9][A-Za-z0-9_-]{0,95}"
 LEGACY_SELECTION_PROTOCOL = "relevant_attempts_desc/v1"
 RECENT_SELECTION_PROTOCOL = "recent_completed_attempts_desc/v1"
 WINDOW_SELECTION_PROTOCOL = "recent_completed_windows_first/v1"
+COMPARISON_SELECTION_PROTOCOL = "recent_completed_comparisons_first/v1"
 SELECTION_PROTOCOLS = frozenset({LEGACY_SELECTION_PROTOCOL, RECENT_SELECTION_PROTOCOL,
-                                 WINDOW_SELECTION_PROTOCOL})
+                                 WINDOW_SELECTION_PROTOCOL, COMPARISON_SELECTION_PROTOCOL})
+
+
+def context_limit(protocol: str) -> int:
+    return (64 if protocol == COMPARISON_SELECTION_PROTOCOL else 24) * 1024
+
+
+def window_protocol(protocol: str) -> bool:
+    return protocol in {WINDOW_SELECTION_PROTOCOL, COMPARISON_SELECTION_PROTOCOL}
+
 ATTEMPT = re.compile(r"idea_attempts:([1-9][0-9]*)\Z")
 SOURCE = re.compile(rf"scratch:({CYCLE}):runs:([1-9][0-9]*)\Z")
 REFERENCE = re.compile(r"mlflow:(.+)/public-evidence\.json#sha256=([0-9a-f]{64})\Z", re.DOTALL)
@@ -174,7 +184,8 @@ def markers(value: Any, sweeps: set[str]) -> None:
 
 def validate_snapshot(value: Any) -> dict:
     try:
-        require(len(canonical(value)) <= 24 * 1024)
+        require(isinstance(value, dict) and value.get("selection_protocol") in SELECTION_PROTOCOLS)
+        require(len(canonical(value)) <= context_limit(value["selection_protocol"]))
         value = strict_json(canonical(value))
         require(exact(value, {"schema_version", "status", "evidence_mode", "authority",
             "association",
@@ -216,8 +227,8 @@ def validate_snapshot(value: Any) -> dict:
             observation(row, source[1], archived=False)
             require(len(canonical(row["inputs"]))
                     <= context_input_limit(row["kind"], row["inputs"],
-                        window_records=value["selection_protocol"] == WINDOW_SELECTION_PROTOCOL))
-            priority = (value["selection_protocol"] == WINDOW_SELECTION_PROTOCOL
+                        window_records=window_protocol(value["selection_protocol"])))
+            priority = (window_protocol(value["selection_protocol"])
                         and not (row["kind"] in {"walk_forward", "sweep_trial"}
                                  and "public_window_record" in row["inputs"]))
             order.append((list(cycles).index(source[1]), int(priority), int(source[2])))

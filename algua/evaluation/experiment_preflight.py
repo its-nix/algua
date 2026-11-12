@@ -13,6 +13,7 @@ from algua.evaluation.research_roles import (
     validate_comparisons,
     validate_task_roles,
 )
+from algua.operator.research_history import window_capacity
 from algua.operator.research_profile import load_research_profile
 from algua.strategies.loader import load_strategy
 
@@ -57,6 +58,15 @@ def preflight_experiment(tasks: list[dict[str, Any]], *, check_strategies: bool)
         if profile is not None:
             for variant in variants:
                 config, expected = variant.config, profile['execution']
+                if action == 'sweep' and config.feature_lookback is not None:
+                    coverage = profile.get('coverage')
+                    if not isinstance(coverage, dict):
+                        raise ValueError('research_profile:observed_coverage_unavailable')
+                    capacity = window_capacity(coverage['grid_sessions'],
+                        lookback=config.feature_lookback, lag=config.execution.decision_lag_bars,
+                        windows=profile['windows'], holdout_frac=profile['holdout_frac'])
+                    if not all(capacity):
+                        raise ValueError('research_profile:insufficient_post_warmup_window_history')
                 execution = config.execution
                 if (sorted(config.universe) != sorted(profile['symbols'])
                     or execution.rebalance_frequency != '1d'

@@ -111,7 +111,7 @@ def test_campaign_default_admits_and_decodes_memory_without_extra_flags(
     _, claimed = driver._started(result)
     assert [idea["id"] for idea in claimed] == [3]
     snapshot = driver._calls(tmp_path)[0]["menu"]["request"]["context"]["public_research_memory"]
-    assert snapshot["selection_protocol"] == "recent_completed_windows_first/v1"
+    assert snapshot["selection_protocol"] == "recent_completed_comparisons_first/v1"
 
 
 def test_empty_default_campaign_admits_without_chooser_or_prompt_decode(

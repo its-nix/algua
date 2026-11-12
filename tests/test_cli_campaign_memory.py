@@ -49,7 +49,7 @@ def test_new_family_admission_receives_recent_negative_archive_without_changing_
     snapshot = menu["request"]["context"]["public_research_memory"]
     assert snapshot["observations"][0]["metrics"]["total_return_is"] == -0.3
     assert snapshot["receipts"][0]["attempt_evidence_ids"] == ["idea_attempts:1"]
-    assert snapshot["selection_protocol"] == "recent_completed_windows_first/v1"
+    assert snapshot["selection_protocol"] == "recent_completed_comparisons_first/v1"
     assert snapshot["authority"] == "none" and snapshot["association"] == "cycle_only"
     checkpoint = json.loads((directory / "fresh-with-negative-context.json").read_text())
     assert checkpoint["request"]["context"]["public_research_memory"] == snapshot
