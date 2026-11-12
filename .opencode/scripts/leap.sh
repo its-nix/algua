@@ -320,6 +320,10 @@ frame = """
 
 CURRENT VERIFIED RESEARCH INPUTS — FEASIBILITY CONTEXT ONLY
 Seek and form mechanisms testable on the exact listed symbols, snapshot and dates below.
+The trusted driver seeds a scratch manifest and read-only source payload link for data inspect.
+Observed coverage in this receipt is measured from verified bytes, not calendar estimates.
+Use .verified-research-inputs.json and the scratch data CLI; never redirect to authority paths.
+A missing snapshot is an infrastructure error to report, not an empirical critic rejection.
 Only daily OHLCV is available for this profile; a source ticker outside the listed symbols
 does not establish available prices. Transfer a mechanism only when these inputs can test it.
 Keep missing attention, investor-flow, sector, event or other inputs explicit; never invent an
@@ -391,6 +395,39 @@ if ! flock -n 9; then
   exit 0
 fi
 
+# Two clean empty passes may explore unchanged material; then wait for real input/code changes.
+LEAP_CONTEXT_KEY="$(cd "${REPO_ROOT}" && uv run --no-sync python -c '
+import json,sys
+from pathlib import Path
+from algua.operator.leap_progress import context_key
+from algua.operator.research_profile import load_research_profile
+context = {k: json.loads(v) for k,v in zip(
+    ("inspirations","pool_depth","refuted_ideas","scorecard"), sys.argv[1:5], strict=True)}
+context.update(profile=load_research_profile(Path(sys.argv[5])), code=sys.argv[6],
+               categories=Path(sys.argv[7]).read_text())
+print(context_key(context))
+' "${INSPIRATIONS_JSON}" "${DEPTH_JSON}" "${REFUTED_JSON}" "${SCORECARD_BY_CATEGORY}" \
+  "${AUTH_DATA_DIR}" "$(git -C "${REPO_ROOT}" rev-parse HEAD)" "${CATEGORIES_FILE}")"
+if [[ "${FORCE}" -eq 0 ]]; then
+  LEAP_READY="$(cd "${REPO_ROOT}" && uv run --no-sync python -c '
+import sys
+from pathlib import Path
+from algua.operator.leap_progress import ready
+print(int(ready(Path(sys.argv[1]), sys.argv[2])))
+' "${AUTH_DATA_DIR}" "${LEAP_CONTEXT_KEY}")"
+  if [[ "${LEAP_READY}" == "0" ]]; then
+    echo "unchanged inputs after two clean zero-import passes; no model call"
+    python3 - "${DIGEST}" "${STAMP}" "${LEAP_CONTEXT_KEY}" <<'PYSKIP'
+import json,sys
+with open(sys.argv[1], "a") as stream:
+    stream.write(json.dumps({"stamp":sys.argv[2], "outcome":"unchanged_inputs",
+        "context_key":sys.argv[3], "model_called":False, "imported":[],
+        "critic_rows":0, "exit_code":0, "timed_out":False}) + "\n")
+PYSKIP
+    exit 0
+  fi
+fi
+
 echo "Creating worktree ${WORKTREE} on branch ${BRANCH}..."
 mkdir -p "${RUNS_DIR}"
 git -C "${REPO_ROOT}" worktree add -b "${BRANCH}" "${WORKTREE}" >/dev/null
@@ -446,6 +483,19 @@ IMPORT_CMD=(uv run algua research idea import --from "${SCRATCH_DB}" --run "${ST
 for item in inspirations principles strategies; do
   [[ -e "${KB_DIR}/${item}" ]] && cp -RL "${KB_DIR}/${item}" "${SCRATCH}/kb/" || true
 done
+
+# Seed only the verified bars snapshot. Authority remains read-only outside the worktree;
+# scratch registry/tracking stay independent. A missing view is infrastructure, not negative alpha.
+if [[ -n "${ALGUA_RESEARCH_PROFILE+x}" ]]; then
+  (cd "${REPO_ROOT}" && uv run --no-sync python -c '
+import sys
+from pathlib import Path
+from algua.operator.research_profile import seed_ideation_data
+from algua.operator.research_memory_checkpoint import canonical
+receipt = seed_ideation_data(Path(sys.argv[1]), Path(sys.argv[2]))
+Path(sys.argv[3]).write_bytes(canonical(receipt) + b"\n")
+' "${AUTH_DATA_DIR}" "${SCRATCH}/data" "${WORKTREE}/.verified-research-inputs.json")
+fi
 
 echo "Pre-warming the worktree environment (uv sync, timeout ${SYNC_TIMEOUT})..."
 ( cd "${WORKTREE}" && timeout "${SYNC_TIMEOUT}" uv sync ) \
@@ -610,6 +660,18 @@ for raw in (m.group(1) if m else "").splitlines():
 print(json.dumps(exhausted))
 PY
 )"
+
+# Preserve failed-run uncertainty; only clean terminal no-import passes consume the retry count.
+(cd "${REPO_ROOT}" && uv run --no-sync python -c '
+import json,sys
+from pathlib import Path
+from algua.operator.leap_progress import record_result
+result = json.loads(sys.argv[3])
+record_result(Path(sys.argv[1]), sys.argv[2], imported=len(result.get("imported", [])),
+              clean=sys.argv[4:] == ["0","0","0","0","0"]
+              and result.get("ok") is True and result.get("critic_errors", 0) == 0)
+' "${AUTH_DATA_DIR}" "${LEAP_CONTEXT_KEY}" "${IMPORT_OUT}" "${rc}" "${timed_out}" \
+  "${rate_limited}" "${IMPORT_PARSE_ERROR}" "${IMPORT_RC}")
 
 # --- Per-venue yield (spec §6/§7): recompute the scorecard and feed it back into _sources.yaml. -
 echo "Writing per-venue yield: uv run algua research idea scorecard --days 90 |" \

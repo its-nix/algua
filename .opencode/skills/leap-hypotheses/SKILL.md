@@ -98,6 +98,10 @@ numerical trial and checks supported output names/grid syntax, not unbuilt sourc
 Reject unsupported observables, such as factor alpha that the engine does not compute; the later
 authored batch must pass the actual strategy/profile preflight too. The research loop must retain
 the paired window dates/metrics for both books. This check grants no qualification authority.
+When current scratch inspection succeeds, an older run-local `snapshot not_found` or missing
+control implementation is context about that old environment, not an empirical refutation.
+Reassess feasibility against the current verified receipt without rewriting old critic rows;
+retain all existing semantic dedup/refuted-history and required causal evidence checks.
 Before spending an author/research cycle, check the history budget after the reserved tail and
 common embargo. Walk-forward runs one continuous portfolio and then segments its returns; the
 initial feature warm-up is still inside the early public windows. Count actual closed-bar grid
