@@ -18,7 +18,6 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     data_context_cmd,
     data_refresh_cmd,
     deployment_cmd,
-    eval_cmd,
     fleet_cmd,
     handoff_cmd,
     idea_cmd,

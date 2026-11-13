@@ -101,7 +101,6 @@ BUDGET: dict[str, int] = {
     "algua/registry/store/crud.py": 393,
     "algua/registry/store/family.py": 470,
     "algua/registry/store/gate.py": 594,
-    "algua/research/eval_harness.py": 423,
     "algua/research/forward_gates.py": 392,
     "algua/research/gates.py": 544,
     "algua/research/regime.py": 365,
