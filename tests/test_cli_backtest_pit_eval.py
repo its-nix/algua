@@ -1,11 +1,17 @@
 """Tests: backtest sweep + walk-forward CLI accept --fundamentals/--news-snapshot (Task 5)."""
 from __future__ import annotations
 
+import json
+
 import pandas as pd
+import pytest
 from typer.testing import CliRunner
 
 from algua.cli.main import app
 from algua.data.store import DataStore
+from tests._context_strategies import context_strategies  # noqa: F401
+
+pytestmark = [pytest.mark.serial, pytest.mark.usefixtures("context_strategies")]
 
 runner = CliRunner()
 
@@ -50,6 +56,33 @@ def _seed(data_dir):
     ])
     nrec = store.ingest_news(provider="reuters", as_of="2025-02-01T00:00:00Z", frame=news)
     return brec.snapshot_id, nrec.snapshot_id
+
+
+def test_backtest_sweep_with_news_snapshot(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "r.db"))
+    bid, nid = _seed(tmp_path)
+    res = runner.invoke(app, ["backtest", "sweep", "news_coverage_tilt",
+                              "--snapshot", bid, "--news-snapshot", nid,
+                              "--start", "2025-01-01", "--end", "2025-01-21",
+                              "--windows", "2", "--param", "window_days=3,5"])
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["ok"] is True
+    assert payload["news_snapshot"] == nid
+
+
+def test_backtest_walkforward_with_news_snapshot(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "r.db"))
+    bid, nid = _seed(tmp_path)
+    res = runner.invoke(app, ["backtest", "walk-forward", "news_coverage_tilt",
+                              "--snapshot", bid, "--news-snapshot", nid,
+                              "--start", "2025-01-01", "--end", "2025-01-21",
+                              "--windows", "2"])
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert payload["ok"] is True
 
 
 def test_sweep_news_snapshot_on_non_news_strategy_errors(tmp_path, monkeypatch):

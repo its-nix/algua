@@ -47,3 +47,20 @@ def test_manifest_with_news_record_still_lists(tmp_path):
     store = DataStore(tmp_path)
     _write_manifest_record(store, dataset=Dataset.NEWS)
     assert [r.metadata.dataset for r in store.manifest.list_records(Dataset.NEWS)] == [Dataset.NEWS]
+
+
+def test_data_inspect_lists_legacy_fundamentals_and_news_records(tmp_path, monkeypatch):
+    import json
+
+    from typer.testing import CliRunner
+
+    from algua.cli.main import app
+
+    monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path))
+    store = DataStore(tmp_path)
+    f = _write_manifest_record(store, dataset=Dataset.FUNDAMENTALS)
+    n = _write_manifest_record(store, dataset=Dataset.NEWS)
+    res = CliRunner().invoke(app, ["data", "inspect"])
+    assert res.exit_code == 0, res.output
+    ids = {r["snapshot_id"] for r in json.loads(res.output)}
+    assert {f.snapshot_id, n.snapshot_id} <= ids
