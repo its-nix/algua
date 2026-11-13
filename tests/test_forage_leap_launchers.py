@@ -783,3 +783,21 @@ def test_failed_source_review_digest_retains_all_missing_source_ids(tmp_path):
         'SOURCE_REVIEW_COMPLETE': '0'})
     assert result['digest']['outcome'] == 'source_review_incomplete'
     assert result['digest']['source_selection']['missing_sources'] == ['offered-source']
+
+
+def test_scheduled_forage_idle_check_precedes_network_and_model(tmp_path):
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    uv = bindir / "uv"
+    uv.write_text('#!/bin/sh\nprintf \'{"ok":true,"ready":false,'
+                  '"reason":"eligible_queue_available"}\\n\'\n')
+    uv.chmod(0o700)
+    env = {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}",
+           "ALGUA_DATA_DIR": str(tmp_path / "data")}
+    result = subprocess.run(["bash", str(FORAGE), "--scheduled"], cwd=REPO,
+                            env=env, capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert "forage idle:" in result.stdout
+    assert not (tmp_path / "data").exists()
+    service = (REPO / "deploy/systemd/algua-forage.service").read_text()
+    assert "forage.sh --scheduled" in service

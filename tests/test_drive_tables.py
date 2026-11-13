@@ -173,3 +173,98 @@ def test_malformed_json_cell_is_a_schema_error_naming_the_row(drive):
     with pytest.raises(DriveError) as exc:
         tables.SourcesTable(drive).load()
     assert exc.value.code == "drive_schema" and "Steering/Sources" in str(exc.value)
+
+
+def test_pilot_recipe_survives_drive_accept_and_snapshot_roundtrip(tmp_path, drive):
+    from tests.test_source_selection import recipe
+
+    staged = _stage(tmp_path, "2026-11-12-recipe")
+    path = staged / "2026-11-12-recipe.md"
+    fm, body = insp.parse_note(path.read_text())
+    fm["pilot_recipe"] = recipe()
+    from algua.knowledge.frontmatter import render_doc
+    path.write_text(render_doc(fm, body))
+    _accept(tmp_path, staged)
+    row, = drive.rows(*tables.INSPIRATIONS)
+    restored, _ = tables.note_from_row(row)
+    assert restored["pilot_recipe"] == recipe()
+    insp.mark_used(_settings(tmp_path), restored["id"], idea_id=7,
+                   store=tables.InspirationsTable(drive))
+    row, = drive.rows(*tables.INSPIRATIONS)
+    assert tables.note_from_row(row)[0]["pilot_recipe"] == recipe()
+
+
+def test_accept_reports_recipe_fit_separately_from_note_count(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from algua.cli import inspirations_cmd
+    from algua.cli.main import app
+    from algua.knowledge.frontmatter import render_doc
+    from tests.test_source_selection import PROFILE, recipe
+
+    staged = _stage(tmp_path, "2026-11-12-fit", "2026-11-12-backlog", "2026-11-12-unknown")
+    for identity, declared in [("fit", recipe()), ("backlog", recipe(253))]:
+        path = staged / f"2026-11-12-{identity}.md"
+        fm, body = insp.parse_note(path.read_text())
+        fm["pilot_recipe"] = declared
+        path.write_text(render_doc(fm, body))
+    monkeypatch.setenv("ALGUA_KNOWLEDGE_DIR", str(tmp_path / "kb"))
+    monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(inspirations_cmd, "load_research_profile", lambda _: PROFILE)
+    monkeypatch.setattr(inspirations_cmd, "inspirations_store", lambda _: None)
+    cats = tmp_path / "categories.txt"
+    cats.write_text("momentum\n")
+    result = CliRunner().invoke(app, ["research", "inspirations", "accept", "--from", str(staged),
+                                    "--run", "fixture", "--categories-file", str(cats)])
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert len(payload["accepted"]) == 3
+    assert payload["recipe_fit"]["feasible"] == ["2026-11-12-fit"]
+    assert payload["recipe_fit"]["blocked"] == ["2026-11-12-backlog"]
+    assert payload["recipe_fit"]["unknown"] == ["2026-11-12-unknown"]
+
+
+def test_broken_advisory_profile_does_not_discard_accepted_notes(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from algua.cli import inspirations_cmd
+    from algua.cli.main import app
+
+    def broken(_):
+        raise ValueError("SYNTHETIC_FIXTURE corrupt descriptor")
+
+    staged = _stage(tmp_path, "2026-11-12-accepted")
+    monkeypatch.setenv("ALGUA_KNOWLEDGE_DIR", str(tmp_path / "kb"))
+    monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(inspirations_cmd, "load_research_profile", broken)
+    monkeypatch.setattr(inspirations_cmd, "inspirations_store", lambda _: None)
+    cats = tmp_path / "categories.txt"
+    cats.write_text("momentum\n")
+    result = CliRunner().invoke(app, ["research", "inspirations", "accept", "--from", str(staged),
+                                    "--run", "fixture", "--categories-file", str(cats)])
+    assert result.exit_code == 0, result.stdout
+    assert json.loads(result.stdout)["accepted"] == ["2026-11-12-accepted"]
+    assert json.loads(result.stdout)["recipe_fit"] is None
+
+
+@pytest.mark.parametrize("assessment", [{}, {"status": "unexpected"}, {"status": []}])
+def test_broken_advisory_assessment_keeps_accepted_json(tmp_path, monkeypatch, assessment):
+    from typer.testing import CliRunner
+
+    from algua.cli import inspirations_cmd
+    from algua.cli.main import app
+    from tests.test_source_selection import PROFILE
+
+    staged = _stage(tmp_path, "2026-11-12-accepted")
+    monkeypatch.setenv("ALGUA_KNOWLEDGE_DIR", str(tmp_path / "kb"))
+    monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(inspirations_cmd, "load_research_profile", lambda _: PROFILE)
+    monkeypatch.setattr(inspirations_cmd, "assess_recipe", lambda *_: assessment)
+    monkeypatch.setattr(inspirations_cmd, "inspirations_store", lambda _: None)
+    cats = tmp_path / "categories.txt"
+    cats.write_text("momentum\n")
+    result = CliRunner().invoke(app, ["research", "inspirations", "accept", "--from", str(staged),
+                                    "--run", "fixture", "--categories-file", str(cats)])
+    assert result.exit_code == 0, result.stdout
+    assert json.loads(result.stdout)["accepted"] == ["2026-11-12-accepted"]
+    assert json.loads(result.stdout)["recipe_fit"]["unknown"] == ["2026-11-12-accepted"]

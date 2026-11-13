@@ -256,6 +256,21 @@ script and `.opencode/opencode.json`; this is not evidence of a completed single
 or live service configuration. Market-session operation and necessary trusted queues keep separate
 clocks/locks. Hermes monitors aggregate health and owns engineering incidents, not each trial.
 
+Current refill behavior (2026-11-13): the forage timer checks hourly at :05; `--scheduled` uses
+the actual eligible research menu, not open-pool depth. It permits at most two launches per UTC
+day with a two-hour cooldown, for an empty eligible queue or the 03 UTC refresh. Failed launches
+consume durable reservations. Manual foraging remains explicit. Accepted-note digests distinguish
+declared feasible, blocked and unknown recipes; these are source-fit labels, never empirical
+results or qualification. Drive stores `pilot_recipe` and leap reads the exported steering snapshot.
+Source retry identities bind content, verified profile and an explicit capability-file fingerprint
+(`operator/source_selection.py`), so unrelated deployments do not erase retry history. Extend that
+manifest when implementing a new recipe capability. Migration from old commit-based keys resets
+advisory retry counters once; durable criticism and experiment evidence are retained.
+Conceptual `auto:leap_critic` / `CRITIC:untestable` discards without strategy/evaluation links remain
+required context for an unattempted idea's first trial rather than a permanent veto. Current-data
+preflight must recheck them. Actual attempts, empirical/manual and other critic rejections retain
+their dedup barriers; promotion gates are unchanged.
+
 ## Strategy-first monitor: delivered and target
 
 The private monitor home is now the strategy-first view (PR #722), with secondary diagnostics

@@ -12,15 +12,30 @@ from algua.cli._common import ok
 from algua.cli.app import emit
 from algua.cli.errors import json_errors
 from algua.config.settings import get_settings
+from algua.operator.forage_schedule import forage_due
 from algua.operator.research_memory_checkpoint import strict_json
 from algua.operator.research_profile import load_research_profile
 from algua.operator.source_recipe import assess_recipe
 from algua.operator.source_selection import record_source_pass, review_sources, source_plan
+from algua.registry.campaign_read import read_campaign_scorecard
+from algua.registry.campaign_selection import menu_from_history
 from algua.registry.ideas import IdeaRepository
 from algua.registry.read_snapshot import registry_snapshot
 from algua.tracking.bounded_local_read import read_local_file
 
 source_app = typer.Typer()
+
+
+@source_app.command("refill")
+@json_errors
+def refill(reserve: str | None = typer.Option(None),
+           daily_limit: int = typer.Option(2, min=1, max=4)) -> None:
+    """Trusted automation condition; eligibility uses the research menu, not raw pool depth."""
+    settings = get_settings()
+    menu = menu_from_history(read_campaign_scorecard(settings.db_path), {
+        "category": None, "limits": {"max_hypotheses": 1}})
+    emit(ok(forage_due(settings.data_dir, eligible=bool(menu["choices"]),
+                       reserve=reserve, daily_limit=daily_limit)))
 
 
 def _read(path: Path) -> Any:
@@ -30,7 +45,8 @@ def _read(path: Path) -> Any:
 @source_app.command("plan")
 @json_errors
 def plan(
-    code: str = typer.Option(...), limit: int = typer.Option(3, min=1, max=3), force: bool = False
+    code: str | None = typer.Option(None, help="Explicit capability token override"),
+    limit: int = typer.Option(3, min=1, max=3), force: bool = False
 ) -> None:
     settings = get_settings()
     profile = load_research_profile(settings.data_dir)

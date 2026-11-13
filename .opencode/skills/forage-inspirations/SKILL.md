@@ -72,7 +72,10 @@ honestly labeled. Do not shorten original recipes to fit the sample. Optionally 
 frontmatter when all required rules can be grounded: `market`, `horizon`, `required_data` (array),
 `construction`, `feature_lookback` (integer), and `controls` (1–4 objects with those same fields
 except controls). Omit it when unspecified; absence is unknown, not rejection. This is advisory
-ranking metadata, not measured performance or qualification evidence.
+ranking metadata, not measured performance or qualification evidence. Search further for explicit
+rules, timing and controls before accepting narrative-only material. Aim for one complete grounded
+recipe when evidence supports it; zero is valid. The trusted driver reports feasible/blocked/unknown
+recipe counts separately from notes. Never invent rules or shorten lookbacks to fill a quota.
 
 ## Obscurity rubric
 

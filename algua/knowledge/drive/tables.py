@@ -14,7 +14,7 @@ from algua.knowledge.drive.client import DriveClient, DriveError
 from algua.knowledge.inspirations import REQUIRED, url_hash
 
 INSPIRATIONS = ("Inspirations", "notes")
-INSPIRATION_HEADER = [*REQUIRED, "leaps", "body", "url_hash", "inbox_row_id"]
+INSPIRATION_HEADER = [*REQUIRED, "leaps", "body", "url_hash", "inbox_row_id", "pilot_recipe"]
 CATEGORIES = ("Steering", "Categories")
 CATEGORY_HEADER = ["slug", "market", "horizon", "enabled", "notes"]
 SOURCES = ("Steering", "Sources")
@@ -59,6 +59,8 @@ def note_from_row(row: dict[str, str]) -> tuple[dict[str, Any], str]:
              if row.get("leaps", "").strip() else [])
     if leaps:
         fm["leaps"] = leaps
+    if row.get("pilot_recipe", "").strip():
+        fm["pilot_recipe"] = _json_cell(row, "pilot_recipe", "Inspirations/notes")
     return fm, row.get("body", "")
 
 
@@ -85,6 +87,7 @@ class InspirationsTable:
             row.update(leaps=json.dumps(list(fm.get("leaps") or [])), body=body,
                        url_hash=url_hash(str(fm.get("source_url", ""))),
                        inbox_row_id=inbox_row_id)
+            row["pilot_recipe"] = json.dumps(fm["pilot_recipe"]) if "pilot_recipe" in fm else ""
             rows.append(row)
         self._c.append_rows(*INSPIRATIONS, rows)
 
