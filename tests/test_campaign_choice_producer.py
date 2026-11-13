@@ -361,8 +361,9 @@ def test_large_history_has_bounded_prompt_but_complete_admission_menu(
         conn.close()
 
 
+@pytest.mark.parametrize('recent_history_limit', [8, 0])
 def test_prompt_view_keeps_old_evidence_referenced_by_offered_choices(
-        fixture_pool, tmp_path):
+        fixture_pool, tmp_path, recent_history_limit):
     from algua.operator.campaign_choice import _prompt_menu
 
     conn, _, _, menu = prepared(fixture_pool, tmp_path)
@@ -377,10 +378,11 @@ def test_prompt_view_keeps_old_evidence_referenced_by_offered_choices(
             offered = menu['choices'][0]['hypothesis_id']
             related.update(idea_id=offered if key == 'attempts' else 999,
                            idea_ids=[offered] if key == 'negative_results' else [])
-        view = _prompt_menu(menu)
+        view = _prompt_menu(menu, recent_history_limit=recent_history_limit)
         for key in ('attempts', 'negative_results'):
             ids = [row['id'] for row in view['scorecard'][key]]
-            assert 1 in ids and 2 in ids and 19 in ids and ids == sorted(ids)
+            assert 1 in ids and 2 in ids and ids == sorted(ids)
+            assert (19 in ids) is bool(recent_history_limit)
             assert view['prompt_coverage'][key]['required_rows'] == 2
             assert view['prompt_coverage'][key]['omitted'] == 19 - len(ids)
             assert view['prompt_coverage'][key]['referenced_rows'] == 1
@@ -704,5 +706,60 @@ def test_fast_exit_cannot_bypass_export_size_bound(
         with pytest.raises(ValueError, match='byte bound'):
             campaign_choice.choose_campaign(cycle,menu=menu,directory=tmp_path/'large',**args)
         assert cycle.rows() == [] and not cycle.path.exists()
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize('ascii_locale', [False, True])
+def test_large_context_trims_only_optional_history_before_claiming(
+        fixture_pool, fake_runtime, tmp_path, monkeypatch, ascii_locale):
+    from algua.operator.campaign_choice import MAX_PROMPT_BYTES, choose_campaign
+    from algua.registry.negative_results import record_negative_result
+
+    conn = connect(fixture_pool)
+    for i in range(12):
+        record_negative_result(conn, kind='discard', verdict='CRITIC:fixture', actor='agent',
+            reason=f'SYNTHETIC_FIXTURE optional criticism {i} ' * 60,
+            hypothesis=f'SYNTHETIC_FIXTURE unrelated source {i} ' * 60, source='manual')
+    conn.close()
+    if ascii_locale:
+        write_text = Path.write_text
+
+        def locale_write(path, data, **kwargs):
+            if path.name == 'prompt.txt':
+                kwargs.setdefault('encoding', 'ascii')
+            return write_text(path, data, **kwargs)
+
+        monkeypatch.setattr(Path, 'write_text', locale_write)
+    # Exercise the complete immutable request budget, not just a large history in isolation.
+    context = {'fixture_retained_comparison': 'x' * (84 * 1024),
+               'fixture_unicode': '反' * 100}
+    conn, cycle, args, menu = prepared(fixture_pool, tmp_path, context=context)
+    before = list(conn.iterdump())
+    directory = tmp_path / 'large-context'
+    try:
+        campaign = choose_campaign(cycle, menu=menu, directory=directory, **args)
+        prompt = (directory / 'prompt.txt').read_text(encoding='utf-8')
+        view = json.loads(prompt.split('MENU_JSON\n', 1)[1])
+        assert len(prompt.encode()) <= MAX_PROMPT_BYTES
+        assert view['request'] == menu['request']
+        assert view['choices'] == menu['choices'] and view['menu_id'] == menu['menu_id']
+        assert view['scorecard']['totals'] == menu['scorecard']['totals']
+        coverage = view['prompt_coverage']['negative_results']
+        assert coverage['included'] < 8 and coverage['omitted'] > 4
+        assert coverage['referenced_rows_omitted'] == 0
+        from algua.operator.campaign_choice import _prompt_menu
+        from algua.operator.research_memory_checkpoint import canonical
+
+        recent = int(view['prompt_coverage']['selection'].split('highest ')[1].split()[0])
+        assert coverage['included'] == recent
+        next_view = _prompt_menu(menu, recent_history_limit=recent + 1)
+        next_prompt = prompt.split('MENU_JSON\n', 1)[0] + 'MENU_JSON\n'
+        assert len(next_prompt.encode() + canonical(next_view)) > MAX_PROMPT_BYTES
+        assert (directory / 'prompt.txt').read_bytes() == prompt.encode()
+        assert json.loads((directory / 'menu.json').read_text()) == menu
+        assert campaign['menu'] == menu and list(conn.iterdump()) == before
+        claimed, result = cycle.start(**args, campaign=campaign)
+        assert result['ok'] and [i.id for i in claimed] == [menu['choices'][-1]['hypothesis_id']]
     finally:
         conn.close()
