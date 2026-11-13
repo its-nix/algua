@@ -4,6 +4,11 @@ import { useFetch } from '../api'
 import { num, parseUtc, pct } from '../format'
 import type { ApiEnvelope } from '../types'
 import EvidenceStatus from './EvidenceStatus'
+import RetainedResearchWindows from './RetainedResearchWindows'
+import { downloadRetainedMetrics, metricEntries, retainedParameters } from './retainedMetricExport'
+
+type EmpiricalAssessment = 'refuted' | 'survived' | 'untested' | 'unknown'
+const assessments = new Set(['refuted', 'survived', 'untested', 'unknown'])
 
 interface Attempt {
   attempt_id: number
@@ -13,6 +18,7 @@ interface Attempt {
   outcome: string
   outcome_at: string | null
   archive_reference: string
+  reported_falsification_assessment?: EmpiricalAssessment
 }
 interface Index {
   schema_version: 'retained-research-index/v1'
@@ -66,7 +72,10 @@ function isIndex(v: unknown): v is Index {
     && v.attempts.every((r: unknown) => object(r) && positive(r.attempt_id) && positive(r.idea_id)
       && r.evidence_id === `idea_attempts:${r.attempt_id}`
       && typeof r.research_cycle_id === 'string' && cycleShape.test(r.research_cycle_id)
-      && typeof r.outcome === 'string' && typeof r.archive_reference === 'string')
+      && typeof r.outcome === 'string' && typeof r.archive_reference === 'string'
+      && (r.reported_falsification_assessment === undefined
+        || typeof r.reported_falsification_assessment === 'string'
+          && assessments.has(r.reported_falsification_assessment)))
 }
 
 function isMemory(v: unknown, selected: Attempt): v is Memory {
@@ -95,6 +104,7 @@ const outcomeLabels: Record<string, string> = {
   walkforward_refuted: 'Walk-forward refuted', sweep_unstable: 'Unstable sweep',
   candidate_preview_pass: 'Preview passed', promoted_candidate: 'Reported candidate',
   abandoned: 'Abandoned', run_error: 'Execution error',
+  data_blocked: 'Data qualification blocked',
 }
 const kindLabels: Record<string, string> = {
   backtest: 'Backtest', walk_forward: 'Walk-forward', sweep: 'Sweep', sweep_trial: 'Sweep variant',
@@ -105,6 +115,17 @@ const metricLabels = [
   ['mean_window_sharpe', 'Mean window Sharpe', 'number'],
   ['mean_trial_sharpe', 'Mean trial Sharpe', 'number'], ['n_obs_is', 'Observations', 'number'],
 ] as const
+
+function evaluationLabel(row: Observation, index: number): string {
+  const params = retainedParameters(row.inputs)
+  const values = ['component', 'lookback', 'min_eligible', 'construction.top_k'].flatMap(key => {
+    const value = params[key]
+    return typeof value === 'string' || typeof value === 'number'
+      ? [`${key}=${String(value).slice(0, 40)}`] : []
+  })
+  return `${index + 1}. ${params.evaluation_role === 'benchmark' ? 'Benchmark · ' : ''}`
+    + `${kindLabels[row.kind] ?? row.kind} · ${values.join(', ') || row.strategy_name.replaceAll('_', ' ')}`
+}
 
 function attemptDate(value: unknown): string {
   const date = typeof value === 'string' ? parseUtc(value) : null
@@ -130,14 +151,21 @@ export default function RetainedExperiments({ compact = false }: { compact?: boo
             ? `${payload.count} ${payload.count === 1 ? 'attempt' : 'attempts'}` : 'Attempt records'}
             {' · not registered strategies'}</p>}
         </div>
+      <div className="retained-header-actions">
+      {!compact && isIndex(payload) && payload.attempts.length > 0 &&
+        <button type="button" className="retained-action" onClick={() => setSelected(payload.attempts[0])}>
+          Open latest result
+        </button>}
       <details className="retained-disclosure retained-trust-dropdown">
         <summary className="retained-trust-badge">Unverified research</summary>
         <p>UNVERIFIED_WORKER · authority: none · cycle-only association.</p>
         <p>Index metadata is not verified. Attempt references are not independent trials or
-          registered strategies. Archive integrity is checked on selection; worker evidence
+          registered strategies. Reported empirical assessments come from the operational run digest
+          and grant no qualification authority. Archive integrity is checked on selection; worker evidence
           remains unverified. Execution and qualification outcomes are separate, and cycle
           observations are not attributed to an individual idea.</p>
       </details>
+      </div>
       </header>
       {index.data?.stale && <EvidenceStatus title="stale retained index" state="stale"
         detail="Showing cached attempt references." onRetry={index.refetch} />}
@@ -160,7 +188,8 @@ export default function RetainedExperiments({ compact = false }: { compact?: boo
                   onClick={() => setSelected(active ? null : row)}>
                   <span className="retained-row-main">
                     <strong className="retained-row-title">{attemptDate(row.outcome_at)}</strong>
-                    <span className="retained-row-meta">Run {row.attempt_id}</span>
+                    <span className="retained-row-meta">Attempt {row.attempt_id} · Idea {row.idea_id}</span>
+                    <span className="retained-row-meta">Reported empirical: {row.reported_falsification_assessment ?? 'unknown'}</span>
                   </span>
                   <span className="retained-outcome">{outcomeLabels[row.outcome] ?? row.outcome.replace(/_/g, ' ')}</span>
                 </button>
@@ -199,19 +228,32 @@ function RetainedDetail({ selected }: { selected: Attempt }) {
     <div className="retained-detail">
       {(detail.data.stale || detail.error !== null) && <EvidenceStatus title="retained archive" state="stale"
         detail={detail.error?.message ?? 'Showing cached verified readback.'} onRetry={detail.refetch} />}
+      <p className="retained-caption">Reported empirical assessment: {selected.reported_falsification_assessment ?? 'unknown'}.
+        {' '}Worker-reported research only; this is separate from qualification. Unknown means no matching
+        completed assessment was available, and survived does not establish profitability.</p>
       {payload.evaluations.length === 0 ? <p>No retained numerical evaluations.</p> : <>
         <header className="retained-detail-header">
           <h3 className="retained-detail-title">{evaluation.strategy_name.replaceAll('_', ' ')}</h3>
           <p className="retained-detail-meta">{kindLabels[evaluation.kind] ?? evaluation.kind}</p>
+          <p className="retained-detail-meta">Worker {payload.worker_exit === 0 ? 'completed' : 'failed'}
+            {` (exit ${payload.worker_exit})`}
+            {' · '}{outcomeLabels[selected.outcome] ?? selected.outcome.replaceAll('_', ' ')}</p>
         </header>
-        <Evaluation value={evaluation}>
+        <div className="retained-evaluation-toolbar">
         <label className="retained-evaluation-control">Evaluation{' '}
           <select aria-label="Evaluation" value={evaluation.source_ref} onChange={event => setSourceRef(event.target.value)}>
             {payload.evaluations.map((row, i) => <option key={row.source_ref} value={row.source_ref}>
-              {i + 1}. {row.strategy_name.replaceAll('_', ' ')} · {kindLabels[row.kind] ?? row.kind}
+              {evaluationLabel(row, i)}
             </option>)}
           </select>
         </label>
+        <button type="button" className="retained-action"
+          onClick={() => downloadRetainedMetrics(payload.research_cycle_id, payload.evaluations)}>
+          Download retained metrics CSV
+        </button>
+        </div>
+        <p className="retained-caption">CSV keeps raw values; returns and drawdowns are fractions.</p>
+        <Evaluation value={evaluation}>
         {archiveDetails}
         </Evaluation>
       </>}
@@ -221,8 +263,10 @@ function RetainedDetail({ selected }: { selected: Attempt }) {
 }
 
 function Evaluation({ value, children }: { value: Observation; children: ReactNode }) {
-  const metrics = { ...value.metrics, ...value.extra_metrics }
+  const metrics = { ...value.extra_metrics, ...value.metrics }
   const highlights = metricLabels.filter(([key]) => Object.hasOwn(metrics, key)).slice(0, 3)
+  const params = retainedParameters(value.inputs)
+  const collisions = Object.keys(value.extra_metrics).some(key => Object.hasOwn(value.metrics, key))
   return (
     <article>
       <div className="retained-metrics" role="group" aria-label="Key research metrics">
@@ -233,6 +277,12 @@ function Evaluation({ value, children }: { value: Observation; children: ReactNo
         </div>)}
         {highlights.length === 0 && <p className="retained-caption">No summary metrics recorded.</p>}
       </div>
+      {collisions && <p className="retained-caption">Additional metrics repeat core labels. Original
+        core values are shown above; both values remain in details and the CSV.</p>}
+      {params.evaluation_role === 'benchmark' && <p className="retained-caption">
+        Diagnostic benchmark{typeof params.benchmark_for === 'string' && ` for ${params.benchmark_for.replaceAll('_', ' ')}`} · no qualification authority
+      </p>}
+      {['walk_forward', 'sweep_trial'].includes(value.kind) && <RetainedResearchWindows inputs={value.inputs} />}
       <details className="retained-disclosure retained-more">
       <summary>Details</summary>
       {children}
@@ -240,7 +290,7 @@ function Evaluation({ value, children }: { value: Observation; children: ReactNo
         <summary>All recorded metrics</summary>
         <p>Public research statistics; contexts are not ranked or treated as gate passes.</p>
         <table className="retained-metric-table"><thead><tr><th>Metric</th><th>Raw value</th></tr></thead><tbody>
-          {Object.entries(metrics).map(([key, number]) =>
+          {metricEntries(value).map(([key, number]) =>
             <tr key={key}><th scope="row">{key}</th><td>{number === null ? 'Unavailable' : String(number)}</td></tr>)}
         </tbody></table>
       </details>

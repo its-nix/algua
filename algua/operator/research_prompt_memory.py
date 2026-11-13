@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 from algua.operator.campaign_memory import validate_public_memory_snapshot
-from algua.operator.campaign_memory_schema import CYCLE
+from algua.operator.campaign_memory_schema import CYCLE, context_limit
 from algua.operator.research_memory_checkpoint import canonical, strict_json
 from algua.registry.campaign_selection import selection_ids
 
@@ -44,7 +44,7 @@ def _wrapper(value: object) -> dict:
     snapshot = validate_public_memory_snapshot(value["snapshot"])
     _require(value["snapshot_sha256"] == hashlib.sha256(canonical(snapshot)).hexdigest())
     result = {**value, "snapshot": snapshot}
-    _require(len(canonical(result)) <= 25 * 1024)
+    _require(len(canonical(result)) <= context_limit(snapshot["selection_protocol"]) + 1024)
     return result
 
 

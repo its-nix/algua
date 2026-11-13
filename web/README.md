@@ -23,6 +23,15 @@ Endpoints:
 - `GET /api/fleet` — `algua fleet health` rollup (10s cache TTL; serves stale
   with `stale: true` + error metadata if the CLI fails).
 - `GET /healthz` — backend liveness.
+- `GET /api/research-memory?limit=20` — retained attempt references, including failed/excluded runs.
+- `GET /api/research-memory/<cycle>` — archive/checkpoint-verified public worker observations.
+
+Open **Research → Open latest result** to inspect archived metrics even when the registered
+strategy board is empty. The visible evaluation selector distinguishes parameterized sweeps and
+diagnostic benchmarks. Public dated windows show returns, Sharpe and bar counts; legacy missing
+windows remain unavailable. **Download retained metrics CSV** includes source references and raw
+scalar/window measurements (return/drawdown fractions), with worker evidence and no-authority
+labels. These views never import scratch records as gate/lifecycle authority.
 
 When a frontend build exists (`web/frontend/dist/index.html`, overridable via
 `ALGUA_WEB_DIST`), the backend also serves it: hashed `/assets/*` with an
@@ -129,3 +138,7 @@ Web dependencies (fastapi, uvicorn, httpx, ...) must **NEVER** be added to the
 root project: the root `uv.lock` is identity-bearing — its hash is part of the
 `dependency_hash` stamped into gate artifacts, so touching it invalidates
 promotion identity. All web deps live here, locked in `web/uv.lock`.
+
+Retained attempt rows also show `reported_falsification_assessment` separately from qualification.
+This is an advisory worker claim projected from a matching completed operational run digest,
+not a gate result or archive-integrity guarantee. Legacy or unmatched reports display `unknown`.

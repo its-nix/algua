@@ -208,12 +208,16 @@ remain unknown. A cycle's attempt list does not identify which idea produced eac
 never infer per-family negative alpha or alter gate/search/FDR counts from this view.
 
 New captures sample terminal attempt rows across families, including history with no reference
-from a fresh offered choice. They use `recent_completed_attempts_desc/v1`: inspect the first 64
+from a fresh offered choice. New contexts use `recent_completed_windows_first/v1`: inspect the first 64
 by descending actual attempt ID, deduplicate cycles, and select at most two canonical memory
 receipts in that order. Conflicting archive references
 for a cycle refuse. Legacy absent/non-memory references are explicit unavailable coverage;
 selected missing, corrupt or incompatible evidence refuses the operation. Selection never uses
-the sign or value of a metric. Within each selected cycle, records use ascending source run ID.
+the sign or value of a metric. Within each selected cycle, complete public-window walk-forward/sweep-trial records precede
+aggregate and development records, with source run ID ordering inside each group. Selection never
+uses measured returns, Sharpe or their signs. The newest cycle still precedes older cycles,
+so older windows can be omitted when the newest cycle fills the budget. Older `recent_completed_attempts_desc/v1` captures
+retain their original source-ID ordering and 4 KiB ordinary-input budget during revalidation.
 Offered choice reference lists and reply grammar stay unchanged. Reasons may cite broader
 snapshot sources without claiming an evaluation belongs to that idea or family. A run_error is
 an infrastructure/workflow outcome, not negative alpha. Old `relevant_attempts_desc/v1` snapshots
@@ -224,11 +228,15 @@ View bounds and deterministic omission are:
 - At most two artifacts, 16 MiB each and 32 MiB combined, with no recursive parent/archive reads.
 - At most two controller checkpoints, 256 KiB each and 512 KiB combined.
 - Ordinary whole input objects above 4 KiB omit the entire observation first. Complete validated
-  `portfolio_replay` backtest inputs have a separate 16 KiB allowance. Both are checked after
+  `portfolio_replay` backtest inputs have a separate 16 KiB allowance. Under the new window-first
+  protocol, validated walk-forward/sweep-trial inputs with `public_window_record` also have a
+  16 KiB allowance; other records and historical protocols keep the original limits. All are checked after
   full record validation; invalid large records refuse instead of becoming omissions. Public
   inputs are never stripped or truncated to fit, and the complete context still fits 24 KiB.
 - Take the first 24 remaining observations, counting later ones as omitted for count. Remove
-  whole tail observations until the complete context fits 24 KiB. Never backfill.
+  whole tail observations until the complete context fits 24 KiB. Never backfill. A large window
+  record can leave room for only one comparison leg: omitted controls remain explicit unknown
+  coverage, and full paired evidence must be read through `research memory show --run ID`.
 - Recompute coverage after each trim: retained equals included plus omitted, and omitted equals
   the disjoint input-size, count and context-size omissions. Sweep truncation markers accompany
   included sweeps only; other markers are counted as omitted.
@@ -310,3 +318,15 @@ not claim, query archives, write a prompt or launch research. Empty/restarted cy
 existing behavior. The original worker pipeline exit, trailer grammar, gates, resources,
 retention and publication paths are unchanged. This opt-in adds no third memory read batch,
 agent tool, model setting or scheduled service.
+
+### Complete comparison contexts (November 12)
+
+Fresh captures use `recent_completed_comparisons_first/v1`: the window-first ordering and
+16 KiB complete window-input allowance remain, while the complete context is capped at 64 KiB
+and its wire/research wrapper at 65 KiB. This accommodates the actual primary plus two diagnostic
+controls without stripping repeated provenance or parameters. The chooser/research complete
+prompt remains capped at 96 KiB, with unchanged two-cycle/24-observation and artifact-read bounds.
+Overflow still omits whole tail observations with explicit coverage; no sign/value-based
+selection or complete-evidence claim follows from partial context. The earlier three protocols
+revalidate with their original 24 KiB context/25 KiB wire limits and ordering. Archives, public
+window disclosure, registry schema and qualification authority are unchanged.

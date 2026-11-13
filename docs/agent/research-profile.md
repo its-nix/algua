@@ -24,7 +24,8 @@ propagation is not proof of actual model task receipt/use or a strategy executio
 
 The profile fixes daily static-universe exploration, costs/construction and chronological evaluation
 settings. Conflicting hypothesis inputs produce `run_error`; data substitution is not permitted.
-Proxy reports may record `integrity_fail` or operational `run_error`, with empirical findings kept
+Proxy reports record known data exclusions as `data_blocked`, actual integrity failures as
+`integrity_fail`, or operational `run_error`, with empirical findings kept
 separately. A candidate/merge-back or gate verdict in such a report is refused before controller
 completion; bound proxy campaigns also cannot publish merge-back work. No PIT label, promotion,
 forward session, live authority or source switch follows from a receipt.
@@ -41,3 +42,60 @@ uv run python -c 'import json,os; from pathlib import Path; from algua.operator.
 The dry run verifies configured source inputs but claims no ideas and invokes no model. Deployment,
 retained-memory compatibility, credentials and service activation remain the trusted operator's
 separate checks. Use the existing six-hour cadence and preserve prior checkpoints/receipts unchanged.
+
+## Diagnostic controls
+
+The primary strategy retains the pinned construction. A sweep can declare
+`"evaluation_role":"benchmark","benchmark_for":"<primary strategy name>"`; the control's
+CONFIG.params must contain the same markers so its role/target survive existing archival input
+serialization and identity hashing. Include the primary sweep in the same batch. A diagnostic
+control may use `equal_weight_positive` with empty construction_params, or the usual top-20 policy.
+All other profile inputs/costs/timing remain fixed. Declare a common conservative feature_lookback
+to align effective embargo/windows. Mismatches reject the entire declared batch before simulation.
+Normal measured trial/search-breadth recording still applies. Role labels grant no authority;
+benchmark metadata is sweep-only and cannot request registration or promotion. The pilot remains
+qualification-ineligible, and its report/merge-back refusal boundaries are unchanged.
+
+### Empirical assessment and qualification
+
+`research campaign-menu` retains the authoritative attempt `outcome` and separately projects
+`reported_falsification_assessment` (`refuted`, `survived`, `untested`, or `unknown`). The completed
+worker report in the existing operational `research-runs.jsonl` supplies this advisory field only
+when cycle, idea, terminal ledger outcomes and controller counts match. It is **UNVERIFIED_WORKER**,
+authority **none**; the digest is not tamper-evident or a verified numerical conclusion. Family and
+category `reported_empirical` counts stay separate from existing economic/gate counters. Selection
+receives both axes; eligibility and automatic priority rules are unchanged.
+
+A qualification-ineligible proxy can report a refuted hypothesis. An untested comparison is not a
+refutation, and survived is not established profitability. Missing/legacy/ambiguous assessments
+stay unknown. Reads do not rewrite attempts, archives or stages. Missing, malformed, concurrently
+changed, linked, or oversized digest files (2 MiB ceiling) yield unavailable coverage and unknowns;
+repair the source separately rather than guessing conclusions. Research results in the dashboard
+show these worker-reported assessments alongside qualification outcomes.
+
+### Scratch data visibility and history capacity
+
+The leap driver seeds its isolated data directory with only the configured, payload-verified
+snapshot's manifest entry and a payload symlink. The runtime seam mounts the source outside the
+worktree read-only; registry, KB and tracking routes remain scratch-only. `data inspect` and bar
+reads therefore resolve the declared snapshot inside the worker without redirecting to authority.
+`.verified-research-inputs.json` and the injected receipt contain `coverage`: actual observed grid
+session count, observed endpoints, per-symbol row counts and number of grid-complete symbols.
+These are observed coverage facts, not calendar completeness, valid feature guarantees or PIT proof.
+
+Authored configured sweeps check post-warmup capacity in every required window before any batch
+simulation. The partition remains the existing continuous portfolio, reserved tail and common
+embargo. No source lookback, embargo or falsification is shortened to fit. Missing or inadequate
+history is reported as a data prerequisite, never an economic refutation. Structural plan-only
+preflight still cannot certify unbuilt source; it grants no qualification authority.
+
+Leap permits two clean zero-import attempts on identical inspirations, pool/scorecard, verified
+profile/coverage, categories and source commit. It then records `unchanged_inputs` with
+`model_called=false` until these inputs change; failed workers/imports never count as clean empty
+passes. This uses the existing leap lock plus one bounded durable `leap-progress.json`, not an idea
+status or research ledger rewrite. `--force` retains its explicit operator bypass. New forage
+material, research results, data/profile or implementation changes reset this input identity.
+
+PIT eligibility is still a separate unmet source requirement. Longer source-faithful history,
+corporate-action/delisting coverage and historical membership must be acquired and verified under
+their own reviewed data scope; this repair never relabels the pilot or relaxes promotion.

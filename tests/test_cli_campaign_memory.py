@@ -49,7 +49,7 @@ def test_new_family_admission_receives_recent_negative_archive_without_changing_
     snapshot = menu["request"]["context"]["public_research_memory"]
     assert snapshot["observations"][0]["metrics"]["total_return_is"] == -0.3
     assert snapshot["receipts"][0]["attempt_evidence_ids"] == ["idea_attempts:1"]
-    assert snapshot["selection_protocol"] == "recent_completed_attempts_desc/v1"
+    assert snapshot["selection_protocol"] == "recent_completed_comparisons_first/v1"
     assert snapshot["authority"] == "none" and snapshot["association"] == "cycle_only"
     checkpoint = json.loads((directory / "fresh-with-negative-context.json").read_text())
     assert checkpoint["request"]["context"]["public_research_memory"] == snapshot
@@ -214,7 +214,11 @@ def test_enabled_chooser_prompt_and_admission_bind_the_same_context(
     prompt = (directory / "prompt.txt").read_text()
     assert "untrusted" in prompt.lower() and "cycle_only" in prompt
     captured = json.loads(prompt.split("MENU_JSON\n", 1)[1])
-    assert captured == adopted["campaign"]["menu"]
+    from algua.operator.campaign_choice import _prompt_menu
+
+    assert captured == json.loads(json.dumps(_prompt_menu(adopted["campaign"]["menu"])))
+    assert captured["request"] == adopted["campaign"]["menu"]["request"]
+    assert captured["menu_id"] == adopted["campaign"]["menu"]["menu_id"]
     checkpoint = json.loads((data / "research-cycles/chosen.json").read_text())
     assert checkpoint["request"]["context"] == captured["request"]["context"]
     calls = [json.loads(line) for line in fake_runtime.read_text().splitlines()]

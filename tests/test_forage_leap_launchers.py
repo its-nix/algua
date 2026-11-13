@@ -42,7 +42,8 @@ def test_agent_exit_survives_the_logging_pipeline(tmp_path, driver, agent_exit):
     assert result.stdout == str(agent_exit)
 
 
-def _run_leap_memory_context(tmp_path, response, *, memory_exit=0, dry_run=False):
+def _run_leap_memory_context(tmp_path, response, *, memory_exit=0, dry_run=False,
+                             source_values=None):
     """Execute the actual context/GOAL and digest adapters; never enter the agent seam."""
     tmp_path.mkdir(parents=True, exist_ok=True)
     response_path = tmp_path / "memory-response.json"
@@ -77,6 +78,7 @@ print(json.dumps({{'by_category':{{}}}}) if 'scorecard' in args else '[]')
               'rate_limited': '0', 'IMPORT_PARSE_ERROR': '0',
               'INSPIRATIONS_JSON': '[]', 'REFUTED_JSON': '[]', 'NEGATIVE_JSON': '[]',
               'SCORECARD_BY_CATEGORY': '{}'}
+    values.update(source_values or {})
     command = 'set -euo pipefail\n' + '\n'.join(
         f'{key}={shlex.quote(value)}' for key, value in values.items()) + '\n'
     goal_path = tmp_path / 'goal.txt'
@@ -420,14 +422,15 @@ def _fake_algua_bin(tmp_path: Path) -> Path:
     return bindir
 
 
-def _run_exhausted_block(tmp_path: Path, report_text: str | None) -> subprocess.CompletedProcess:
+def _run_exhausted_block(tmp_path: Path, report_text: str | None,
+                         source_plan: str = "") -> subprocess.CompletedProcess:
     report_path = tmp_path / "leap-report.md"
     if report_text is not None:
         report_path.write_text(report_text, encoding="utf-8")
     bindir = _fake_algua_bin(tmp_path)
     env = {**os.environ, "PATH": f"{bindir}{os.pathsep}{os.environ.get('PATH', '')}"}
     return subprocess.run(
-        [sys.executable, "-", "[]", str(report_path), str(tmp_path)],
+        [sys.executable, "-", "[]", str(report_path), str(tmp_path), source_plan],
         input=_EXHAUSTED_SRC, capture_output=True, text=True, env=env, timeout=30)
 
 
@@ -737,3 +740,46 @@ def test_research_loop_publishes_after_its_digest():
     src = (REPO / ".opencode/scripts/run-research-loop.sh").read_text()
     tail = src.split("append_digest completed", 1)[1]
     assert "research idea publish" in tail
+
+
+def test_configured_source_backlog_ignores_permanent_exhaustion(tmp_path):
+    plan = tmp_path / 'plan.json'
+    plan.write_text('{"sources":[]}')
+    proc = _run_exhausted_block(tmp_path,
+        '## Exhausted inspirations\n- 2026-09-07-index-add-crowding\n', str(plan))
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout) == []
+    assert 'source backlog' in proc.stderr
+
+
+def test_source_plan_failure_has_digest_and_never_calls_model(tmp_path):
+    source = LEAP.read_text()
+    block = source[source.index('# Configured pilots'):source.index('CATEGORY_LINES=')]
+    binary = tmp_path / 'bin'
+    binary.mkdir()
+    uv = binary / 'uv'
+    uv.write_text('#!/bin/sh\nexit 1\n')
+    uv.chmod(0o700)
+    values = dict(DRY_RUN='0', FORCE='0', REPO_ROOT=str(REPO), STAMP='fixture',
+                  DIGEST=str(tmp_path / 'digest.jsonl'))
+    command = 'set -euo pipefail\n' + '\n'.join(
+        f'{key}={shlex.quote(value)}' for key, value in values.items()) + '\n' + block
+    env = {**os.environ, 'PATH': str(binary) + os.pathsep + os.environ['PATH'],
+           'ALGUA_RESEARCH_PROFILE': 'fixture'}
+    result = subprocess.run(['bash', '-c', command], cwd=REPO, env=env,
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == 1
+    row = json.loads((tmp_path / 'digest.jsonl').read_text())
+    assert row['outcome'] == 'source_plan_error' and row['model_called'] is False
+
+
+def test_failed_source_review_digest_retains_all_missing_source_ids(tmp_path):
+    plan = tmp_path / 'plan.json'
+    plan.write_text(json.dumps({'sources': [{'source_id': 'offered-source'}]}))
+    receipt = tmp_path / 'review.json'
+    receipt.write_text('{"ok":false,"error":"invalid review"}')
+    result = _run_leap_memory_context(tmp_path, 'unused', dry_run=True, source_values={
+        'SOURCE_PLAN_FILE': str(plan), 'SOURCE_RESULT_FILE': str(receipt),
+        'SOURCE_REVIEW_COMPLETE': '0'})
+    assert result['digest']['outcome'] == 'source_review_incomplete'
+    assert result['digest']['source_selection']['missing_sources'] == ['offered-source']

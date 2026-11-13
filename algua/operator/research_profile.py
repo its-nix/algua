@@ -6,6 +6,7 @@ import os
 import re
 from pathlib import Path
 
+from algua.operator.research_history import observed_coverage
 from algua.operator.research_memory_checkpoint import canonical, strict_json
 from algua.primitives.midcap_universe import UNIVERSE_MODULE as UNIVERSE_MODULE
 from algua.primitives.midcap_universe import midcap_symbols as midcap_symbols
@@ -79,6 +80,31 @@ def load_research_profile(data_dir: Path, *, root: Path | None = None) -> dict |
             "symbols": symbols, "timeframe": "1d", "universe_mode": "static",
             "data_tier": "pilot_real_proxy", "limitations": sorted(PILOT_PROXY_LIMITATIONS),
             "qualification_eligible": False, "windows": 4, "holdout_frac": 0.2,
+            "coverage": observed_coverage(bars, symbols),
             "execution": {"decision_lag_bars": 1, "max_weight_per_symbol": 0.075,
                           "fees": 0.0005, "slippage": 0.0005,
                           "construction": "top_k_equal_weight", "top_k": 20}}
+
+
+def seed_ideation_data(data_dir: Path, scratch: Path) -> dict | None:
+    """Seed one manifest/payload link; the runtime seam keeps the source read-only."""
+    receipt = load_research_profile(data_dir)
+    if receipt is None:
+        return None
+    from algua.data.store import DataStore
+
+    record = DataStore(data_dir).get_snapshot(receipt['snapshot_id'])
+    relative = Path(record.data_path)
+    if relative.is_absolute() or '..' in relative.parts:
+        raise ValueError('research_profile:payload_location_invalid')
+    source = (data_dir / relative).resolve(strict=True)
+    source.relative_to(data_dir.resolve(strict=True))
+    target = scratch / relative
+    manifest = scratch / 'manifest.jsonl'
+    if manifest.exists() or target.exists() or target.is_symlink():
+        raise ValueError('research_profile:scratch_already_seeded')
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.symlink_to(source, target_is_directory=source.is_dir())
+    with manifest.open('x') as stream:
+        stream.write(canonical(record.to_dict()).decode() + '\n')
+    return receipt

@@ -69,7 +69,7 @@ def test_prompt_context_negative_archive_survives_prune_and_reaches_goal_and_dig
     assert snapshot['authority'] == 'none' and snapshot['association'] == 'cycle_only'
     assert snapshot['evidence_mode'] == 'UNVERIFIED_WORKER'
     assert snapshot['receipts'][0]['attempt_evidence_ids'] == ['idea_attempts:1']
-    assert snapshot['selection_protocol'] == 'recent_completed_attempts_desc/v1'
+    assert snapshot['selection_protocol'] == 'recent_completed_comparisons_first/v1'
     assert all(token not in raw for token in tokens if token)
     assert _files([database, tmp_path / 'tracking.db']) == before
     assert list(authority.iterdump()) == logical

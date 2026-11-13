@@ -51,6 +51,7 @@ from algua.cli.app import emit
 from algua.cli.backtest_cmd import run_backtest_task, sweep_task
 from algua.cli.errors import error_code, json_errors
 from algua.evaluation.experiment_preflight import preflight_experiment
+from algua.evaluation.research_roles import TASK_METADATA
 from algua.portfolio import construction
 from algua.registry.promote_run import promote_task
 
@@ -101,6 +102,8 @@ _PARAMETER_TYPES: dict[str, type] = {
                     "min_pct_positive", "min_window_sharpe"), float),
     "param": list,
     "required_window_metrics": list,
+    "evaluation_role": str,
+    "benchmark_for": str,
 }
 _NULLABLE = frozenset({
     "snapshot", "universe", "fundamentals_snapshot", "news_snapshot", "delistings",
@@ -155,7 +158,7 @@ def _validate_tasks(raw: Any) -> list[dict[str, Any]]:
         name = item.get("name")
         if not isinstance(name, str) or not name:
             raise ValueError(f"task {i} ({action}) is missing a non-empty string 'name'")
-        extra = set(item) - {"action", "name", "required_window_metrics"} - _ALLOWED_KEYS[action]
+        extra = set(item) - {"action", "name"} - TASK_METADATA - _ALLOWED_KEYS[action]
         if extra:
             raise ValueError(
                 f"task {i} ({action} {name}) has unsupported keys {sorted(extra)}; "
@@ -207,7 +210,7 @@ def run_all(
     # mutated it (Codex GATE-1: construction._POLICIES is reachable+mutable from any strategy).
     pristine_policies = copy.copy(construction._POLICIES)
 
-    if preflight_only or any('required_window_metrics' in task for task in parsed):
+    if preflight_only or any(TASK_METADATA.intersection(task) for task in parsed):
         try:
             preflight = preflight_experiment(parsed, check_strategies=not preflight_only)
         finally:
@@ -222,7 +225,9 @@ def run_all(
         action = task["action"]
         name = task["name"]
         params = {k: v for k, v in task.items()
-                  if k not in ("action", "name", "required_window_metrics")}
+                  if k not in {"action", "name"} | TASK_METADATA}
+        if action == 'sweep':
+            params.update({k: task[k] for k in ('evaluation_role', 'benchmark_for') if k in task})
         # Per-task reset boundary: restore the construction policy registry to pristine (undoes any
         # in-process mutation a prior task's strategy made). The strategy module itself is reloaded
         # inside the task via reload=True.
@@ -230,7 +235,8 @@ def run_all(
         construction._POLICIES.update(pristine_policies)
         try:
             payload = _DISPATCH[action](name, reload=True, **params)
-            results.append({"ok": True, "action": action, "name": name, **payload})
+            roles = {k: task[k] for k in ('evaluation_role', 'benchmark_for') if k in task}
+            results.append({"ok": True, "action": action, "name": name, **payload, **roles})
         except (KeyboardInterrupt, SystemExit):
             raise  # process-integrity signals abort the batch (never a per-task marker)
         except Exception as exc:  # noqa: BLE001 - per-task isolation: one bad task must not abort the batch (#374)
