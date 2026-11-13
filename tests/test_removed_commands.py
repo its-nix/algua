@@ -25,6 +25,7 @@ REMOVED = [
     "query-news",
     "fetch-fundamentals",
     "fetch-news",
+    "paper mechanics",
 ]
 
 
@@ -68,6 +69,7 @@ def test_removed_reference_absent(needle: str) -> None:
         ["data", "query-news"],
         ["data", "fetch-fundamentals"],
         ["data", "fetch-news"],
+        ["paper", "mechanics"],
     ],
 )
 def test_removed_command_is_gone(argv: list[str]) -> None:
