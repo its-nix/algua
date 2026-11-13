@@ -130,8 +130,11 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   mean armed/evaluated, NOT veto). The **LORD++ FDR ledger is FROZEN**: rows land with
   `fdr_binding` NULL + skip reason `stats_advisory`, the throttle is no longer consulted, and
   `--fdr-throttle-override` is REMOVED (the ledger machinery is preserved for re-tightening — FDR
-  mechanics live in the #529 spec). The **FORWARD gate is the harsh threshold** (its Sharpe bar is
-  0.5× the holdout Sharpe recorded here, so overfit inflation self-punishes).
+  mechanics live in the #529 spec). On the STRICT route the forward gate is the harsh threshold (Sharpe ≥ max(0.5× holdout, 0.3) over
+  63 broker-clocked sessions). On the CAPPED experimental route the edge is judged only by this
+  gate's out-of-sample holdout (Sharpe > 0, ≥63 bars) — a weak bar — while the five paper sessions
+  prove mechanics, not edge. The deflated-Sharpe signal recorded here is the advisory quality
+  measure and the candidate binding bar.
   A passing run is the ONLY way an agent reaches `candidate`
   — `registry transition`
   REFUSES `backtested -> candidate` and `paper -> forward_tested` for EVERY actor
