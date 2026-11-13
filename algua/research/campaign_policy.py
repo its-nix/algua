@@ -93,8 +93,10 @@ def campaign_menu(scorecard: dict, *, budget: int, novelty_min: int = 1,
                   f"unfinished={prior.get('unfinished', 0)}; "
                   f"abandoned={prior.get('abandoned', 0)}; "
                   "negative logs are context, not economic verdicts")
-        if collisions or negatives:
+        if collisions or any(not _feasibility_context(n) for n in negatives):
             reason += f"; new justification: {h['override_reason']}"
+        if any(_feasibility_context(n) for n in negatives):
+            reason += "; prior feasibility criticism must be rechecked before authoring"
         choices.append(CampaignChoice(h["category"] or "legacy", h["id"], reason,
                                       tuple(sorted(refs)), 1))
     return tuple(choices)
@@ -137,6 +139,10 @@ def _exclusion(h: dict, scorecard: dict) -> str | None:
     if h["status"] != "open" or h["claimed_by"] is not None:
         return "not an unclaimed open hypothesis"
     colliding, negatives = _collisions(h, scorecard)
+    # A conceptual feasibility review is not an experiment. Keep it in the menu's evidence,
+    # but let an unattempted idea reach current-data preflight. Actual attempts/duplicates and
+    # empirical, manual, or other critic rejections retain their existing barriers.
+    negatives = [n for n in negatives if not _feasibility_context(n)]
     if not colliding and not negatives:
         return None
     if any(a["idea_id"] in {p["id"] for p in colliding}
@@ -169,6 +175,12 @@ def _exclusion(h: dict, scorecard: dict) -> str | None:
     except (ValueError, TypeError):
         return "duplicate evidence freshness cannot be established"
     return None
+
+
+def _feasibility_context(row: dict) -> bool:
+    return (row.get("source") == "auto:leap_critic"
+            and row.get("kind") == "discard" and row.get("verdict") == "CRITIC:untestable"
+            and row.get("strategy_name") is None and row.get("gate_evaluation_id") is None)
 
 
 def _reason_signature(text: str) -> str:
