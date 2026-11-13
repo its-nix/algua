@@ -20,7 +20,6 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     deployment_cmd,
     eval_cmd,
     fleet_cmd,
-    governance_cmd,
     handoff_cmd,
     idea_cmd,
     idea_ops_cmd,

@@ -442,7 +442,6 @@ modules = [
     "algua.cli.data_context_cmd",
     "algua.cli.data_refresh_cmd",
     "algua.cli.fleet_cmd",
-    "algua.cli.governance_cmd",
     "algua.cli.idea_cmd",
     "algua.cli.idea_ops_cmd",
     "algua.cli.inspirations_cmd",
