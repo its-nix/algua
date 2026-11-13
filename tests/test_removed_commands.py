@@ -5,11 +5,21 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ROOTS = ["deploy", "scripts", ".opencode", ".claude/skills", ".github"]
 SKIP_DIRS = {".superpowers", "web", "node_modules", "__pycache__", ".git"}
-REMOVED = ["algua-web", "--project web"]
+REMOVED = [
+    "algua-web",
+    "--project web",
+    "research campaign-menu",
+    "backtest replay",
+    "governance record",
+    "governance list",
+    "governance overdue",
+    "eval gate",
+]
 
 
 def _scan(roots: list[str]) -> Iterator[Path]:
@@ -37,3 +47,13 @@ def test_removed_reference_absent(needle: str) -> None:
         if p.name != "test_removed_commands.py" and needle in p.read_text(errors="ignore")
     ]
     assert hits == []
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["research", "campaign-menu"], ["backtest", "replay"], ["governance", "list"], ["eval", "gate"]],
+)
+def test_removed_command_is_gone(argv: list[str]) -> None:
+    from algua.cli.main import app
+
+    assert CliRunner().invoke(app, [*argv, "--help"]).exit_code != 0
