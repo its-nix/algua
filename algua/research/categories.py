@@ -9,6 +9,7 @@ Pure: stdlib only, no algua imports — the registry, the CLI and the research l
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 #: Repo-relative location of the category file (the human's steering surface).
@@ -18,7 +19,13 @@ CATEGORIES_REL = Path(".opencode/categories.txt")
 def categories_file_default() -> Path:
     """The repo's `.opencode/categories.txt`, located by walking up from THIS file to the directory
     holding `pyproject.toml`. Never `Path.cwd()` — a driver may run from any working directory,
-    but the category file lives at a fixed repo-relative location."""
+    but the category file lives at a fixed repo-relative location.
+
+    When a driver exported a run-start snapshot from Drive (spec 2026-11-12 §4) and set
+    `ALGUA_STEERING_DIR`, the snapshot's `categories.txt` is the steering surface instead."""
+    steering = os.environ.get("ALGUA_STEERING_DIR", "").strip()
+    if steering:
+        return Path(steering) / "categories.txt"
     here = Path(__file__).resolve()
     for parent in here.parents:
         if (parent / "pyproject.toml").exists():

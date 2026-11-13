@@ -37,6 +37,7 @@ re-running it just burns the same failure. Today exactly two codes are retryable
 |---|---|---|
 | `db_unavailable` (`sqlite3.OperationalError`, e.g. a busy/locked registry DB) | `true` | transient contention — a bounded backoff-and-retry can clear it |
 | `frozen_environment_unavailable` | `true` | a compatible wheel selected by the committed lock may become available on retry |
+| `drive_unavailable` (Drive ideation backend: network/429/5xx after the client's own retries) | `true` | Google-side transient; the next timer firing retries |
 | every other code (incl. `internal`, `usage_error`, `aborted`, all input/logic/domain errors) | `false` | deterministic — replay reproduces the same failure |
 
 Like `code`, `retryable` is an **additive** contract: `false` is the safe default, and a future code

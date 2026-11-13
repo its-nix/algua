@@ -283,3 +283,21 @@ def test_a_clean_run_still_exits_zero(tmp_path: Path):
 def test_a_title_agent_error_alone_does_not_fail_the_run(tmp_path: Path):
     proc = _run_seam(tmp_path, _TITLE_ONLY, runtime_rc=0)
     assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_drive_credentials_never_reach_the_agent(tmp_path):
+    """Spec 2026-11-12 §5 / review C1: agents never call Drive. The seam strips the Drive env and
+    masks the credential file inside the sandbox, so a prompt-injected agent can neither read the
+    refresh token nor make the CLI write the owner's Sheets."""
+    cred = tmp_path / "drive.json"
+    cred.write_text("{}")
+    for mode in MODES:
+        out = _dry(mode, ALGUA_AGENT_SANDBOX="bwrap", ALGUA_DRIVE_FOLDER_ID="F",
+                   ALGUA_DRIVE_CREDENTIALS=str(cred))
+        assert "-u ALGUA_DRIVE_FOLDER_ID -u ALGUA_DRIVE_CREDENTIALS" in out, mode
+        assert f"--ro-bind /dev/null {cred}" in out, mode
+
+
+def test_drive_env_is_stripped_even_without_a_sandbox():
+    out = _dry("leap", ALGUA_AGENT_SANDBOX="none", ALGUA_DRIVE_FOLDER_ID="F")
+    assert "-u ALGUA_DRIVE_FOLDER_ID -u ALGUA_DRIVE_CREDENTIALS" in out

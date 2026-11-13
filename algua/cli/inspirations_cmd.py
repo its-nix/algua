@@ -13,17 +13,18 @@ from pathlib import Path
 import typer
 
 from algua.cli._common import ok
+from algua.cli._drive import inspirations_store, sources_backend
 from algua.cli.app import emit
 from algua.cli.errors import json_errors
 from algua.config.settings import get_settings
 from algua.knowledge.inspirations import (
     SOURCE_KINDS,
-    SourcesRegistry,
     accept_new_notes,
     list_notes,
     mark_exhausted,
     mark_used,
 )
+from algua.knowledge.sources_registry import SourcesRegistry
 from algua.primitives.timeparse import now_iso
 from algua.research.categories import categories_file_default, load_categories
 
@@ -34,7 +35,7 @@ inspirations_app = typer.Typer(
 )
 
 _KEY_RE = re.compile(r"^[a-z0-9_]+/[A-Za-z0-9_.-]+$")
-_OBSCURITY_RANK = {"rare": 0, "niche": 1, "common": 2, "canon": 3}
+_OBSCURITY_RANK = {"human": -1, "rare": 0, "niche": 1, "common": 2, "canon": 3}
 _MIN_VENUE_N = 5
 
 
@@ -68,7 +69,7 @@ def accept(
         settings.data_dir / "inspirations-seen.jsonl")
     result = accept_new_notes(
         staged_dir=from_dir, settings=settings, seen_path=seen_path, categories=categories,
-        run_stamp=run, max_notes=max_notes)
+        run_stamp=run, max_notes=max_notes, store=inspirations_store(settings))
     emit(ok(result))
 
 
@@ -81,6 +82,10 @@ def list_cmd(
     limit: int = typer.Option(None, "--limit", min=1, help="cap after any sort"),
     rare_first: bool = typer.Option(
         False, "--rare-first", help="sort rare>niche>common>canon, then newest id first"),
+    source_kind: str = typer.Option(
+        None, "--source-kind", help="keep only this source kind (e.g. human)"),
+    found_since: str = typer.Option(
+        None, "--found-since", help="keep only notes with found_at >= this YYYY-MM-DD"),
 ) -> None:
     """Bare JSON array of frontmatter dicts (collection convention).
 
@@ -90,15 +95,19 @@ def list_cmd(
     if status is not None and exclude_status is not None and status == exclude_status:
         raise ValueError(
             f"--status {status} and --exclude-status {exclude_status} contradict each other")
+    if found_since is not None and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", found_since):
+        raise ValueError(f"--found-since {found_since!r} must be YYYY-MM-DD")
+    whole = rare_first or found_since is not None  # filter/sort BEFORE applying the limit
+    notes = list_notes(settings, status=status, exclude_status=exclude_status,
+                       limit=None if whole else limit, source_kind=source_kind)
+    if found_since is not None:
+        notes = [n for n in notes if str(n.get("found_at") or "")[:10] >= found_since]
     if rare_first:
-        notes = list_notes(settings, status=status, exclude_status=exclude_status, limit=None)
         notes.sort(key=lambda n: str(n.get("id") or ""), reverse=True)
         notes.sort(key=lambda n: _OBSCURITY_RANK.get(
             str(n.get("obscurity")), len(_OBSCURITY_RANK)))
-        if limit is not None:
-            notes = notes[:limit]
-    else:
-        notes = list_notes(settings, status=status, exclude_status=exclude_status, limit=limit)
+    if whole and limit is not None:
+        notes = notes[:limit]
     emit(notes)
 
 
@@ -109,7 +118,8 @@ def mark_used_cmd(
     idea: int = typer.Option(..., "--idea", help="idea id this note leapt into"),
 ) -> None:
     """Trusted leap-driver edit: append the idea id to `leaps` and flip fresh -> used."""
-    fm = mark_used(get_settings(), inspiration_id, idea_id=idea)
+    settings = get_settings()
+    fm = mark_used(settings, inspiration_id, idea_id=idea, store=inspirations_store(settings))
     emit(ok(fm))
 
 
@@ -117,7 +127,8 @@ def mark_used_cmd(
 @json_errors
 def mark_exhausted_cmd(inspiration_id: str = typer.Argument(..., metavar="ID")) -> None:
     """Trusted leap-driver edit: flip status -> exhausted (no more leaps to try)."""
-    fm = mark_exhausted(get_settings(), inspiration_id)
+    settings = get_settings()
+    fm = mark_exhausted(settings, inspiration_id, store=inspirations_store(settings))
     emit(ok(fm))
 
 
@@ -144,7 +155,8 @@ def propose(
     if unknown:
         raise ValueError(f"unknown categories: {unknown}")
 
-    registry = SourcesRegistry(get_settings())
+    settings = get_settings()
+    registry = SourcesRegistry(settings, backend=sources_backend(settings))
     registry.propose({"key": key, "kind": kind, "url": url, "categories": cats})
     emit(ok({"key": key, "kind": kind, "url": url, "categories": cats}))
 
@@ -177,5 +189,6 @@ def write_yield_cmd(
     }
     # ONE load + ONE save for every venue (a per-venue write re-read and rewrote the whole file
     # once per key, and left the file briefly half-updated between them).
-    SourcesRegistry(get_settings()).write_yields(yields)
+    settings = get_settings()
+    SourcesRegistry(settings, backend=sources_backend(settings)).write_yields(yields)
     emit(ok({"updated": sorted(yields)}))

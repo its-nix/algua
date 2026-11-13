@@ -80,6 +80,35 @@ AUTH_DATA_DIR="${ALGUA_DATA_DIR:-${REPO_ROOT}/data}"
 KB_DIR="${ALGUA_KNOWLEDGE_DIR:-${REPO_ROOT}/kb}"
 DIGEST="${AUTH_DATA_DIR}/leap-runs.jsonl"
 CATEGORIES_FILE="${REPO_ROOT}/.opencode/categories.txt"
+INSPIRATIONS_SRC="${KB_DIR}/inspirations"
+
+# --- Drive ideation backend (spec 2026-11-12 §4, §6.4). With ALGUA_DRIVE_FOLDER_ID set:
+# (1) take the owner's Inbox in on EVERY firing, before any gate, so a row shows `taken` within one
+# timer period; (2) export a run-start snapshot of Steering + Inspirations into a driver-owned dir
+# OUTSIDE the agent's writable worktree, and point every steering READ at it via
+# ALGUA_STEERING_DIR. Writes (mark-used/exhausted, write-yield, import) still go to Drive through
+# the CLI. A failed export ends the run before any agent call; the next timer retries.
+DRIVE=0
+[[ -n "${ALGUA_DRIVE_FOLDER_ID:-}" ]] && DRIVE=1
+if [[ "${DRIVE}" -eq 1 ]]; then
+  STEER_DIR="${RUNS_DIR}/steering-leap"
+  INTAKE_CMD=(uv run algua research inbox intake)
+  EXPORT_CMD=(uv run algua research steering export --to "${STEER_DIR}")
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    echo "would intake owner inbox via: ${INTAKE_CMD[*]}"
+    echo "would export steering snapshot via: ${EXPORT_CMD[*]}"
+  else
+    (cd "${REPO_ROOT}" && "${INTAKE_CMD[@]}" >/dev/null) \
+      || echo "WARNING: inbox intake failed; continuing with what is already in Drive." >&2
+    if ! (cd "${REPO_ROOT}" && "${EXPORT_CMD[@]}" >/dev/null); then
+      echo "steering export from Drive failed; ending this run (the next timer retries)." >&2
+      exit 1
+    fi
+    export ALGUA_STEERING_DIR="${STEER_DIR}"
+    CATEGORIES_FILE="${STEER_DIR}/categories.txt"
+    INSPIRATIONS_SRC="${STEER_DIR}/inspirations"
+  fi
+fi
 
 DEPTH_CMD=(uv run algua research idea depth)
 
@@ -100,11 +129,26 @@ print("%d %s %s" % (1 if d.get("below_refill") else 0,
                     d.get("open_unclaimed"), d.get("refill_at")))
 ' "${DEPTH_JSON}")"
   read -r BELOW OPEN_UNCLAIMED REFILL_AT <<< "${GATE}"
-  if [[ "${BELOW}" -ne 1 ]]; then
+  # Owner ideas bypass the depth gate (spec 2026-11-12 §6.4): the gate stops forage volume from
+  # overfilling the pool; a deliberate owner idea must not wait days because the pool is "deep".
+  # The per-run idea cap still applies.
+  HUMAN_FRESH=0
+  # Bounded to owner ideas taken in within the last 2 days: one the critic rejects stays `fresh`,
+  # and must not keep bypassing the gate on every firing forever (review I7).
+  if [[ "${BELOW}" -ne 1 && "${DRIVE:-0}" -eq 1 ]]; then
+    HUMAN_SINCE="$(python3 -c 'import datetime as d; print(d.date.today() - d.timedelta(days=2))')"
+    HUMAN_FRESH="$(cd "${REPO_ROOT}" && uv run algua research inspirations list --status fresh \
+      --source-kind human --found-since "${HUMAN_SINCE}" --limit 1 2>/dev/null \
+      | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)"
+  fi
+  if [[ "${BELOW}" -ne 1 && "${HUMAN_FRESH}" -gt 0 ]]; then
+    echo "depth gate bypassed: fresh owner ideas waiting (open_unclaimed=${OPEN_UNCLAIMED}, refill_at=${REFILL_AT}); leaping."
+  elif [[ "${BELOW}" -ne 1 ]]; then
     echo "pool above refill trigger (open_unclaimed=${OPEN_UNCLAIMED}, refill_at=${REFILL_AT}); nothing to do"
     exit 0
+  else
+    echo "pool below refill trigger (open_unclaimed=${OPEN_UNCLAIMED}, refill_at=${REFILL_AT}); leaping."
   fi
-  echo "pool below refill trigger (open_unclaimed=${OPEN_UNCLAIMED}, refill_at=${REFILL_AT}); leaping."
 fi
 
 MATERIAL_CMD=(uv run algua research inspirations list --exclude-status exhausted --limit 1)
@@ -444,6 +488,7 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
   echo "would recompute the scorecard via: uv run algua research idea scorecard --days 90"
   echo "would write yield via: uv run algua research inspirations write-yield --from-scorecard -"
   echo "would append digest to: ${DIGEST}"
+  if [[ "${DRIVE:-0}" -eq 1 ]]; then echo "would publish via: uv run algua research idea publish"; fi
   exit 0
 fi
 
@@ -538,7 +583,9 @@ IMPORT_CMD=(uv run algua research idea import --from "${SCRATCH_DB}" --run "${ST
 # Read-only KB inputs for the agent: the inspirations it leaps from, the methodology note the
 # critic uses as its lens, and the existing strategies (so it can tell "new" from "already built").
 # -L: copy symlink TARGETS, so nothing in the worktree points back out at the real vault.
-for item in inspirations principles strategies; do
+# With Drive enabled the inspirations come from this run's snapshot (spec 2026-11-12 §6.3).
+[[ -e "${INSPIRATIONS_SRC}" ]] && cp -RL "${INSPIRATIONS_SRC}" "${SCRATCH}/kb/" || true
+for item in principles strategies; do
   [[ -e "${KB_DIR}/${item}" ]] && cp -RL "${KB_DIR}/${item}" "${SCRATCH}/kb/" || true
 done
 
@@ -845,6 +892,12 @@ if not row["source_review_complete"]:
 with open(digest_path, "a", encoding="utf-8") as f:
     f.write(json.dumps(row, ensure_ascii=False) + "\n")
 PY
+
+# Project the pool into the Drive Ideas Sheet + owner Inbox statuses. Never fails the run.
+if [[ "${DRIVE:-0}" -eq 1 ]]; then
+  (cd "${REPO_ROOT}" && uv run algua research idea publish >/dev/null 2>&1) \
+    || echo "WARNING: Drive publish failed; the Ideas Sheet is stale until the next run." >&2
+fi
 
 echo
 echo "Done. This run's worktree and branch have been removed; imported ideas are in the pool"

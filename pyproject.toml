@@ -308,6 +308,22 @@ forbidden_modules = [
 ]
 
 [[tool.importlinter.contracts]]
+# Drive is the IDEATION backend only (spec 2026-11-12): only the CLI composes it. Trading, gates,
+# the registry, data and research never reach it — not even through the inspirations domain, which
+# receives a Drive-backed store from the CLI instead of choosing one itself.
+name = "only the cli composes the Drive ideation backend"
+type = "forbidden"
+source_modules = [
+    "algua.audit", "algua.backtest", "algua.calendar", "algua.config", "algua.contracts",
+    "algua.data", "algua.evaluation", "algua.execution", "algua.features", "algua.live",
+    "algua.models", "algua.observability", "algua.operator", "algua.portfolio",
+    "algua.primitives", "algua.provenance", "algua.registry", "algua.research", "algua.risk",
+    "algua.strategies", "algua.tracking", "algua.training",
+    "algua.knowledge.inspirations", "algua.knowledge.sources_registry", "algua.knowledge.sync",
+]
+forbidden_modules = ["algua.knowledge.drive"]
+
+[[tool.importlinter.contracts]]
 name = "pure + execution lanes stay off the knowledge layer"
 type = "forbidden"
 source_modules = ["algua.backtest", "algua.live", "algua.features", "algua.contracts"]

@@ -113,7 +113,7 @@ research database, MLflow instance, execution fork or speculative service split.
 | `risk` | limits, breaches, kill-switch, global halt, peaks, book breaker | cli or live-lane imports |
 | `operator` | the autonomous loop: session gating, merge-back saga, loop health | cli imports |
 | `evaluation` | shared task bodies (`backtest_run`, `sweep_run`) + input resolution, importable by BOTH cli and registry | cli imports |
-| `knowledge` | the Obsidian vault sync; inspirations domain (`kb/inspirations/`) | imports of cli/registry/backtest/live/execution |
+| `knowledge` | the Obsidian vault sync; inspirations domain (`kb/inspirations/`); `knowledge/drive` — the stdlib Google Sheets client + tables for the ideation backend ([setup](agent/drive.md)) | imports of cli/registry/backtest/live/execution; any import of `knowledge.drive` from a trading/gate/data path |
 | `tracking` | experiment provenance and artifacts; the default MLflow SQLite backend | treating recorded results as promotion authority |
 | `audit` / `observability` | operational events and structured telemetry | granting permissions from runtime evidence |
 | `cli` | typer commands, the JSON envelope, flag resolution | domain logic — extract it |

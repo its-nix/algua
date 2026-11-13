@@ -196,7 +196,7 @@ def test_propose_rejects_non_https_url(categories_file):
 def test_write_yield_from_scorecard_file(tmp_path):
     # Seed the sources registry directly (write-yield only updates an existing venue row).
     from algua.config.settings import get_settings
-    from algua.knowledge.inspirations import SourcesRegistry
+    from algua.knowledge.sources_registry import SourcesRegistry
     settings = get_settings()
     SourcesRegistry(settings).propose(
         {"key": "blog/quant", "kind": "blog", "url": "https://q", "categories": ["momentum"]})
@@ -248,3 +248,32 @@ def test_list_exclude_status_combines_with_rare_first_and_limit(tmp_path, catego
     r = _run("list", "--status", "fresh", "--exclude-status", "fresh")
     assert r.exit_code == 1
     assert _json(r)["ok"] is False
+
+
+def test_cli_list_source_kind_flag(tmp_path):
+    d = tmp_path / "kb" / "inspirations"
+    d.mkdir(parents=True)
+    (d / "2026-09-08-quiet-turnover-drift.md").write_text(GOOD)
+    human = (GOOD.replace("2026-09-08-quiet-turnover-drift", "2026-09-09-inbox-mine-abc123")
+                 .replace("source_kind: blog", "source_kind: human")
+                 .replace("obscurity: niche", "obscurity: human"))
+    (d / "2026-09-09-inbox-mine-abc123.md").write_text(human)
+    r = _run("list", "--source-kind", "human")
+    assert r.exit_code == 0, r.output
+    assert [n["id"] for n in _json(r)] == ["2026-09-09-inbox-mine-abc123"]
+
+
+def test_cli_list_found_since_bounds_by_found_at(tmp_path):
+    """Review I7: the leap depth-gate bypass only counts RECENT owner ideas, so one the critic
+    rejected (it stays fresh) cannot keep bypassing the gate forever."""
+    d = tmp_path / "kb" / "inspirations"
+    d.mkdir(parents=True)
+    for note_id, found in (("2026-11-01-inbox-old-aaaaaa", "2026-11-01"),
+                           ("2026-11-11-inbox-new-bbbbbb", "2026-11-11")):
+        (d / f"{note_id}.md").write_text(
+            GOOD.replace("2026-09-08-quiet-turnover-drift", note_id)
+                .replace("found_at: 2026-09-08", f"found_at: {found}")
+                .replace("source_kind: blog", "source_kind: human"))
+    r = _run("list", "--source-kind", "human", "--found-since", "2026-11-10")
+    assert r.exit_code == 0, r.output
+    assert [n["id"] for n in _json(r)] == ["2026-11-11-inbox-new-bbbbbb"]

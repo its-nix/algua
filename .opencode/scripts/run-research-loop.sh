@@ -1468,6 +1468,13 @@ record_outcomes "${DIGEST_REPORT_PATH}" completed || { [[ "${rc}" -ne 0 ]] || rc
 trap - EXIT
 append_digest completed
 
+# Project the pool into the Drive Ideas Sheet + owner Inbox statuses (spec 2026-11-12 §6.5).
+# A pure projection: it never fails the run.
+if [[ -n "${ALGUA_DRIVE_FOLDER_ID:-}" ]]; then
+  (cd "${REPO_ROOT}" && uv run algua research idea publish >/dev/null 2>&1) \
+    || echo "WARNING: Drive publish failed; the Ideas Sheet is stale until the next run." >&2
+fi
+
 # The digest step may have RENAMED the branch (candidate-keyed: research-run/<stamp>--<s1>+...).
 # Re-read the ACTUAL branch from the worktree's HEAD — the rename updates it — for the enqueue
 # check and the review hints below.

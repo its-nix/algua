@@ -40,6 +40,7 @@ ROOT_WHITELIST = frozenset(
         ".gitleaks.toml",
         ".pip-audit-ignore.txt",
         ".python-version",  # uv's toolchain selector: pins CPython for ast.unparse stability
+        "PRIVACY.md",  # the public privacy URL registered on the Algua Google OAuth app
         "pyproject.toml",
         "README.md",
         "uv.lock",
