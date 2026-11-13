@@ -21,7 +21,7 @@ jobs:
       - name: Audit locked dependencies
         run: |
           set -euo pipefail
-          # Export both fully pinned lock graphs (incl. transitives + all dependency
+          # Export the fully pinned lock graph (incl. transitives + all dependency
           # groups) so the audit reflects exactly what the platform installs. Any export failure is fatal (set -e).
           uv export --format requirements-txt --no-emit-project --all-groups --no-hashes > requirements.audit.txt
           # Assemble documented false-positive / unfixable advisory ignores into an

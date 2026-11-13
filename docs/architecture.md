@@ -42,7 +42,7 @@ edge refuses it). The raw registry go-live route still refuses frozen deployment
 [capped live connector](agent/capped-live.md) accepts an exact frozen deployment under the approved
 experimental profile. It does not mint a strict forward certificate.
 
-On the STRICT route the forward gate is the harsh threshold (Sharpe ≥ max(0.5× holdout, 0.3) over 63 broker-clocked sessions). On the CAPPED experimental route the edge is judged only by the research gate's out-of-sample holdout (Sharpe > 0, ≥63 bars). That is a weak bar. The five paper sessions prove mechanics, not edge. The deflated-Sharpe signal recorded by the research gate is the advisory quality measure and the candidate binding bar.
+On the STRICT route the forward gate is the harsh threshold (Sharpe ≥ max(0.5× holdout, 0.3) over 63 broker-clocked sessions). On the CAPPED experimental route the edge is judged only by the research gate's out-of-sample holdout (Sharpe > 0, ≥63 bars). That is a weak bar. The five paper sessions prove mechanics, not edge. The deflated-Sharpe signal recorded by the research gate is advisory — the quality measure, and a candidate for a future binding bar (an owner decision).
 
 The shipped frozen-paper slice includes the two-phase planner boundary, verified immutable
 content/environments, child execution and deployment-bound operational evidence/qualification

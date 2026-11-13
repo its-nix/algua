@@ -133,8 +133,8 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   mechanics live in the #529 spec). On the STRICT route the forward gate is the harsh threshold (Sharpe ≥ max(0.5× holdout, 0.3) over
   63 broker-clocked sessions). On the CAPPED experimental route the edge is judged only by this
   gate's out-of-sample holdout (Sharpe > 0, ≥63 bars) — a weak bar — while the five paper sessions
-  prove mechanics, not edge. The deflated-Sharpe signal recorded here is the advisory quality
-  measure and the candidate binding bar.
+  prove mechanics, not edge. The deflated-Sharpe signal recorded here is advisory — the quality
+  measure, and a candidate for a future binding bar (an owner decision).
   A passing run is the ONLY way an agent reaches `candidate`
   — `registry transition`
   REFUSES `backtested -> candidate` and `paper -> forward_tested` for EVERY actor
@@ -258,7 +258,7 @@ Available full check, when needed:
 `uv run pytest -q -m "" && uv run ruff check . && uv run mypy algua && uv run lint-imports`
 
 Two of those enforce structure, not style, and are worth knowing before you fight them:
-- **`lint-imports`** — 29 contracts fixing the package layering (`cli` composes everything; nothing
+- **`lint-imports`** — 30 contracts fixing the package layering (`cli` composes everything; nothing
   composes `cli`). Adding an import that breaks one is a design decision; do not add an exemption
   without saying why in the commit.
 - **`tests/test_module_size_ratchet.py`** — a shrink-only size ratchet over every module ≥300 lines.
