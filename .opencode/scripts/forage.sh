@@ -24,6 +24,7 @@
 #
 # Usage:
 #   .opencode/scripts/forage.sh [--categories a,b] [--max-notes N] [--timeout DUR] [--dry-run]
+#     [--scheduled] (bounded eligible-queue refill / daily refresh, used by systemd)
 #
 # Env: FORAGE_MAX_NOTES (default 10), FORAGE_SLICES (default 2, categories per run),
 #      FORAGE_TIMEOUT (default 20m). The MODEL is not an env var here -- it lives in
@@ -37,6 +38,7 @@ TIMEOUT="${FORAGE_TIMEOUT:-20m}"
 SYNC_TIMEOUT="${SYNC_TIMEOUT:-5m}"
 CATEGORIES_OVERRIDE=""
 DRY_RUN=0
+SCHEDULED=0
 
 _need_val() { [[ $# -ge 2 ]] || { echo "$1 requires a value" >&2; exit 2; }; }
 while [[ $# -gt 0 ]]; do
@@ -45,6 +47,7 @@ while [[ $# -gt 0 ]]; do
     --max-notes)  _need_val "$@"; FORAGE_MAX_NOTES="$2"; shift 2 ;;
     --timeout)    _need_val "$@"; TIMEOUT="$2"; shift 2 ;;
     --dry-run)    DRY_RUN=1; shift ;;
+    --scheduled)  SCHEDULED=1; shift ;;
     -h|--help)    sed -n '2,31p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -55,7 +58,7 @@ done
 _pkgspec_re='^[A-Za-z0-9._@/+=-]+$'
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-STAMP="$(date +%Y%m%d-%H%M%S)"
+STAMP="$(date -u +%Y%m%d-%H%M%S)"
 BRANCH="forage/${STAMP}"
 # The worktree MUST live under the repo, never /tmp: the codex 0.149 spike found /tmp and $TMPDIR
 # are agent-writable exceptions to the workspace-write sandbox, so they cannot be the containment
@@ -70,6 +73,16 @@ CURSOR_FILE="${AUTH_DATA_DIR}/forage-cursor"
 DIGEST="${AUTH_DATA_DIR}/forage-runs.jsonl"
 KB_DIR="${ALGUA_KNOWLEDGE_DIR:-${REPO_ROOT}/kb}"
 SOURCES_FILE="${KB_DIR}/inspirations/_sources.yaml"
+
+# Cheap demand check before Drive/network/worktree preparation. Rechecked under the forage
+# lock immediately before model launch; an idle hourly check consumes no launch budget.
+if [[ "${SCHEDULED}" -eq 1 && "${DRY_RUN}" -eq 0 ]]; then
+  REFILL="$(cd "${REPO_ROOT}" && uv run --no-sync algua research sources refill)" || exit 1
+  if ! printf '%s' "${REFILL}" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)["ready"] else 1)'; then
+    echo "forage idle: ${REFILL}"
+    exit 0
+  fi
+fi
 
 # --- Sources-registry seed (spec §4). The vault is RUNTIME state and git-ignored; the tracked
 # artifact is the seed at deploy/kb/inspirations/_sources.yaml. Copy-if-absent ONLY: the live
@@ -272,6 +285,15 @@ decision/fill/holding/rebalance timing; construction, costs and comparison/contr
 and a falsifiable numerical claim. Mark omitted source details unspecified, and separate source
 facts from proposed assumptions. Never invent data, rules, causal evidence or backtest results.
 Prefer implementable recipes; familiar claims can support honest, informative replications.
+For grounded recipes, include pilot_recipe frontmatter with market, horizon, required_data
+(array), construction, feature_lookback (integer), and controls (1–4 objects with the same fields
+except controls). Include every mandatory control and its full warmup requirement. Supported
+daily long-only constructions: primary top_k_equal_weight; controls top_k_equal_weight or
+equal_weight_positive. This describes fit only, never profitability. Omit pilot_recipe when
+rules are unspecified; preserve useful unsupported sources honestly for the data backlog.
+Aim for at least one complete source recipe per run when evidence supports it. Search further
+for explicit formulas, timing and controls before settling for narrative-only claims. Zero
+grounded recipes is valid; never invent rules or shorten a source lookback to meet a quota.
 Obscurity describes the source, not evidence of profitability or a requirement for admission.
 Execution currently retargets weights daily; prefer genuinely daily-rebalanced recipes with
 controls compatible with the supplied profile. Weekly/monthly fixed-share holding is unsupported.
@@ -387,6 +409,13 @@ echo "Pre-warming the worktree environment (uv sync, timeout ${SYNC_TIMEOUT})...
 # Only now — lock held, worktree created, environment ready — has this run actually earned its
 # rotation slice. A lock-skip, worktree-creation failure, or sync timeout above all exit before
 # this point, leaving CURSOR_FILE untouched so the NEXT firing retries the same categories.
+if [[ "${SCHEDULED}" -eq 1 ]]; then
+  REFILL="$(cd "${REPO_ROOT}" && uv run --no-sync algua research sources refill --reserve "${STAMP}")" || exit 1
+  if ! printf '%s' "${REFILL}" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)["reserved"] else 1)'; then
+    echo "forage idle after preparation: ${REFILL}"
+    exit 0
+  fi
+fi
 _advance_cursor
 
 echo "Foraging (timeout ${TIMEOUT}, up to ${FORAGE_MAX_NOTES} notes), SANDBOXED, no registry..."
@@ -452,6 +481,7 @@ except Exception:
 }
 ACCEPTED_JSON="$(_accept_field accepted '[]')"
 REJECTED_JSON="$(_accept_field rejected '[]')"
+RECIPE_FIT_JSON="$(_accept_field recipe_fit 'null')"
 
 # --- Proposed venues (spec §5): parse the agent's report, validate, propose per survivor. The
 # heredoc's STDOUT is exactly one JSON array (the accepted keys) — every progress/warning line
@@ -533,7 +563,7 @@ echo "Appending run digest to ${DIGEST}..."
 mkdir -p "$(dirname "${DIGEST}")"
 python3 - "${DIGEST}" "${STAMP}" "${CATEGORIES}" "${ACCEPTED_JSON}" "${REJECTED_JSON}" \
   "${PROPOSED_JSON}" "${rc}" "${timed_out}" "${wall_s}" "${rate_limited}" \
-  "${ACCEPT_PARSE_ERROR}" <<'PY' \
+  "${ACCEPT_PARSE_ERROR}" "${RECIPE_FIT_JSON:-null}" <<'PY' \
   || echo "WARNING: digest append failed -- run outcome unaffected." >&2
 import json
 import sys
@@ -559,6 +589,7 @@ row = {
     "wall_s": int(wall_s),
     "rate_limited": rate_limited == "1",
     "accept_parse_error": accept_parse_error == "1",
+    "recipe_fit": _json(sys.argv[12], None),
 }
 with open(digest_path, "a", encoding="utf-8") as f:
     f.write(json.dumps(row, ensure_ascii=False) + "\n")

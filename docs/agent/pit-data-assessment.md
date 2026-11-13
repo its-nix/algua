@@ -11,6 +11,20 @@ investment qualification remains blocked; research and engineering can continue 
 
 ## What is established today
 
+Next acquisition sequence (2026-11-13, still no purchase authorization):
+
+1. Keep numerical exploration on the pinned proxy. Check the primary and every control against
+   the observed 505-session grid before authoring; do not shorten a source lookback to force fit.
+2. Request or locate a small sample spanning continuing and removed securities, a ticker change,
+   a corporate action and a terminal event. Require the identity, availability/revision clocks and
+   event economics below; a larger adjusted-price download alone cannot remove the seven caveats.
+3. Validate source/license coverage and retained original bytes, then scope one importer/verifier.
+   Changes touching frozen contracts, provenance certification or qualification require the existing
+   human integrity review. A sample is not universe-wide certification.
+4. Expand only after the sample passes; freeze a complete ever-member dataset and independently
+   verify its PIT lineage before historical qualification. The five genuine paper sessions and
+   authenticated live ceremony remain separate requirements. No vendor enrollment or spend here.
+
 [Recorded acquisition](midcap-machinery.md) pins `c63d16f44419cb96`: 400 symbols and 201,760 bars,
 requested `[2024-11-01,2026-11-08)`, latest observed November 6. The November 8 screen selected 300
 current S&P 400 proxy names across 11 current sectors, using price >= $10, 60-session median

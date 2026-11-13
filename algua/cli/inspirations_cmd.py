@@ -23,10 +23,14 @@ from algua.knowledge.inspirations import (
     list_notes,
     mark_exhausted,
     mark_used,
+    parse_note,
 )
 from algua.knowledge.sources_registry import SourcesRegistry
+from algua.operator.research_profile import load_research_profile
+from algua.operator.source_recipe import assess_recipe
 from algua.primitives.timeparse import now_iso
 from algua.research.categories import categories_file_default, load_categories
+from algua.tracking.bounded_local_read import read_local_file
 
 inspirations_app = typer.Typer(
     help="Inspirations vault domain: accept forage notes, browse them, mark them leapt/exhausted, "
@@ -70,6 +74,26 @@ def accept(
     result = accept_new_notes(
         staged_dir=from_dir, settings=settings, seen_path=seen_path, categories=categories,
         run_stamp=run, max_notes=max_notes, store=inspirations_store(settings))
+    try:
+        profile = load_research_profile(settings.data_dir)
+    except Exception:
+        profile = None  # Advisory fit must never discard an otherwise accepted source note.
+        result["recipe_fit"] = None
+    if profile is not None:
+        fit: dict = {"feasible": [], "blocked": [], "unknown": [],
+                     "scope": "declared_source_recipe_only", "authority": "none"}
+        for identity in result["accepted"]:
+            try:
+                raw = read_local_file(from_dir / f"{identity}.md", root=from_dir.absolute(),
+                                      max_bytes=16384)
+                fm, _ = parse_note(raw.decode())
+                status = assess_recipe(fm.get("pilot_recipe"), profile)["status"]
+                if not isinstance(status, str) or status not in {"feasible", "blocked", "unknown"}:
+                    status = "unknown"
+            except Exception:
+                status = "unknown"
+            fit[status].append(identity)
+        result["recipe_fit"] = fit
     emit(ok(result))
 
 

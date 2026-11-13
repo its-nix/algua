@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from algua.config.settings import Settings
-from algua.knowledge.inspirations import NOTE_ID_RE, parse_note
+from algua.knowledge.inspirations import NOTE_ID_RE, inspirations_dir, parse_note
 from algua.operator.research_memory_checkpoint import canonical, strict_json
 from algua.operator.source_recipe import assess_recipe
 from algua.primitives.atomic_io import write_bytes_durable
@@ -16,6 +16,25 @@ from algua.tracking.bounded_local_read import read_local_file
 
 def _digest(value: object) -> str:
     return hashlib.sha256(canonical(value)).hexdigest()
+
+
+CAPABILITY_FILES = (
+    "algua/operator/source_recipe.py", "algua/operator/research_history.py",
+    "algua/backtest/walkforward.py", "algua/portfolio/construction.py",
+    "algua/data/capabilities.py",
+)
+
+
+def capability_fingerprint(root: Path | None = None) -> str:
+    """Invalidate advisory retries for execution/data capability changes, not every deploy.
+
+    Dataset, universe, costs and window settings are independently bound by the profile.
+    Extend this explicit manifest when a new recipe capability is implemented.
+    """
+    root = root or Path(__file__).resolve().parents[2]
+    return _digest({"version": 1, "files": {
+        name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in CAPABILITY_FILES
+    }})
 
 
 def _state(directory: Path) -> dict:
@@ -41,17 +60,19 @@ def _state(directory: Path) -> dict:
 
 
 def source_plan(
-    settings: Settings, profile: dict, *, code: str, limit: int = 3, force: bool = False
+    settings: Settings, profile: dict, *, code: str | None = None, limit: int = 3,
+    force: bool = False
 ) -> dict:
     if type(limit) is not int or not 1 <= limit <= 3:
         raise ValueError("source_selection:invalid_limit")
     progress = _state(settings.data_dir)
-    environment = _digest({"profile": profile, "code": code})
+    environment = _digest({"profile": profile, "capabilities": code or capability_fingerprint()})
     rows = []
-    paths = sorted((settings.knowledge_dir / "inspirations").glob("*.md"), reverse=True)
+    folder = inspirations_dir(settings)
+    paths = sorted(folder.glob("*.md"), reverse=True)
     for path in [p for p in paths if NOTE_ID_RE.fullmatch(p.stem)][:200]:
         identity = path.stem
-        raw = read_local_file(path, root=settings.knowledge_dir.absolute(), max_bytes=16384)
+        raw = read_local_file(path, root=folder.parent.absolute(), max_bytes=16384)
         frontmatter, body = parse_note(raw.decode())
         if frontmatter.get("id") != identity:
             raise ValueError("source_selection:note_identity_mismatch")
@@ -88,6 +109,7 @@ def source_plan(
     rows.sort(
         key=lambda r: (
             r["waiting"],
+            r["metadata"].get("source_kind") != "human",
             r["assessment"]["status"] != "feasible",
             # Soft cold-start preferences for the fixed US-equity daily pilot only.
             r["assessment"]["status"] != "feasible"

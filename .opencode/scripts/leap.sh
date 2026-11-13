@@ -280,7 +280,7 @@ if [[ "${DRY_RUN}" -eq 0 && -n "${ALGUA_RESEARCH_PROFILE+x}" ]]; then
   SOURCE_ARGS=()
   [[ "${FORCE}" -eq 1 ]] && SOURCE_ARGS+=(--force)
   if ! SOURCE_PLAN_JSON="$(cd "${REPO_ROOT}" && uv run --no-sync algua research sources plan \
-    --code "$(git -C "${REPO_ROOT}" rev-parse HEAD)" --limit 3 ${SOURCE_ARGS[@]+"${SOURCE_ARGS[@]}"})"; then
+    --limit 3 ${SOURCE_ARGS[@]+"${SOURCE_ARGS[@]}"})"; then
     echo "source plan failed; no model called" >&2
     python3 - "${DIGEST}" "${STAMP}" <<'PYPLANERROR'
 import json,sys

@@ -401,3 +401,32 @@ def test_feasible_recipe_order_preserves_retry_priority_over_source_metadata(tmp
         used,
         fresh,
     ]
+
+
+def test_retry_fingerprint_ignores_unrelated_deploys_and_tracks_capabilities(tmp_path):
+    from algua.operator.source_selection import CAPABILITY_FILES, capability_fingerprint
+
+    for name in CAPABILITY_FILES:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("original")
+    original = capability_fingerprint(tmp_path)
+    (tmp_path / "README.md").write_text("unrelated release")
+    assert capability_fingerprint(tmp_path) == original
+    (tmp_path / CAPABILITY_FILES[0]).write_text("new construction support")
+    assert capability_fingerprint(tmp_path) != original
+
+
+def test_drive_snapshot_sources_and_owner_priority(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data", knowledge_dir=tmp_path / "kb")
+    note(settings, "local", recipe())
+    steering = tmp_path / "steering"
+    snapshot_settings = Settings(data_dir=settings.data_dir, knowledge_dir=steering)
+    owner = note(snapshot_settings, "owner")
+    note(snapshot_settings, "web", recipe())
+    path = steering / "inspirations" / f"{owner}.md"
+    path.write_text(path.read_text().replace("status: fresh", "source_kind: human\nstatus: fresh"))
+    settings = settings.model_copy(update={"steering_dir": steering})
+    plan = source_plan(settings, PROFILE)
+    assert plan["sources"][0]["source_id"] == owner
+    assert all("local" not in s["source_id"] for s in plan["sources"])
