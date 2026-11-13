@@ -9,6 +9,9 @@ from typing import Any
 
 from algua.tracking.bounded_local_read import LocalReadError, ReadBudget, read_local_file
 
+# Match the existing 1 MiB campaign-admission envelope retained by the controller.
+MAX_CHECKPOINT_BYTES = 1024 * 1024
+
 
 class CheckpointError(ValueError):
     def __init__(self, reason: str) -> None:
@@ -74,7 +77,7 @@ def load_checkpoint(directory: Path, cycle_id: str, *, database: str,
         raise CheckpointError("checkpoint_invalid")
     try:
         raw = read_local_file(directory / f"{cycle_id}.json", root=directory,
-                              max_bytes=256 * 1024, budget=budget)
+                              max_bytes=MAX_CHECKPOINT_BYTES, budget=budget)
         metadata = strict_json(raw)
         request = metadata["request"]
         if (not isinstance(request, dict) or request["research_cycle_id"] != cycle_id

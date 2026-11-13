@@ -8,7 +8,11 @@ from pathlib import Path
 
 from algua.contracts.idea import AttemptOutcome
 from algua.operator.campaign_memory_schema import CYCLE, memory_reference, validate_payload
-from algua.operator.research_memory_checkpoint import load_checkpoint, validate_retained_payload
+from algua.operator.research_memory_checkpoint import (
+    MAX_CHECKPOINT_BYTES,
+    load_checkpoint,
+    validate_retained_payload,
+)
 from algua.operator.research_memory_projection import MemoryLimits
 from algua.registry.read_snapshot import registry_snapshot
 from algua.registry.reported_empirical import reported_assessments
@@ -89,7 +93,7 @@ def read_retained_research(
     """The existing show payload, validated against its checkpoint and archive without writes."""
     validate_research_cycle(run)
     metadata = load_checkpoint(data_dir / "research-cycles", run, database=str(database.resolve()),
-                               budget=ReadBudget(256 * 1024))
+                               budget=ReadBudget(MAX_CHECKPOINT_BYTES))
     archive = LocalResearchArchive(tracking_uri, backend=tracking_backend, existing_only=True)
     payload = archive.read(metadata["research_memory"]["receipt"])
     validate_payload(payload, run)

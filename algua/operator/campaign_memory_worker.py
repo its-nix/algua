@@ -20,6 +20,7 @@ from algua.operator.campaign_memory_schema import (
     window_protocol,
 )
 from algua.operator.research_memory_checkpoint import (
+    MAX_CHECKPOINT_BYTES,
     CheckpointError,
     canonical,
     load_checkpoint,
@@ -133,7 +134,8 @@ def project_snapshot(items: Iterable[dict], *, coverage: dict, cutoff: int,
 
 
 def _verified_items(request: dict) -> Iterator[dict]:
-    archive_budget, checkpoint_budget = ReadBudget(32 * 1024 * 1024), ReadBudget(512 * 1024)
+    archive_budget = ReadBudget(32 * 1024 * 1024)
+    checkpoint_budget = ReadBudget(2 * MAX_CHECKPOINT_BYTES)
     archive = None
     for cycle in request["cycles"]:
         require(exact(cycle, {"research_cycle_id", "evidence_ref", "attempts"}), "request_invalid")
