@@ -51,7 +51,12 @@ def test_removed_reference_absent(needle: str) -> None:
 
 @pytest.mark.parametrize(
     "argv",
-    [["research", "campaign-menu"], ["backtest", "replay"], ["governance", "list"], ["eval", "gate"]],
+    [
+        ["research", "campaign-menu"],
+        ["backtest", "replay"],
+        ["governance", "list"],
+        ["eval", "gate"],
+    ],
 )
 def test_removed_command_is_gone(argv: list[str]) -> None:
     from algua.cli.main import app
