@@ -15,12 +15,6 @@ from algua.contracts.model_types import (
 )
 from algua.contracts.strategy_context import AsOfContext, AsOfView
 from algua.contracts.types import CapacityLimit, ExecutionContract
-from algua.data.research_provenance import (
-    SYNTHETIC_LIMITATION,
-    DataTier,
-    ProvenanceDeclaration,
-)
-from algua.data.store import DataStore
 from algua.models import get_version_with_bytes, register
 from algua.portfolio.construction import equal_weight_positive
 from algua.portfolio.overlays import OverlaySpec, get_overlay_policy
@@ -31,7 +25,6 @@ from algua.research.multimodal_context import (
     score_context,
 )
 from algua.strategies.base import LoadedStrategy, StrategyConfig
-from scripts.multimodal_context_exercise import run_exercise
 
 
 def _bars() -> pd.DataFrame:
@@ -92,27 +85,6 @@ def _model_ref(tmp_path) -> ModelRef:
         root=tmp_path / "models",
     )
     return version.as_ref()
-
-
-def _exercise_manifest(tmp_path, *, tier: DataTier = DataTier.PILOT_REAL_PROXY):
-    campaign = tmp_path / "campaign-pinned"
-    store = DataStore(campaign / "data")
-    limitations = (SYNTHETIC_LIMITATION,) if tier is DataTier.SYNTHETIC_FIXTURE else ()
-    record = store.ingest_bars(
-        provider="fixture",
-        symbols=["A", "B"],
-        start="2025-01-01",
-        end="2025-01-04",
-        as_of="2025-01-04T00:00:00+00:00",
-        source="fixture",
-        frame=_bars().reset_index(),
-        provenance=ProvenanceDeclaration(tier, "fixture-selection", limitations),
-    )
-    manifest = campaign / "campaign_manifest.json"
-    manifest.write_text(
-        json.dumps({"components": [{"campaign": True, "snapshot": record.to_dict()}]})
-    )
-    return manifest, store, record
 
 
 class _CombinedStrategy:
@@ -634,28 +606,3 @@ def test_legacy_model_adapter_rejects_bound_handle_changed_after_construction(tm
 
     with pytest.raises(ContextError, match="bound model handle changed"):
         score_context(LegacyStrategyAdapter(loaded), context)
-
-
-def test_exercise_verifies_snapshot_payload_before_claiming_pass(tmp_path):
-    manifest, store, record = _exercise_manifest(tmp_path)
-    part = next((store.data_dir / record.data_path).rglob("*.parquet"))
-    frame = pd.read_parquet(part)
-    frame.loc[frame.index[0], "adj_close"] += 1.0
-    frame.to_parquet(part, index=False)
-
-    with pytest.raises(ValueError, match="verification"):
-        run_exercise(manifest, tmp_path / "evidence" / "result.json")
-
-
-def test_exercise_refuses_to_write_inside_read_only_input_store(tmp_path):
-    manifest, store, _ = _exercise_manifest(tmp_path)
-
-    with pytest.raises(ValueError, match="outside the read-only data store"):
-        run_exercise(manifest, store.data_dir / "result.json")
-
-
-def test_exercise_refuses_non_pilot_data_instead_of_relabelling_it(tmp_path):
-    manifest, _, _ = _exercise_manifest(tmp_path, tier=DataTier.SYNTHETIC_FIXTURE)
-
-    with pytest.raises(ValueError, match="pilot_real_proxy"):
-        run_exercise(manifest, tmp_path / "evidence" / "result.json")

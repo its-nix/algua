@@ -99,7 +99,7 @@ def test_loader_rejects_config_name_mismatch():
 def test_load_by_bare_name_across_families(tmp_path):
     # Both bundled strategies resolve by bare name regardless of which family dir they live in.
     assert load_strategy("cross_sectional_momentum").name == "cross_sectional_momentum"
-    assert load_strategy("fundamentals_earnings_tilt").name == "fundamentals_earnings_tilt"
+    assert load_strategy("calm_four_day_rebound").name == "calm_four_day_rebound"
 
 
 def test_duplicate_bare_name_across_families_raises():
@@ -134,9 +134,10 @@ def test_duplicate_bare_name_across_families_raises():
 
 def test_loading_one_strategy_does_not_import_siblings():
     """The single-import contract: loading one strategy must not pull a sibling into sys.modules."""
-    sys.modules.pop("algua.strategies.fundamentals.fundamentals_earnings_tilt", None)
-    load_strategy("cross_sectional_momentum")
-    assert "algua.strategies.fundamentals.fundamentals_earnings_tilt" not in sys.modules
+    sibling = "algua.strategies.momentum.cross_sectional_momentum"
+    sys.modules.pop(sibling, None)
+    load_strategy("calm_four_day_rebound")
+    assert sibling not in sys.modules
 
 
 def test_family_init_files_are_empty():

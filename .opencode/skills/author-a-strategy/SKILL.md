@@ -262,20 +262,16 @@ per bar. Rules:
   the as-of masking can't be reproduced by a whole-period panel fn. The fast path is static-universe
   only. See `algua/strategies/momentum/cross_sectional_momentum.py` for a worked example.
 
-## Optional: the fundamentals lane
+## Fundamentals and news inputs
 
-To read point-in-time fundamentals, set `needs_fundamentals=True` in `CONFIG` and author the **3-arg**
-form `signal(view, params, fundamentals) -> pd.Series` (the loader binds it as the active signal and
-the engine injects the PIT-correct fundamentals frame per bar). Wiring today is **narrow**: only
-`backtest run --fundamentals-snapshot <id>` supplies a fundamentals provider. **Everything else fails
-closed** on a `needs_fundamentals` strategy — paper, live, and (critically) `walk-forward` and
-`sweep`, which means a fundamentals strategy **cannot be promoted via `research promote` yet** (the
-trading- and research-lane wiring is a #132 follow-up). Construction composes exactly the same — the
-third arg only feeds the score.
+Fundamentals and news ingestion has been removed pending a redesign, so no new fundamentals or
+news snapshot can be produced and the former bundled fundamentals/news strategies are gone. Do not
+author a strategy with `needs_fundamentals=True` or `needs_news=True`; author from bars only. If an
+idea needs those inputs, report that the data is unavailable instead of substituting an OHLCV proxy.
 
 ## Multimodal research: `context_v1`
 
-For an idea requiring the implemented shared bars/news/model context, scaffold once with the same
+For an idea requiring the implemented shared bars/model context, scaffold once with the same
 `strategy new` command, then replace its legacy callback with `STRATEGY_INTERFACE = "context_v1"`
 and exactly one pure `score(context)` callback. Remove the scaffold's `signal`; do not add
 `signal_panel` or `target_weights`. The callback returns scores, and existing construction/risk
