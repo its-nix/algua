@@ -20,6 +20,8 @@ from algua.features.catalogue import (
     load_all_factors,
 )
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 
 @pytest.fixture(autouse=True)
 def _clean_registry():

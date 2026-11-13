@@ -18,6 +18,8 @@ from algua.registry.transitions import transition_strategy
 from algua.strategies.loader import load_strategy
 from tests._deployment_helpers import force_legacy_strategy
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 STRATEGY = "cross_sectional_momentum"  # a real, loadable strategy module
 
 

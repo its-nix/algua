@@ -8,6 +8,8 @@ from algua.portfolio.construction import get_construction_policy
 from algua.research import eval_harness as eh
 from algua.strategies.base import LoadedStrategy, StrategyConfig
 
+pytestmark = pytest.mark.slow
+
 K = 4  # fast but >= the spec's k>=4 for the safety assertions
 
 

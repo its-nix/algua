@@ -244,6 +244,12 @@ small change. Run broader integration checks when the scope warrants them or the
 Automatic CI/CD workflows are disabled; the full CI workflow is available manually when re-enabled.
 Preserve live authorization, execution lag, data integrity and other product safety controls.
 
+Default test run: `uv run pytest -q` runs in parallel (`pytest-xdist`, `-n auto`) and skips tests
+marked `slow` (>5s). Run the full set with `uv run pytest -q -m ""`; tests marked `serial` share one
+worker. `algua.cli` does not import on macOS (`os.waitid`), so on macOS run pytest/mypy in Linux:
+`docker run --rm -v "$PWD":/w -v algua-linux-venv:/venv -w /w -e UV_PROJECT_ENVIRONMENT=/venv -e UV_LINK_MODE=copy ghcr.io/astral-sh/uv:python3.12-bookworm uv run --frozen pytest -q`
+(run `uv sync --frozen` in the same container first).
+
 Available full check, when needed:
 `uv run pytest -q && uv run ruff check . && uv run mypy algua && uv run lint-imports`
 

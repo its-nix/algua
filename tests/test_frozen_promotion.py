@@ -56,6 +56,8 @@ from tests._human_actor_helpers import install_human_actor_anchor, promote_signe
 from tests._venv_fixture import SITE_PACKAGES
 from tests.test_forward_promotion import FakeCalendar
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 CHECKOUT_DOTTED = f"algua.strategies.momentum.{TENANT}"
 RAISING_MODULE = "raise RuntimeError('the frozen tenant was imported from the checkout')\n"
 DESCRIPTOR = (CODE_HASH, CONFIG_HASH, DEP)

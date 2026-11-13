@@ -80,6 +80,7 @@ def test_term_trap_defers_outcomes_until_post_reap_capture(tmp_path):
 @pytest.mark.parametrize("worker_exit,fault", [
     (124, None), (143, None), (124, "tracked_source"), (124, "tracked_kb"), (124, "capture"),
 ])
+@pytest.mark.slow
 def test_real_recovery_archives_completed_rows_before_terminal_outcomes(
     tmp_path, monkeypatch, worker_exit, fault,
 ):

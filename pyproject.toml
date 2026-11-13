@@ -33,6 +33,7 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
     "import-linter>=2.0",
+    "pytest-xdist>=3.8.0",
 ]
 
 [build-system]
@@ -62,6 +63,11 @@ warn_unused_ignores = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-n auto --maxprocesses=6 --dist loadgroup -m 'not slow'"
+markers = [
+    "slow: >5s; excluded by default, run with -m ''",
+    "serial: must not run in parallel",
+]
 
 [tool.importlinter]
 root_package = "algua"
