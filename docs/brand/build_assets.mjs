@@ -1,17 +1,14 @@
 /** Export the supplied Drive artwork without tracing or redrawing it.
- * Run from the repo root after installing web/frontend dependencies:
+ * Run from the repo root with `playwright` installed (e.g. `npm i --no-save playwright`):
  * node docs/brand/build_assets.mjs
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
-import { chromium } from '../../web/frontend/node_modules/playwright/index.mjs'
+import { chromium } from 'playwright'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
-const publicDir = fileURLToPath(new URL('../../web/frontend/public/', import.meta.url))
 const exportsDir = join(root, 'exports')
-const assetsDir = fileURLToPath(new URL('../../web/frontend/src/assets/', import.meta.url))
-mkdirSync(assetsDir, { recursive: true })
 mkdirSync(exportsDir, { recursive: true })
 const image = name => 'data:image/png;base64,' + readFileSync(join(root, 'sources', name)).toString('base64')
 const wordmark = image('algua-wordmark-black-transparent.png')
@@ -52,17 +49,10 @@ try {
   for (const dark of [false, true]) {
     const suffix = dark ? '-reversed' : ''
     await render(lockup(dark), 480, 192, join(exportsDir, `logo-horizontal${suffix}.png`))
-    await render(lockup(dark), 480, 192, join(assetsDir, `wordmark${suffix}.png`))
     await render(logoMark(dark), 1024, 1024, join(exportsDir, `logo-mark${suffix}-1024.png`))
     await render(banner(dark), 1600, 480, join(exportsDir, `readme-banner${dark ? '-dark' : ''}.png`))
   }
-  for (const [name, size, inset, rounded] of [
-    ['icon-192.png', 192, .16, false], ['icon-512.png', 512, .16, false],
-    ['icon-maskable-512.png', 512, .22, false], ['apple-touch-icon.png', 180, .16, false],
-  ]) await render(tile(size, inset, rounded), size, size, join(publicDir, name), false)
   await render(tile(512), 512, 512, join(exportsDir, 'favicon-512.png'))
   await render(tile(1024), 1024, 1024, join(exportsDir, 'social-avatar.png'))
-  const favicon = readFileSync(join(exportsDir, 'favicon-512.png')).toString('base64')
-  writeFileSync(join(publicDir, 'favicon.svg'), svg('0 0 512 512', 'Algua', `<image width="512" height="512" href="data:image/png;base64,${favicon}"/>`))
-  console.log('Exported current Drive wave branding for dashboard, repository, and app icons.')
+  console.log('Exported current Drive wave branding for the repository.')
 } finally { await browser.close() }
