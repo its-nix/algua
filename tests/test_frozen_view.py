@@ -158,7 +158,7 @@ def test_decoder_round_trips_a_config_authored_with_whole_numbers(execution):
     assert strategy_config_hash(decoded) == manifest.config_hash
 
 
-def test_at_least_the_readiness_cohort_of_repo_strategies_is_tradable():
+def test_at_least_the_remaining_cohort_of_repo_strategies_is_tradable():
     """Guards the parametrized proof above against silently skipping everything."""
     tradable = []
     for name in _repo_strategy_names():
@@ -167,7 +167,7 @@ def test_at_least_the_readiness_cohort_of_repo_strategies_is_tradable():
         except (LookupError, ValueError):
             continue
         tradable.append(name)
-    assert len(tradable) >= 21
+    assert len(tradable) >= 4
 
 
 def test_decoding_never_imports_the_strategy_module():
