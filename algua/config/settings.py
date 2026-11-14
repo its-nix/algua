@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     data_dir: Path = Path("data")
     # Root of the Obsidian-mountable knowledge base (vault). Strategy docs live under
     # `<knowledge_dir>/strategies/`; other domains (research, news, …) are added as they arrive.
-    knowledge_dir: Path = Path("kb")
+    knowledge_dir: Path = Path("algua-kb")
     exchange: str = "XNYS"
     eodhd_api_key: str | None = None
     alpaca_api_key: str | None = None

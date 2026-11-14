@@ -579,7 +579,7 @@ const MODULES = {
     files:["audit/log.py"], deps:["contracts"] },
   provenance: { layer:3, role:"Pure stdlib-only leaf: the locked-dependency hash (from the uv lockfile). Imported by BOTH the backtest reproducibility stamps and the live-gate artifact identity, so 'which libraries ran' is pinned the same way in research and at the go-live wall.",
     files:["provenance/lockfile.py"], deps:[] },
-  knowledge: { layer:3, role:"The strategy knowledge base — renders a per-strategy Markdown doc (an Obsidian vault under kb/) from the registry + latest MLflow run. Deliberately withholds the OOS holdout: the doc never surfaces holdout.* metrics (revealed only by research promote).",
+  knowledge: { layer:3, role:"The strategy knowledge base — renders a per-strategy Markdown doc (an Obsidian vault under algua-kb/) from the registry + latest MLflow run. Deliberately withholds the OOS holdout: the doc never surfaces holdout.* metrics (revealed only by research promote).",
     files:["knowledge/sync.py","knowledge/metrics.py","knowledge/frontmatter.py","knowledge/templates.py"], deps:["registry","tracking"] },
   cli: { layer:4, role:"THE product surface. Typed Typer commands, every one emitting JSON on stdout with a meaningful exit code — version, doctor, registry (incl. the signed go-live ceremony + enroll-approver), data, strategy, backtest, research, paper (incl. halt-all). Humans and agents drive the identical commands.",
     files:["cli/registry_cmd.py","cli/backtest_cmd.py","cli/research_cmd.py","cli/paper_cmd.py","cli/data_cmd.py","cli/strategy_cmd.py","cli/app.py"], deps:["registry","data","strategies","backtest","research","live","risk","knowledge"] },

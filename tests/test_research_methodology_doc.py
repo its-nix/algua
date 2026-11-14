@@ -14,7 +14,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 def test_methodology_documents_pit_adjusted_trichotomy() -> None:
-    text = (REPO / "kb" / "principles" / "research-methodology.md").read_text().lower()
+    text = (REPO / "algua-kb" / "principles" / "research-methodology.md").read_text().lower()
 
     # Arm 3: raw is corporate-action CONTAMINATED, not leak-avoidance — pin the coupled claim,
     # not just the two words appearing anywhere in the file.

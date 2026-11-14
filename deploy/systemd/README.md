@@ -30,7 +30,7 @@ sibling all no-op cleanly.
 - `algua-leap.{service,timer}` — inspirations → structured hypotheses, every 2h at `:30` (between
   research runs), but only when the idea pool is below its refill trigger. See "Ideation engine
   (forage + leap)" below.
-- `algua-forage.{service,timer}` — web-search inspiration foraging into `kb/inspirations/`, daily
+- `algua-forage.{service,timer}` — web-search inspiration foraging into `algua-kb/inspirations/`, daily
   `03:00 UTC`. See "Ideation engine (forage + leap)" below.
 
 ## Install
@@ -431,7 +431,7 @@ when only the paper operator shipped. It uses the **explore-isolated** topology.
   the authoritative breadth / gate / holdout rows**, and wasted search never inflates the real DSR
   trial count;
 - runs `opencode run` (bounded by `TIMEOUT`, default 45m) to drive ideate → author → walk-forward/sweep →
-  `research promote` (preview) up to `candidate`, then writes a report to `kb/research-runs/<stamp>.md`
+  `research promote` (preview) up to `candidate`, then writes a report to `algua-kb/research-runs/<stamp>.md`
   on the branch, ending in a machine-readable trailer naming, per hypothesis, its verdict and — for a
   passed preview — a `merge_back` object (strategy/universe/window). The launcher validates each
   `merge_back` (branch is NEVER trusted from the trailer; strategy must match a module THIS run's own
@@ -485,7 +485,7 @@ bare title strings — both shapes are read by the anti-dup context builder, no 
 `preview_gate` (`{"passed": bool, "failed_checks": [...]}` or `null`, UNCHANGED — the cheap
 aggregate "did anything look promising" signal, kept alongside the new per-hypothesis `verdict`),
 `trailer_parse_error` (bool for completed runs), `rate_limited` (bool, grepped from the in-worktree
-agent log), `report` (`research-run/<stamp>:kb/research-runs/<stamp>.md` — migrated off the repo
+agent log), `report` (`research-run/<stamp>:algua-kb/research-runs/<stamp>.md` — migrated off the repo
 root in slice 3; see "Auto merge-back" for why). A skipped/setup-failed firing produces a line with
 `outcome != "completed"` and null-ish run fields (`exit_code`/`wall_s`/`n_strategy_files`/`report`
 null — for a lock-skip `branch` too — plus `hypotheses` `[]`, `preview_gate` and
@@ -539,7 +539,7 @@ staggered grid, each on its own cadence, all kept off the **paper tick's** minut
 |---|---|---|
 | `algua-research.timer` | every 2h at `:00` | claims ideas from the pool, authors/backtests/gates them (unchanged) |
 | `algua-leap.timer` | every 2h at `:30`, between research runs | inspirations → structured hypotheses, but only when `research idea depth` is below its refill trigger AND the vault still holds a non-exhausted note (either gate exits fast, no worktree) |
-| `algua-forage.timer` | daily `03:00 UTC` | web search → inspiration notes under `kb/inspirations/`, rotating `FORAGE_SLICES` categories per run so every category is foraged at least weekly |
+| `algua-forage.timer` | daily `03:00 UTC` | web search → inspiration notes under `algua-kb/inspirations/`, rotating `FORAGE_SLICES` categories per run so every category is foraged at least weekly |
 
 `algua-leap.timer` **shares the merge-back drainer's `:30` minute**, and that is deliberate: leap
 takes no `operator.lock` — only the drainer and the paper tick contend for that. Leap, forage and
@@ -562,7 +562,7 @@ leap imports hypotheses and records critic outcomes, and research records claims
 queues eligible merge-backs. Verify the actual sandbox mode and deployment permissions before
 relying on containment.
 
-**The vault's sources registry.** `kb/inspirations/` is runtime state and git-ignored; the tracked
+**The vault's sources registry.** `algua-kb/inspirations/` is runtime state and git-ignored; the tracked
 artifact is the SEED at `deploy/kb/inspirations/_sources.yaml`, which `install-user-units.sh` (and
 `forage.sh` at startup, so a relocated `ALGUA_KNOWLEDGE_DIR` self-heals) copies to
 `${ALGUA_KNOWLEDGE_DIR:-<repo>/kb}/inspirations/_sources.yaml` **only when that file is absent** —

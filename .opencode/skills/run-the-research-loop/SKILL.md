@@ -87,9 +87,9 @@ For each claimed idea:
 1. **Work the claimed ideas.** Your goal names them (`idea_id`, title, hypothesis, category,
    market, horizon, `falsification`, inspirations). Do not invent a hypothesis; if an idea is
    untestable, report `outcome: run_error` with the reason. Read
-   `kb/principles/research-methodology.md` before authoring (leakage vectors, search-breadth
-   honesty, designing for generalization), plus `kb/strategies/_index.md` and
-   `kb/strategies/_families.md` for what the relevant family already learned. Pick a unique
+   `algua-kb/principles/research-methodology.md` before authoring (leakage vectors, search-breadth
+   honesty, designing for generalization), plus `algua-kb/strategies/_index.md` and
+   `algua-kb/strategies/_families.md` for what the relevant family already learned. Pick a unique
    strategy name; skip names already in `uv run algua registry list`.
 2. **Author.** Delegate to the `author` subagent (it follows `author-a-strategy`) to scaffold once
    with `uv run algua strategy new <name> --family <slug>` (plus `--derived-from <parent>` only
@@ -140,7 +140,7 @@ recorded as `run_error` / `missing_from_trailer` anyway; saying why yourself is 
 
 1. Finish writing every authored strategy file in the current `research-run/<stamp>` worktree.
    The trusted launcher commits authored files and the report afterward; do not run `git commit`.
-2. Write your report to `kb/research-runs/<stamp>.md` (create the directory if it doesn't exist):
+2. Write your report to `algua-kb/research-runs/<stamp>.md` (create the directory if it doesn't exist):
    one section per hypothesis (name, params, backtest + walk-forward + gate results, decision +
    why), then a summary of what you promoted to candidate.
 3. The report MUST end with a machine-readable trailer — one fenced ```json block with **exactly

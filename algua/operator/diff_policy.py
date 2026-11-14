@@ -7,7 +7,8 @@ very tests/config the gate runs), so before any merge the driver gates the branc
 the raw diff entries + the CODEOWNERS text, returning a hard allow/deny verdict:
 
 * **Reject-by-default allowlist** — only strategy artifacts
-  (``algua/strategies/<family>/**.py``) and ``kb/**`` report/doc artifacts may be added/modified.
+  (``algua/strategies/<family>/**.py``) and ``algua-kb/**`` report/doc artifacts may be
+  added/modified.
 * **CODEOWNERS-derived denylist** — every protected path (parsed from CODEOWNERS at runtime so it
   cannot drift) plus static extras (``tests/**``, build/lint/type config, ``algua/operator/**``) is
   denied outright, even on an allowlisted-looking path.
@@ -52,7 +53,7 @@ _STATIC_DENY_EXACT = frozenset({
 
 # Allowlist: strategy artifacts + kb docs. Canonical (case-folded) prefixes/suffix rules.
 _ALLOW_STRATEGY_PREFIX = "algua/strategies/"
-_ALLOW_KB_PREFIX = "kb/"
+_ALLOW_KB_PREFIX = "algua-kb/"
 
 
 @dataclass(frozen=True)
@@ -164,7 +165,7 @@ def _check_path(path: str, deny_prefixes: tuple[str, ...]) -> tuple[bool, str]:
     if _is_denied(canon, deny_prefixes):
         return False, f"denylisted path: {path!r}"
     if not _is_allowed(canon):
-        return False, f"outside allowlist (algua/strategies/<family>/**.py, kb/**): {path!r}"
+        return False, f"outside allowlist (algua/strategies/<family>/**.py, algua-kb/**): {path!r}"
     return True, ""
 
 

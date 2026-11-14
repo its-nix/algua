@@ -461,9 +461,9 @@ def test_leap_exhausted_section_absent_vs_present_but_empty(tmp_path):
 
 
 def test_vault_inspirations_dir_is_git_ignored_and_the_seed_is_tracked():
-    assert "kb/inspirations/" in (REPO / ".gitignore").read_text()
+    assert "algua-kb/inspirations/" in (REPO / ".gitignore").read_text()
     assert (REPO / "deploy/kb/inspirations/_sources.yaml").exists()
-    tracked = subprocess.run(["git", "ls-files", "kb/inspirations"], cwd=REPO,
+    tracked = subprocess.run(["git", "ls-files", "algua-kb/inspirations"], cwd=REPO,
                              capture_output=True, text=True, check=True).stdout
     assert tracked.strip() == ""
 
