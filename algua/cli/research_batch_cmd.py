@@ -187,7 +187,7 @@ def run_all(
     parameter types reject the whole file before any task runs. Use booleans such as ``false``,
     never strings such as ``"false"``; numeric options require finite JSON numbers.
     Tasks run IN FILE ORDER and share the
-    funnel-breadth / FDR / holdout-burn ledgers EXACTLY as running them back-to-back as separate
+    funnel-breadth / holdout-burn ledgers EXACTLY as running them back-to-back as separate
     processes would (a promote task sees breadth a sibling sweep just recorded). Each task is
     fault-isolated: a task-domain failure becomes an ``{"ok": false, ..., "code": ...}`` marker and
     the loop continues. The envelope's ``ok`` is true iff EVERY task succeeded; the process exits

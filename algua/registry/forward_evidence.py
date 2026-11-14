@@ -341,7 +341,7 @@ def assemble_forward_evidence(
     # identity (a rare operator pattern — a single agent drives one strategy's gate serially), it
     # can only make the tax too SMALL for that one race (never spuriously fail an honest run), and
     # the NEXT run counts both committed rows and re-taxes. Fully closing it (recompute-and-insert
-    # in one BEGIN IMMEDIATE critical section, as `record_gate_with_fdr_and_maybe_promote` does for
+    # in one BEGIN IMMEDIATE critical section, as `record_gate_and_maybe_promote` does for
     # the research gate) is deferred follow-up; v1 accepts this residual rather than shipping
     # an unbuilt in-lock accounting method.
     n_prior_forward_looks = 0

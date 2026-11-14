@@ -13,12 +13,12 @@ app.add_typer(research_app, name="research")
 # --summary keep-list (#349): the decision essence of a promote — the pass/fail verdict, the
 # per-check breakdown (`checks` carries each gate's name/value/threshold/pass), the breadth and
 # the binding flags, the holdout/stability scalars, and provenance. Keep-list (not drop-list) so
-# the ~25 deep dsr_*/fdr_* internals, per-regime sharpes, and shadow-audit fields are
+# the ~25 deep dsr_* internals, per-regime sharpes, and shadow-audit fields are
 # excluded-by-default from the operator-facing summary (context-rot defense).
 _PROMOTE_SUMMARY_KEYS = (
     "promoted", "strategy", "passed", "checks", "n_combos", "n_funnel", "breadth_provenance",
     "base_min_holdout_sharpe", "effective_min_holdout_sharpe", "pit_ok", "pit_override",
-    "dsr_binding", "dsr_bootstrap_binding", "fdr_binding", "regime_robustness_binding",
+    "dsr_binding", "dsr_bootstrap_binding", "regime_robustness_binding",
     "ir_binding", "returns_available", "holdout", "stability", "config_hash", "snapshot_id",
     "universe_name", "universe_snapshots", "fundamentals_snapshot", "news_snapshot",
 )
@@ -57,7 +57,7 @@ def promote(
         help="human | agent: an audit label only; it unlocks nothing (every gate is the same)"),
     summary: bool = typer.Option(
         False, "--summary",
-        help="emit only decision-relevant scalars (drops deep dsr_*/fdr_*/regime diagnostics; "
+        help="emit only decision-relevant scalars (drops deep dsr_*/regime diagnostics; "
              "context-rot defense)"),
 ) -> None:
     """Gate backtested->candidate on the INTEGRITY FLOOR; promote only on pass (factory soft gate).

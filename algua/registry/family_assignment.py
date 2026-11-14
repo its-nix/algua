@@ -5,7 +5,7 @@ The NOVEL + agent path is deliberately DEFERRED: no family is created here. A re
 attack defeats the naive "mint on NOVEL" design (the founder passes and escapes the family-lifetime
 breadth tax before its family exists), so classification instead returns a ``PendingNovelFamily``
 spec and the seeded family is minted only at the pass moment, inside the atomic promote transaction
-(see ``algua.registry.promotion.run_gate`` / ``record_gate_with_fdr_and_maybe_promote``). Minting is
+(see ``algua.registry.promotion.run_gate`` / ``record_gate_and_maybe_promote``). Minting is
 bounded by the ``AGENT_NOVEL_MINT_CAP`` per-window rate cap and re-checks a family-graph fingerprint
 CAS under the write lock.
 """
@@ -196,7 +196,7 @@ def classify_and_assign_family(
     # NOVEL verdict
     if actor is not Actor.AGENT:
         # Refused BEFORE the holdout: the deferred mint below is agent-only at the store boundary
-        # (record_gate_with_fdr_and_maybe_promote), so a human-labelled NOVEL would otherwise burn
+        # (record_gate_and_maybe_promote), so a human-labelled NOVEL would otherwise burn
         # its holdout and then fail at the pass moment. The human fresh-family privilege is gone.
         raise ValueError(
             f"strategy {name!r}: clustering verdict is NOVEL (no matching family). Founding a "

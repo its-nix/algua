@@ -122,7 +122,7 @@ def promotion_preflight(
     except StrategyNotFound:
         _loaded = None
     # Transaction-cost floor (#325): a promote may only gate a backtest evaluated at a realistic
-    # transaction cost. The whole statistical stack (Sharpe/DSR/bootstrap/FDR/regime) is calibrated
+    # transaction cost. The whole statistical stack (Sharpe/DSR/bootstrap) is calibrated
     # on the return stream this promote will peek; if that stream were (near-)cost-free, a strategy
     # whose only edge is a cost illusion could clear every gate. assert_gated_costs fails closed on
     # a sub-floor fees+slippage BEFORE the holdout is touched, so a frictionless config can't mint
@@ -192,7 +192,7 @@ def promotion_preflight(
     # spec so every hard refusal burns NO holdout and mints NO consumable gate row (R6-HIGH-3,
     # R7-HIGH-1, R8-HIGH): (1) the per-window rate cap, and (2) still-unassigned + the
     # full-classifier-read-set fingerprint unchanged since classification. The under-lock re-checks
-    # in record_gate_with_fdr_and_maybe_promote remain the authoritative race-safe guards.
+    # in record_gate_and_maybe_promote remain the authoritative race-safe guards.
     if classify.pending_novel_family is not None:
         _revalidate_pending_novel(repo, name, classify.pending_novel_family)
     return ctx
@@ -269,7 +269,7 @@ def run_gate(
     # early reject). The founder is evaluated with family arm 0 / family_id None (the family does
     # not exist yet); require it is STILL unassigned AND the classifier read-set fingerprint is
     # unchanged since classification, else re-run preflight. The authoritative re-checks are the
-    # under-lock step-1 in record_gate_with_fdr_and_maybe_promote and the atomic on_peek re-check.
+    # under-lock step-1 in record_gate_and_maybe_promote and the atomic on_peek re-check.
     if breadth.pending_novel_family is not None:
         if family_id is not None:
             raise FamilyGraphDriftError(
@@ -325,14 +325,6 @@ def run_gate(
         bootstrap_seed=boot_seed, bootstrap_b=boot_b, bootstrap_block_len=boot_block,
         market_returns=wf.market_returns,
     )
-    # Factory soft gate (2026-08-10 spec): the statistical stack is ADVISORY. The LORD++
-    # FDR-binding branch itself was deleted (simplification stage 4a — it was provably dead here,
-    # this path never supplied a real p_value); record_gate_with_fdr_and_maybe_promote's
-    # final_passed is now always the provisional integrity-floor verdict. dsr_confidence is still
-    # computed and recorded in the decision above (advisory telemetry).
-    decision.fdr_binding = False
-    decision.fdr_skip_reason = "stats_advisory"
-
     identity = compute_artifact_hashes(name)
     rec = repo.get(name)
 
@@ -440,7 +432,7 @@ def run_gate(
         search_trials_count=st_count,
         search_trials_max_id=st_max,
     )
-    fdr_outcome = repo.record_gate_with_fdr_and_maybe_promote(
+    outcome = repo.record_gate_and_maybe_promote(
         rec, gate_row=gate_row, funnel=funnel, actor=actor,
         reason=_gate_reason(decision) if decision.passed else None,
         pending_novel_family=breadth.pending_novel_family,  # #524: minted only on pass, in-tx
@@ -481,12 +473,11 @@ def run_gate(
         },
     )
 
-    # With the LORD++ binding branch retired (stage 4a), final_passed == provisional_passed (the
-    # integrity floor) unconditionally. Kept as an assignment (not an assert) so the decision
-    # always mirrors what the store committed.
-    decision.passed = fdr_outcome.final_passed
+    # final_passed == provisional_passed (the integrity floor). Kept as an assignment (not an
+    # assert) so the decision always mirrors what the store committed.
+    decision.passed = outcome.final_passed
 
-    return PromotionOutcome(decision=decision, promoted=fdr_outcome.final_passed)
+    return PromotionOutcome(decision=decision, promoted=outcome.final_passed)
 
 
 def _gate_reason(decision: GateDecision) -> str:

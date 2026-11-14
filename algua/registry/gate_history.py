@@ -8,10 +8,12 @@ marker on ``holdout_returns`` in ``db.py`` is the authority: no CLI accessor may
 ``decision_json`` is never emitted raw. Each row's blob is parsed and projected through a
 TWO-LAYER allowlist: (1) the key must appear in a MATERIALIZED frozen constant hand-written from
 the decision dataclass's fields (never derived at runtime — a new dataclass field must be
-consciously reviewed into the allowlist, enforced by the golden drift test); (2) the value must be
-scalar-shaped (scalar, dict of scalars, or — for ``checks`` — a list of dicts reduced to their
-scalar name/op/threshold/value/passed fields). Anything failing either layer is dropped and
-reported in ``decision_dropped_keys``, so a vector planted in the blob can never transit this view.
+consciously reviewed into the allowlist, enforced by the golden drift test), or in the frozen
+set of historical keys of fields removed by lean trim step 7 (old rows stay readable); (2) the
+value must be scalar-shaped (scalar, dict of scalars, or — for ``checks`` — a list of dicts
+reduced to their scalar name/op/threshold/value/passed fields). Anything failing either layer is
+dropped and reported in ``decision_dropped_keys``, so a vector planted in the blob can never
+transit this view.
 """
 
 from __future__ import annotations
@@ -46,22 +48,6 @@ GATE_DECISION_ALLOWLIST: frozenset[str] = frozenset({
     "dsr_funnel_floor_var_ann",
     "dsr_funnel_floor_n_strategies",
     "dsr_funnel_floor_n_total_rows",
-    "fdr_binding",
-    "fdr_p_value",
-    "fdr_alpha_level",
-    "fdr_test_index",
-    "fdr_rejected",
-    "fdr_skip_reason",
-    "fdr_cohort",
-    "fdr_cohorts_completed",
-    "fdr_binding_tests",
-    "fdr_discoveries",
-    "fdr_expected_false_discoveries",
-    "fdr_throttle_window_binding",
-    "fdr_throttle_tripped",
-    "fdr_active_cohort_position",
-    "fdr_active_cohort_applied_alpha",
-    "fdr_expected_false_discoveries_incl_active",
     "returns_available",
     "dsr_bootstrap_binding",
     "dsr_bootstrap_lower",
@@ -86,6 +72,30 @@ GATE_DECISION_ALLOWLIST: frozenset[str] = frozenset({
     "phase3_component_mask",
 })
 
+# Keys of GateDecision fields REMOVED by lean trim step 7 (spec 2026-11-12 §4.8). New rows never
+# carry them; rows written before the trim do, and those historical values must stay visible in
+# every view (projected, not dropped). Frozen: a key leaves the current allowlist and lands here,
+# never the reverse. Disjoint from both GATE_DECISION_ALLOWLIST and GATE_DECISION_EXCLUDED.
+GATE_DECISION_HISTORICAL: frozenset[str] = frozenset({
+    # the frozen LORD++ FDR ledger
+    "fdr_binding",
+    "fdr_p_value",
+    "fdr_alpha_level",
+    "fdr_test_index",
+    "fdr_rejected",
+    "fdr_skip_reason",
+    "fdr_cohort",
+    "fdr_cohorts_completed",
+    "fdr_binding_tests",
+    "fdr_discoveries",
+    "fdr_expected_false_discoveries",
+    "fdr_throttle_window_binding",
+    "fdr_throttle_tripped",
+    "fdr_active_cohort_position",
+    "fdr_active_cohort_applied_alpha",
+    "fdr_expected_false_discoveries_incl_active",
+})
+
 # GateDecision fields deliberately NOT projected. per_regime_sharpes is a bare list of floats —
 # the shape contract carries scalars, dicts-of-scalars, and the checks[] reduction only, and a
 # bare-list carve-out is exactly the aperture a planted returns vector would ride through.
@@ -102,7 +112,8 @@ FORWARD_DECISION_ALLOWLIST: frozenset[str] = frozenset({
 FORWARD_DECISION_EXCLUDED: frozenset[str] = frozenset()
 
 # Explicit column lists — never SELECT * (a future SENSITIVE column must not leak by default).
-# fdr_* on gate_evaluations are migration-added and may be NULL on legacy rows (emitted as nulls).
+# fdr_* on gate_evaluations are historical (lean trim step 7): migration-added, NULL on rows written
+# before the ledger existed and on every row written after it was removed (emitted as nulls).
 _GATE_COLUMNS = (
     "id", "passed", "actor", "created_at", "consumed", "pit_ok", "pit_override",
     "holdout_n_bars", "min_holdout_observations", "holdout_frac", "n_funnel",
@@ -140,6 +151,10 @@ _MAX_INT_MAGNITUDE = 10**18
 # non-vetoing check; the monitor projection must carry it so a failed stat is distinguishable
 # from a failed floor.
 _CHECK_FIELDS = ("name", "op", "threshold", "value", "passed", "advisory")
+
+# What a gate_evaluations decision_json projection lets through: the current fields plus the
+# historical keys of removed fields (old rows stay readable).
+GATE_DECISION_PROJECTION: frozenset[str] = GATE_DECISION_ALLOWLIST | GATE_DECISION_HISTORICAL
 
 
 def _bounded_scalar(value: Any) -> bool:
@@ -241,7 +256,7 @@ def gate_evaluation_history(
 ) -> list[dict[str, Any]]:
     """Newest-first ``gate_evaluations`` rows for one strategy, decision_json projected."""
     return _history(conn, "gate_evaluations", _GATE_COLUMNS,
-                    GATE_DECISION_ALLOWLIST, strategy_id, limit)
+                    GATE_DECISION_PROJECTION, strategy_id, limit)
 
 
 def forward_gate_evaluation_history(

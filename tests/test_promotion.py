@@ -364,12 +364,10 @@ def test_run_gate_measured_but_missing_stats_records_failed_advisory(tmp_path):
     assert outcome.promoted is True
 
 
-# --- run_gate FDR freeze (factory soft gate, 2026-08-10 spec) ----------------------------
-# The statistical stack is advisory, so the promote path NEVER writes a LORD++ binding row:
-# every gate_evaluations row lands with fdr_binding NULL + fdr_skip_reason="stats_advisory",
-# the stream reader and the windowed throttle count see nothing, and final_passed collapses to
-# the provisional integrity-floor verdict. The ledger machinery itself is pinned alive by the
-# direct-store tests in tests/test_registry_store.py.
+# --- run_gate with the FDR ledger removed (lean trim step 7) ------------------------------
+# The statistical stack is advisory and the LORD++ FDR ledger code is gone: every new
+# gate_evaluations row lands with the historical fdr_* columns NULL and no fdr_* decision keys,
+# and final_passed is the provisional integrity-floor verdict.
 
 
 def _wf_sharpe(sharpe: float):
@@ -388,8 +386,8 @@ def _run_measured(repo, *, sharpe: float = 7.0):
 
 
 def test_run_gate_measured_promote_writes_no_binding_row(tmp_path):
-    """A measured promote with full trial stats — the OLD maximal-FDR case — now records
-    fdr_binding NULL + stats_advisory and never consults the stream/throttle."""
+    """A measured promote with full trial stats — the OLD maximal-FDR case — writes the
+    historical fdr_* columns NULL and carries no fdr_* decision keys."""
     import json as _json
     repo = _gate_repo(tmp_path)
     repo.record_search_trial(_GATE_NAME, 5, "{}", trial_sharpe_count=5,
@@ -398,26 +396,23 @@ def test_run_gate_measured_promote_writes_no_binding_row(tmp_path):
     d = outcome.decision
     assert d.dsr_binding is True                       # DSR still armed + recorded
     assert d.dsr_confidence is not None
-    assert d.fdr_binding is False
-    assert d.fdr_skip_reason == "stats_advisory"
-    assert d.fdr_p_value is None and d.fdr_alpha_level is None and d.fdr_test_index is None
+    assert not any(k.startswith("fdr_") for k in d.to_dict())
     assert outcome.promoted is True
     # No fdr_evidence / fdr_throttle checks anywhere — returned decision or stored row.
     assert all(c["name"] not in ("fdr_evidence", "fdr_throttle") for c in d.checks)
     row = repo._conn.execute(
         "SELECT fdr_binding, decision_json FROM gate_evaluations ORDER BY id DESC LIMIT 1"
     ).fetchone()
-    assert row["fdr_binding"] is None                  # NULL, not 0 — invisible to the stream
+    assert row["fdr_binding"] is None                  # historical column, written NULL
     stored = _json.loads(row["decision_json"])
-    assert stored["fdr_binding"] is False
-    assert stored["fdr_skip_reason"] == "stats_advisory"
+    assert not any(k.startswith("fdr_") for k in stored)
     assert all(c["name"] not in ("fdr_evidence", "fdr_throttle")
                for c in stored.get("checks", []))
 
 
 def test_run_gate_stream_sees_zero_binding_rows_across_promotes(tmp_path):
-    """N promotes (pass and fail) advance NEITHER the LORD++ stream nor the (now-deleted)
-    windowed promotion-throttle count — the ledger stays frozen while stats are advisory."""
+    """N promotes (pass and fail) write no fdr_* column values: the historical columns stay
+    NULL on every new row."""
     repo = _gate_repo(tmp_path)
     repo.record_search_trial(_GATE_NAME, 5, "{}", trial_sharpe_count=5,
                              trial_sharpe_mean=0.5, trial_sharpe_var_ann=0.04)
@@ -433,10 +428,11 @@ def test_run_gate_stream_sees_zero_binding_rows_across_promotes(tmp_path):
     assert out3.promoted is False
     n_rows = repo._conn.execute("SELECT COUNT(*) c FROM gate_evaluations").fetchone()["c"]
     assert n_rows == 3                                 # every attempt is still audited
-    # The stream reader sees an untouched (fresh) stream.
-    stream = repo.fdr_stream_state()
-    assert stream is not None
-    assert stream.t == 1 and stream.binding_tests == 0 and stream.discoveries == 0
+    n_fdr = repo._conn.execute(
+        "SELECT COUNT(*) c FROM gate_evaluations WHERE fdr_binding IS NOT NULL"
+        " OR fdr_p_value IS NOT NULL OR fdr_test_index IS NOT NULL OR fdr_cohort IS NOT NULL"
+    ).fetchone()["c"]
+    assert n_fdr == 0
 
 
 def test_run_gate_final_passed_equals_provisional(tmp_path):
@@ -458,38 +454,30 @@ def test_run_gate_weak_evidence_stats_fail_advisory_still_promotes(tmp_path):
     repo.record_search_trial(_GATE_NAME, 5, "{}", trial_sharpe_count=5,
                              trial_sharpe_mean=0.5, trial_sharpe_var_ann=0.04)
     outcome = _run_measured(repo, sharpe=2.3)
-    d = outcome.decision
-    assert d.fdr_binding is False and d.fdr_skip_reason == "stats_advisory"
     assert outcome.promoted is True
     assert repo.get(_GATE_NAME).stage is Stage.CANDIDATE
 
 
 def test_run_gate_declared_breadth_also_stats_advisory(tmp_path):
-    """Declared breadth (no DSR armed) records the SAME stats_advisory skip reason — the FDR
-    freeze is unconditional, not a dsr_binding branch."""
+    """Declared breadth (no DSR armed) records the DSR skip reason and no FDR fields."""
     repo = _gate_repo(tmp_path)
     breadth = _breadth(repo, "declared")
     outcome = _run(repo, breadth)
     d = outcome.decision
     assert d.dsr_binding is False
     assert d.dsr_skip_reason == "no_measured_dispersion"   # the DSR reason is unchanged
-    assert d.fdr_binding is False
-    assert d.fdr_skip_reason == "stats_advisory"
+    assert not any(k.startswith("fdr_") for k in d.to_dict())
     assert all(c["name"] != "fdr_evidence" for c in d.checks)
 
 
-def test_run_gate_fdr_freeze_in_to_dict(tmp_path):
-    """to_dict() carries the frozen-FDR audit state for downstream CLI serialisation."""
+def test_run_gate_to_dict_has_no_fdr_keys(tmp_path):
+    """to_dict() no longer carries any FDR audit state (the ledger code is removed)."""
     repo = _gate_repo(tmp_path)
     repo.record_search_trial(_GATE_NAME, 5, "{}", trial_sharpe_count=5,
                              trial_sharpe_mean=0.5, trial_sharpe_var_ann=0.04)
     outcome = _run_measured(repo, sharpe=7.0)
     d_dict = outcome.decision.to_dict()
-    assert d_dict["fdr_binding"] is False
-    assert d_dict["fdr_skip_reason"] == "stats_advisory"
-    assert d_dict["fdr_rejected"] is None
-    assert d_dict["fdr_test_index"] is None
-    assert d_dict["fdr_p_value"] is None
+    assert not any(k.startswith("fdr_") for k in d_dict)
 
 
 def test_dsr_below_threshold_records_failed_advisory_and_promotes(tmp_path):
@@ -513,21 +501,19 @@ def test_dsr_below_threshold_records_failed_advisory_and_promotes(tmp_path):
     assert d.passed == all(c["passed"] for c in d.checks if not c.get("advisory"))
 
 
-def test_run_gate_non_binding_decision_json_has_fdr_skip_reason(tmp_path):
-    """Every row must store fdr_binding=False and fdr_skip_reason='stats_advisory' in
-    decision_json so the DB audit record matches the returned GateDecision (C3 guard)."""
+def test_run_gate_decision_json_matches_returned_decision(tmp_path):
+    """The stored decision_json matches the returned GateDecision (C3 guard): no fdr_* keys in
+    either."""
     import json as _json
     repo = _gate_repo(tmp_path)
     breadth = _breadth(repo, "declared")
     outcome = _run(repo, breadth)
-    assert outcome.decision.fdr_binding is False
-    assert outcome.decision.fdr_skip_reason == "stats_advisory"
     row = repo._conn.execute(
         "SELECT decision_json FROM gate_evaluations ORDER BY id DESC LIMIT 1"
     ).fetchone()
     stored = _json.loads(row["decision_json"])
-    assert stored.get("fdr_binding") is False
-    assert stored.get("fdr_skip_reason") == "stats_advisory"
+    assert stored == _json.loads(_json.dumps(outcome.decision.to_dict()))
+    assert not any(k.startswith("fdr_") for k in stored)
 
 
 # --- the soft gate end-to-end: floor-only promotion + born-consumed token ----------------------

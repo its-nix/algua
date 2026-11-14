@@ -9,65 +9,14 @@ from algua.contracts.registry_metadata import Author, HypothesisStatus
 from algua.contracts.types import ExitLaneGuard, PendingLiveAuthorization
 
 
-class FdrGateOutcome(NamedTuple):
-    """Return value of ``record_gate_with_fdr_and_maybe_promote``.
-
-    Carries the gate row id, the FDR audit fields (None when non-binding), the composite
+class GateOutcome(NamedTuple):
+    """Return value of ``record_gate_and_maybe_promote``: the gate row id, the committed
     ``final_passed`` verdict, and the updated ``StrategyRecord`` if the strategy was promoted
-    (None otherwise). Task 5 surfaces these in ``GateDecision.fdr_*`` fields."""
+    (None otherwise)."""
 
     gate_id: int
-    fdr_binding: bool
-    fdr_test_index: int | None
-    fdr_p_value: float | None
-    fdr_alpha_level: float | None
-    fdr_rejected: bool | None
     final_passed: bool
     updated_rec: StrategyRecord | None
-    # Cohort restart + cumulative-exposure audit (#324). None on non-binding rows.
-    fdr_cohort: int | None = None
-    fdr_cohorts_completed: int | None = None
-    fdr_binding_tests: int | None = None
-    fdr_discoveries: int | None = None
-    fdr_expected_false_discoveries: float | None = None
-    # Windowed promotion-eligibility throttle (#529, §3.5). None on non-binding rows.
-    fdr_throttle_window_binding: int | None = None
-    fdr_throttle_tripped: bool | None = None
-    # Active (in-progress) cohort exposure audit (#529, §4). None on non-binding rows.
-    fdr_active_cohort_position: int | None = None
-    fdr_active_cohort_applied_alpha: float | None = None
-    fdr_expected_false_discoveries_incl_active: float | None = None
-
-
-class FdrStreamState(NamedTuple):
-    """Snapshot of the LORD++ alpha-wealth stream scoped to the cohort the NEXT test joins (#324).
-
-    Source: ``gate_evaluations WHERE fdr_binding=1``, partitioned into consecutive cohorts of
-    ``FDR_COHORT_SIZE`` binding tests by arrival order. Each cohort runs an INDEPENDENT LORD++
-    stream (fresh W0). This snapshot describes the cohort that the NEXT binding test will join:
-
-    - ``t`` — the next test's WITHIN-COHORT position (1..FDR_COHORT_SIZE).
-    - ``discovery_indices`` — that cohort's in-cohort ``fdr_test_index`` values where
-      ``fdr_rejected=1`` (past rejections replenishing alpha-wealth WITHIN the cohort). All < ``t``.
-    - ``cohort_index`` — the 0-based index of that cohort.
-
-    The remaining fields are lifetime AUDIT counters (not used by LORD++ level calculation):
-    - ``cohorts_completed`` — number of FULLY-filled cohorts (each == FDR_COHORT_SIZE tests).
-    - ``binding_tests`` — total binding rows so far (the next test is ``binding_tests + 1``).
-    - ``discoveries`` — total ``fdr_rejected=1`` rows across all cohorts.
-    - ``current_cohort_applied_alpha`` (#529) — Σ of the stored ``fdr_alpha_level`` over the binding
-      rows already in the cohort the NEXT test joins (0.0 for a fresh cohort). The active-cohort
-      exposure audit adds this row's own α to it.
-
-    ``t`` + ``discovery_indices`` fully determine the NEXT test's level input."""
-
-    t: int
-    discovery_indices: list[int]
-    cohort_index: int = 0
-    cohorts_completed: int = 0
-    binding_tests: int = 0
-    discoveries: int = 0
-    current_cohort_applied_alpha: float = 0.0
 
 
 class FunnelFloor(NamedTuple):
@@ -88,9 +37,9 @@ class FunnelFloor(NamedTuple):
 
 class FunnelSnapshot(NamedTuple):
     """The funnel-wide, MUTABLE state that a (lock-free) promotion decision was computed against,
-    captured so ``record_gate_with_fdr_and_maybe_promote`` can CAS-verify it is unchanged at
-    commit time (#339). Every field below feeds ``provisional_passed`` (via the deflated breadth
-    bar ``n_funnel``) and/or the FDR ``p_value`` (via the DSR SR* floor), so a change to ANY of
+    captured so ``record_gate_and_maybe_promote`` can CAS-verify it is unchanged at
+    commit time (#339). Every field below feeds the recorded decision (the breadth ``n_funnel``
+    and the DSR evidence via the trial count and SR* floor), so a change to ANY of
     them between the lock-free compute and the commit would make the committed decision reflect a
     DIFFERENT funnel snapshot than the one it was computed against — a non-serializable
     mixed-snapshot outcome. The commit re-reads each value under the write lock and aborts
@@ -556,7 +505,7 @@ class HoldoutLedger(Protocol):
 
 
 class GateLedger(Protocol):
-    """Research/shortlist gate evaluations + the LORD++ FDR alpha-wealth stream."""
+    """Research/shortlist gate evaluations + the atomic record-gate-and-maybe-promote."""
 
     def record_gate_evaluation(
         self,
@@ -607,25 +556,7 @@ class GateLedger(Protocol):
         ``dependency_hash`` are never consumable tokens — fail-closed."""
         ...
 
-    def fdr_stream_state(self) -> FdrStreamState | None:
-        """Read the LORD++ FDR stream scoped to the cohort the NEXT binding test will join (#324):
-        all ``gate_evaluations`` rows where ``fdr_binding=1``, ordered by ``id`` and partitioned
-        into cohorts of ``FDR_COHORT_SIZE`` by (``fdr_cohort``, ``fdr_test_index``).
-
-        Returns ``FdrStreamState(t, discovery_indices, cohort_index, cohorts_completed,
-        binding_tests, discoveries)`` where ``t`` is the next test's WITHIN-COHORT position,
-        ``discovery_indices`` are that cohort's in-cohort rejection positions (all < ``t``), and
-        the audit counters describe lifetime progress. Returns ``None`` (fail-closed) on any
-        integrity failure: a binding row with NULL or non-finite
-        ``fdr_p_value``/``fdr_alpha_level``,
-        ``fdr_rejected`` not in {0, 1}, NULL ``fdr_cohort``, NULL or non-positive
-        ``fdr_test_index``, or within-cohort ``fdr_test_index`` not contiguous 1..k in ``id`` order,
-        or a cohort exceeding ``FDR_COHORT_SIZE``. Rows with ``fdr_binding`` NULL or 0 are invisible
-        (legacy-safe). A partially-filled cohort whose max is < ``FDR_COHORT_SIZE`` is the current
-        cohort; a full cohort seals and the next test opens ``cohort_index + 1`` at ``t = 1``."""
-        ...
-
-    def record_gate_with_fdr_and_maybe_promote(
+    def record_gate_and_maybe_promote(
         self,
         rec: StrategyRecord,
         *,
@@ -635,19 +566,14 @@ class GateLedger(Protocol):
         reason: str | None = None,
         pending_novel_family: PendingNovelFamily | None = None,
         run_row: dict[str, Any] | None = None,
-    ) -> FdrGateOutcome:
+    ) -> GateOutcome:
         """Record a gate evaluation and optionally promote to ``candidate`` — all under a single
         **BEGIN IMMEDIATE** transaction (write lock held from the funnel-snapshot CAS through the
         INSERT + stage CAS).
 
         ``gate_row`` carries ``record_gate_evaluation``'s keyword arguments (including the
-        provisional ``passed`` flag). The LORD++ FDR-binding branch (simplification stage 4a) was
-        deleted — it was provably dead in production (``promotion.py``'s ``run_gate`` has always
-        hardcoded ``p_value=None``, so the branch's guard condition was always False). Every row
-        now commits with ``fdr_binding`` NULL (invisible to ``fdr_stream_state``'s read path) and
-        ``final_passed`` is always the provisional integrity-floor verdict. The FDR ledger
-        machinery this branch used to write is preserved (``fdr_stream_state``'s read path, the
-        ``gate_evaluations`` ``fdr_*`` columns) for future re-tightening.
+        provisional ``passed`` flag). ``final_passed`` is the provisional integrity-floor verdict.
+        The ``fdr_*`` columns are historical (lean trim step 7): new rows write them NULL.
 
         ``funnel`` is the funnel-wide snapshot the (lock-free) decision was computed against
         (#339). Under the write lock every mutable field is RE-READ and CAS-verified; on any drift
@@ -666,8 +592,7 @@ class GateLedger(Protocol):
 
         TOP-LEVEL ONLY: raises ``RuntimeError`` if called inside an open transaction (mirrors
         ``reserve_holdout``). Crash semantics: a process crash before commit rolls back both
-        the FDR row and the stage CAS — no orphaned stream position, no half-promoted strategy,
-        no orphan family/membership.
+        the gate row and the stage CAS — no half-promoted strategy, no orphan family/membership.
 
         ``run_row`` (Task 7, spec 2026-08-23 §4.1) is the economic-layer ``runs`` payload for THIS
         decision, when the caller wants one recorded — inserted inside this same transaction

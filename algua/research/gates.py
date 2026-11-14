@@ -131,44 +131,6 @@ class GateDecision:
     dsr_funnel_floor_var_ann: float | None = None
     dsr_funnel_floor_n_strategies: int | None = None
     dsr_funnel_floor_n_total_rows: int | None = None
-    # LORD++ FDR accounting (#220, Phase 2; recalibrated #529; ADVISORY since the factory soft
-    # gate). The promote path always records p_value=None (fdr_skip_reason="stats_advisory"), so
-    # the store writes fdr_binding=NULL rows: the LORD++ stream is never advanced and no fdr_*
-    # field below is populated. The fields and the ledger machinery are PRESERVED for future
-    # re-tightening; fdr_skip_reason explains why FDR was omitted.
-    fdr_binding: bool = False
-    fdr_p_value: float | None = None
-    fdr_alpha_level: float | None = None
-    fdr_test_index: int | None = None      # WITHIN-COHORT position (1..FDR_COHORT_SIZE), #324
-    fdr_rejected: bool | None = None
-    fdr_skip_reason: str | None = None
-    # Cohort restart + cumulative-exposure audit (#324). Preserved for historical audit surface.
-    # fdr_cohort: this row's 0-based cohort index. The remaining fields are AUDIT-ONLY (never
-    # change pass/fail) and make the per-cohort re-scoping honest: they surface that FDR is
-    # controlled per cohort of FDR_COHORT_SIZE binding tests, NOT per lifetime, and how much
-    # cumulative exposure has accrued. fdr_expected_false_discoveries = per-cohort_alpha *
-    # fdr_cohorts_completed is the honest upper bound on cumulative expected false discoveries over
-    # completed independent cohorts (NOT conditioned on cohorts-with-discoveries, which would be
-    # post-selection and understate exposure).
-    fdr_cohort: int | None = None
-    fdr_cohorts_completed: int | None = None
-    fdr_binding_tests: int | None = None
-    fdr_discoveries: int | None = None
-    fdr_expected_false_discoveries: float | None = None
-    # Windowed promotion-eligibility throttle (#529, §3.5). fdr_throttle_window_binding = count of
-    # PRIOR committed binding tests within a fixed lookback window at decision time;
-    # fdr_throttle_tripped = the budget was already spent so promotion was blocked. Never populated
-    # while stats are advisory (no binding rows are written). fdr_throttle_override was REMOVED
-    # with the flag itself (no dead cruft — legacy rows keep the key in their stored JSON only).
-    fdr_throttle_window_binding: int | None = None
-    fdr_throttle_tripped: bool | None = None
-    # Active (in-progress) cohort exposure audit (#529, §4) — surfaces partial-cohort spend that the
-    # completed-only fdr_expected_false_discoveries hides at small N. Position 1..FDR_COHORT_SIZE;
-    # applied_alpha = Σ stored α over the open cohort's binding rows incl. this one;
-    # ..._incl_active = per-cohort_alpha·cohorts_completed + applied_alpha.
-    fdr_active_cohort_position: int | None = None
-    fdr_active_cohort_applied_alpha: float | None = None
-    fdr_expected_false_discoveries_incl_active: float | None = None
     # Returns-persistence audit (#221 Slice 1). Non-binding: True iff run_gate wrote a
     # holdout_returns row for this evaluation. False for pre-Slice-1 promotions (omit-not-fail).
     returns_available: bool = False

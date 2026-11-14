@@ -530,9 +530,8 @@ def test_concurrent_research_promote_single_burn_e2e(tmp_path):
         pytest.fail("e2e promote processes timed out after 180s")
 
     # The single-use HOLDOUT BURN is the concurrency invariant under test, and it is
-    # actor-INDEPENDENT (a committed DB row reserved under BEGIN IMMEDIATE). On the agent path the
-    # measured-breadth strategy faces the funnel-wide FDR gate (which declared/human breadth would
-    # skip), so the gate verdict here may be a FAIL — but a FAIL still burns the holdout exactly
+    # actor-INDEPENDENT (a committed DB row reserved under BEGIN IMMEDIATE). The gate verdict here
+    # may be a FAIL — but a FAIL still burns the holdout exactly
     # once (see test_failing_first_promote_still_burns_holdout). What must hold regardless of the
     # verdict: the two racing processes commit EXACTLY ONE burn and leave EXACTLY ONE holdout row —
     # one process wins the reservation, the other fails closed at reserve (or preflight).

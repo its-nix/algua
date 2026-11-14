@@ -427,49 +427,11 @@ def test_advisory_stats_never_change_passed():
 
 
 # ---------------------------------------------------------------------------
-# Task 5 (#220 Phase 2): GateDecision FDR fields
+# Lean trim step 7: the FDR ledger fields are gone from GateDecision
 # ---------------------------------------------------------------------------
 
 
-def test_gate_decision_has_fdr_fields_with_defaults():
-    d = GateDecision(passed=True, checks=[])
-    assert d.fdr_binding is False
-    assert d.fdr_p_value is None
-    assert d.fdr_alpha_level is None
-    assert d.fdr_test_index is None
-    assert d.fdr_rejected is None
-    assert d.fdr_skip_reason is None
-
-
-def test_gate_decision_to_dict_includes_fdr_keys():
-    d = GateDecision(passed=True, checks=[])
-    out = d.to_dict()
-    for key in ("fdr_binding", "fdr_p_value", "fdr_alpha_level",
-                "fdr_test_index", "fdr_rejected", "fdr_skip_reason"):
-        assert key in out, f"to_dict() missing {key!r}"
-
-
-def test_gate_decision_to_dict_fdr_fields_populated():
-    d = GateDecision(
-        passed=False, checks=[],
-        fdr_binding=True, fdr_p_value=0.02, fdr_alpha_level=0.001645,
-        fdr_test_index=3, fdr_rejected=False, fdr_skip_reason=None,
-    )
-    out = d.to_dict()
-    assert out["fdr_binding"] is True
-    assert out["fdr_p_value"] == pytest.approx(0.02)
-    assert out["fdr_alpha_level"] == pytest.approx(0.001645)
-    assert out["fdr_test_index"] == 3
-    assert out["fdr_rejected"] is False
-    assert out["fdr_skip_reason"] is None
-
-
-def test_gate_decision_to_dict_non_binding_fdr():
-    d = GateDecision(
-        passed=True, checks=[],
-        fdr_binding=False, fdr_skip_reason="no_measured_dispersion",
-    )
-    out = d.to_dict()
-    assert out["fdr_binding"] is False
-    assert out["fdr_p_value"] is None
-    assert out["fdr_skip_reason"] == "no_measured_dispersion"
+def test_gate_decision_has_no_fdr_fields():
+    import dataclasses
+    assert not any(f.name.startswith("fdr_") for f in dataclasses.fields(GateDecision))
+    assert not any(k.startswith("fdr_") for k in GateDecision(passed=True, checks=[]).to_dict())

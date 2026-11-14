@@ -4,21 +4,18 @@ sole caller lives here)."""
 from __future__ import annotations
 
 import json
-import math
 import sqlite3
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from algua.contracts.lifecycle import Actor, Stage, TransitionError
-from algua.registry.db import FDR_COHORT_SIZE
 from algua.registry.gate_comparison_write import seal_gate_comparison
 from algua.registry.repository import (
     FamilyGraphDriftError,
-    FdrGateOutcome,
-    FdrStreamState,
     FunnelDriftError,
     FunnelFloor,
     FunnelSnapshot,
+    GateOutcome,
     PendingNovelFamily,
     StrategyRecord,
 )
@@ -123,114 +120,6 @@ class GateLedgerMixin(TransitionMixin):
         ).fetchone()
         return int(row["id"]) if row is not None else None
 
-    def fdr_stream_state(self) -> FdrStreamState | None:
-        """Read the LORD++ FDR stream from ``gate_evaluations WHERE fdr_binding=1``, SCOPED to the
-        cohort the NEXT binding test will join (#324, count-triggered cohort restarts).
-
-        Rows with ``fdr_binding`` NULL or 0 are excluded (legacy-safe). Binding rows are read in
-        ``id`` order and partitioned into cohorts of ``FDR_COHORT_SIZE`` by their stored
-        ``fdr_cohort``. Integrity is validated fail-closed (returns None): any binding row with
-        NULL/non-finite p-value or alpha-level, ``fdr_rejected`` not in {0, 1}, NULL ``fdr_cohort``,
-        NULL/non-positive ``fdr_test_index``, a cohort index that does not advance monotonically as
-        rows fill (0,0,…,1,1,… — i.e. rows must be grouped by cohort in id order), a cohort holding
-        more than ``FDR_COHORT_SIZE`` rows, or within-cohort ``fdr_test_index`` not contiguous
-        1,2,…,k in id order. The (cohort, fdr_test_index) partial-unique index also enforces
-        uniqueness at write time.
-
-        The returned ``t``/``discovery_indices`` are WITHIN-COHORT for the cohort the next test
-        joins: a partially-filled last cohort (< FDR_COHORT_SIZE rows) IS that cohort (next
-        ``t`` = its size + 1); a full last cohort seals and the next test opens ``cohort + 1`` at
-        ``t = 1`` with no inherited discoveries. Audit counters (cohorts_completed, binding_tests,
-        discoveries) are lifetime totals."""
-        rows = self._conn.execute(
-            "SELECT fdr_p_value, fdr_alpha_level, fdr_rejected, fdr_test_index, fdr_cohort"
-            " FROM gate_evaluations WHERE fdr_binding=1 ORDER BY id",
-        ).fetchall()
-        if not rows:
-            return FdrStreamState(
-                t=1, discovery_indices=[], cohort_index=0,
-                cohorts_completed=0, binding_tests=0, discoveries=0,
-                current_cohort_applied_alpha=0.0)
-        discoveries = 0
-        # Per-cohort bookkeeping validated in id order: each cohort's fdr_test_index must run
-        # 1..size and no cohort may exceed FDR_COHORT_SIZE; cohort index must advance by exactly 1
-        # each time a new cohort begins (rows grouped contiguously by cohort in id order).
-        cohort_sizes: dict[int, int] = {}
-        # Discovery positions for the CURRENT (highest) cohort only — that is all the next test's
-        # α_t depends on. Rebuilt whenever a new cohort begins.
-        cur_cohort = 0
-        cur_discovery_indices: list[int] = []
-        # #529: Σ of stored α over the CURRENT cohort's rows (active-cohort exposure audit). Reset
-        # whenever a new cohort begins; accumulated per row of the current cohort.
-        cur_applied_alpha = 0.0
-        prev_cohort: int | None = None
-        for r in rows:
-            p, alpha, rejected, idx, cohort = (
-                r["fdr_p_value"], r["fdr_alpha_level"], r["fdr_rejected"],
-                r["fdr_test_index"], r["fdr_cohort"],
-            )
-            if p is None or alpha is None or not math.isfinite(p) or not math.isfinite(alpha):
-                return None
-            if rejected is None or int(rejected) not in (0, 1):
-                return None
-            if cohort is None or int(cohort) < 0:
-                return None
-            if idx is None or int(idx) < 1 or int(idx) > FDR_COHORT_SIZE:
-                return None
-            cohort = int(cohort)
-            idx = int(idx)
-            if prev_cohort is None:
-                # First binding row must open cohort 0 at position 1.
-                if cohort != 0 or idx != 1:
-                    return None
-                cur_cohort = 0
-                cur_discovery_indices = []
-                cur_applied_alpha = 0.0
-            elif cohort == prev_cohort:
-                # Same cohort: index must be the next contiguous position.
-                if idx != cohort_sizes[cohort] + 1:
-                    return None
-            elif cohort == prev_cohort + 1:
-                # New cohort must begin only after the prior one filled exactly FDR_COHORT_SIZE,
-                # and start at position 1. (A partial cohort followed by a higher cohort index is a
-                # corrupt/mixed stream — fail closed.)
-                if cohort_sizes[prev_cohort] != FDR_COHORT_SIZE or idx != 1:
-                    return None
-                cur_cohort = cohort
-                cur_discovery_indices = []
-                cur_applied_alpha = 0.0
-            else:
-                return None
-            cohort_sizes[cohort] = cohort_sizes.get(cohort, 0) + 1
-            if cohort_sizes[cohort] > FDR_COHORT_SIZE:
-                return None
-            prev_cohort = cohort
-            cur_applied_alpha += float(alpha)
-            if int(rejected) == 1:
-                discoveries += 1
-                cur_discovery_indices.append(idx)
-
-        binding_tests = len(rows)
-        last_cohort = cur_cohort
-        last_size = cohort_sizes[last_cohort]
-        if last_size < FDR_COHORT_SIZE:
-            # The last cohort is still filling — the next test joins it.
-            next_cohort = last_cohort
-            next_t = last_size + 1
-            next_discovery_indices = cur_discovery_indices
-            next_applied_alpha = cur_applied_alpha
-        else:
-            # The last cohort is sealed — the next test opens a fresh cohort at t=1.
-            next_cohort = last_cohort + 1
-            next_t = 1
-            next_discovery_indices = []
-            next_applied_alpha = 0.0
-        cohorts_completed = sum(1 for s in cohort_sizes.values() if s == FDR_COHORT_SIZE)
-        return FdrStreamState(
-            t=next_t, discovery_indices=next_discovery_indices, cohort_index=next_cohort,
-            cohorts_completed=cohorts_completed, binding_tests=binding_tests,
-            discoveries=discoveries, current_cohort_applied_alpha=next_applied_alpha)
-
     @staticmethod
     def _cas_funnel(name: str, expected: object, actual: object) -> None:
         """Fail-closed exact-equality check for one funnel-snapshot field (#339). Float fields are
@@ -255,10 +144,8 @@ class GateLedgerMixin(TransitionMixin):
             same-value collision);
           * ``windowed_search_combos`` + family breadth — feed ``n_funnel`` (the deflated bar) on
             EVERY path;
-          * on the FDR-binding (measured) path, the own-combo count and the two DSR variances that
-            feed the ``p_value``.
-        The FDR stream itself is deliberately NOT snapshotted here — it is read live under this same
-        lock because the online LORD++ position MUST reflect all prior commits."""
+          * on the measured (DSR-armed) path, the own-combo count and the two DSR variances that
+            feed the recorded DSR evidence."""
         cur_count, cur_max = self.search_trials_fingerprint()
         self._cas_funnel(
             "search_trials fingerprint",
@@ -287,7 +174,7 @@ class GateLedgerMixin(TransitionMixin):
                 "funnel_trial_sharpe_var.n_total_rows",
                 funnel.funnel_floor_n_total_rows, floor.n_total_rows)
 
-    def record_gate_with_fdr_and_maybe_promote(
+    def record_gate_and_maybe_promote(
         self,
         rec: StrategyRecord,
         *,
@@ -302,7 +189,7 @@ class GateLedgerMixin(TransitionMixin):
         # caller-side write would either land in a separate transaction (a run row that survives a
         # rolled-back gate — a phantom evaluation) or trip the top-level guard above.
         run_row: dict[str, Any] | None = None,
-    ) -> FdrGateOutcome:
+    ) -> GateOutcome:
         # #524: coerce the actor BEFORE the pending-mint boundary guard (callers may pass a raw
         # string; an identity test against an un-coerced string would mis-evaluate).
         actor = Actor(actor)
@@ -317,7 +204,7 @@ class GateLedgerMixin(TransitionMixin):
             and pending_novel_family.verdict == "novel"
         ):
             raise ValueError(
-                "record_gate_with_fdr_and_maybe_promote: a pending_novel_family mint requires "
+                "record_gate_and_maybe_promote: a pending_novel_family mint requires "
                 "actor=agent and a consistent agent/novel pending spec")
         # TOP-LEVEL ONLY — mirrors reserve_holdout's contract. A manual BEGIN IMMEDIATE inside an
         # already-open transaction would raise "cannot start a transaction within a transaction";
@@ -325,7 +212,7 @@ class GateLedgerMixin(TransitionMixin):
         # rolled-back state. Fail loudly so the contract is enforced, not assumed.
         if self._conn.in_transaction:
             raise RuntimeError(
-                "record_gate_with_fdr_and_maybe_promote must be called at top level,"
+                "record_gate_and_maybe_promote must be called at top level,"
                 " not inside an open transaction")
 
         # #339 — bind the funnel snapshot to the strategy being promoted. The in-lock CAS re-reads
@@ -368,13 +255,8 @@ class GateLedgerMixin(TransitionMixin):
             # is provably a pure function of ONE funnel snapshot. Runs BEFORE the INSERT/stage-CAS,
             # inside this one write-locked critical section.
             self._verify_funnel_snapshot(funnel)
-            # Factory soft gate (#529): the LORD++ FDR-binding branch itself was deleted
-            # (simplification stage 4a) — it was provably dead in production (run_gate never
-            # supplied a real p_value). final_passed is now always the provisional integrity-floor
-            # verdict. The FDR ledger machinery this branch used to write — fdr_stream_state's read
-            # path, the gate_evaluations fdr_* columns, db.py's cohort backfills — is preserved for
-            # future re-tightening; only the write path (this branch) and its LORD++ math
-            # (research/fdr_lord.py) are gone.
+            # final_passed is the provisional integrity-floor verdict (the statistical stack is
+            # advisory and never vetoes).
             final_passed = provisional_passed
 
             # Patch decision_json so the stored audit record reflects final_passed — only known
@@ -390,11 +272,9 @@ class GateLedgerMixin(TransitionMixin):
                 " min_holdout_observations, code_hash, config_hash, dependency_hash, data_source,"
                 " snapshot_id, period_start, period_end, holdout_frac, actor, decision_json,"
                 " consumed, created_at,"
-                " fdr_binding, fdr_p_value, fdr_alpha_level, fdr_rejected, fdr_test_index,"
-                " fdr_cohort,"
                 " family_id, family_lifetime_effective,"
                 " fundamentals_snapshot, news_snapshot, attempt_token, universe_name)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 # Agent passing rows are born-consumed: the stage has already advanced inside
                 # this transaction, so the token is spent. Leaving consumed=0 would let a
                 # future `registry transition --to candidate --actor agent` reuse the old row
@@ -410,13 +290,8 @@ class GateLedgerMixin(TransitionMixin):
                  gate_row["period_start"], gate_row["period_end"], gate_row["holdout_frac"],
                  actor.value, decision_json,
                  int(actor is Actor.AGENT and final_passed), _now(),
-                 # fdr_binding, fdr_p_value, fdr_alpha_level, fdr_rejected, fdr_test_index,
-                 # fdr_cohort: the binding-write path is retired (stage 4a) — every binding row
-                 # is NULL going forward. Historical binding rows (written before this change)
-                 # keep their real values; fdr_stream_state's WHERE fdr_binding=1 filter already
-                 # excludes NULL rows, so it continues to see only genuine historical binding
-                 # evidence.
-                 None, None, None, None, None, None,
+                 # The fdr_* columns are historical (lean trim step 7): omitted here, so new rows
+                 # leave them NULL. Rows written before keep their recorded values.
                  gate_row.get("family_id"), gate_row.get("family_lifetime_effective"),
                  gate_row.get("fundamentals_snapshot"), gate_row.get("news_snapshot"),
                  gate_row.get("attempt_token"), gate_row.get("universe_name")),
@@ -465,26 +340,7 @@ class GateLedgerMixin(TransitionMixin):
             self._conn.rollback()
             raise
 
-        return FdrGateOutcome(
-            gate_id=gate_id,
-            fdr_binding=False,
-            fdr_test_index=None,
-            fdr_p_value=None,
-            fdr_alpha_level=None,
-            fdr_rejected=None,
-            final_passed=final_passed,
-            updated_rec=updated_rec,
-            fdr_cohort=None,
-            fdr_cohorts_completed=None,
-            fdr_binding_tests=None,
-            fdr_discoveries=None,
-            fdr_expected_false_discoveries=None,
-            fdr_throttle_window_binding=None,
-            fdr_throttle_tripped=None,
-            fdr_active_cohort_position=None,
-            fdr_active_cohort_applied_alpha=None,
-            fdr_expected_false_discoveries_incl_active=None,
-        )
+        return GateOutcome(gate_id=gate_id, final_passed=final_passed, updated_rec=updated_rec)
 
     def passing_gate_by_token(self, strategy: str, attempt_token: str) -> int | None:
         """The ``gate_evaluations.id`` of the PASSING, STRICT-AGENT row stamped with this exact

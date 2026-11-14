@@ -201,7 +201,7 @@ def promote_task(  # noqa: PLR0913, PLR0915
         # release-on-failure discipline as walk_forward (release_holdout_reservation, a post-burn
         # no-op) PLUS an explicit WARNING audit record below, so the race is observable and cannot
         # masquerade as fully closed. Fully closing it would require folding finalize_holdout into
-        # the same atomic tx as the mint (record_gate_with_fdr_and_maybe_promote) — deferred.
+        # the same atomic tx as the mint (record_gate_and_maybe_promote) — deferred.
         def _on_peek(cfg: str) -> None:
             if breadth.pending_novel_family is not None:
                 _revalidate_pending_novel(repo, name, breadth.pending_novel_family)
