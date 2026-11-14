@@ -444,6 +444,10 @@ def create_app() -> FastAPI:
             finally:
                 await form.close()
         else:
+            # JSON only: a cross-site <form enctype="text/plain"> can forge a JSON-shaped body
+            # without a preflight, so anything not declared application/json is refused.
+            if not request.headers.get("content-type", "").startswith("application/json"):
+                raise InvalidParam("body must be application/json or multipart/form-data")
             body = await inbox.read_json(request)
             if not isinstance(body, dict):
                 raise InvalidParam("body must be a JSON object")
@@ -470,7 +474,8 @@ def create_app() -> FastAPI:
             text = inbox.check_body_text(inbox.form_str(form, "text"))
             url = inbox.check_url(inbox.form_str(form, "url") or inbox.url_in_text(text))
             files = inbox.form_files(form, "files")
-            note = inbox.check_note(text) if text and text != url else None
+            # Shared text may be a long selection: keep its head as the note, never fail the share.
+            note = inbox.check_note(text[:inbox.MAX_NOTE_CHARS]) if text and text != url else None
             if files:
                 for upload in files:
                     await _add_file(upload, title=title, note=note)

@@ -113,6 +113,11 @@ Assumes the repo at `/opt/algua` (matching the other units) and the env file at
    tailscale serve --bg https:443 unix:/run/algua-web/web.sock
    ```
 
+   uvicorn chmods the socket itself to `0666`, so the **0700 directory is the boundary**: keep the
+   socket inside a directory only the service user (and root) can open, never directly in `/run`
+   or `/tmp`. `/run` is tmpfs, so under systemd create that directory with
+   `RuntimeDirectory=algua-web` + `RuntimeDirectoryMode=0700` rather than the one-off `install -d`.
+
    Check first that the installed tailscale accepts a `unix:` target (`tailscale serve --help`;
    recent releases do). If it does not, the spec's fallback applies: a loopback port
    (`--host 127.0.0.1 --port 8787`, `tailscale serve --bg https:443 http://127.0.0.1:8787`) **plus

@@ -207,6 +207,29 @@ async def test_invalid_json_is_422(
     assert cli_calls == []
 
 
+async def test_json_shaped_text_plain_body_is_refused(
+    owner: dict[str, str], cli_calls: Calls
+) -> None:
+    """A cross-site <form enctype=text/plain> can forge a JSON body; only application/json."""
+    async with _client() as client:
+        r = await client.post("/api/inbox", content=b'{"text": "forged", "x": "="}',
+                              headers={**owner, "content-type": "text/plain"})
+    assert r.status_code == 422 and r.json()["code"] == "invalid_param"
+    assert cli_calls == []
+
+
+async def test_share_long_text_is_kept_as_truncated_note(
+    owner: dict[str, str], cli_calls: Calls
+) -> None:
+    text = "see https://example.com/p " + "y" * 6000
+    async with _client() as client:
+        r = await client.post("/share", data={"text": text}, headers=owner,
+                              follow_redirects=False)
+    assert r.status_code == 303
+    (note,) = [a for a in cli_calls[-1] if a.startswith("--note=")]
+    assert len(note) == len("--note=") + inbox.MAX_NOTE_CHARS
+
+
 async def test_stale_add_is_a_failure(
     owner: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
