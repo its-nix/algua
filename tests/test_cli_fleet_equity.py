@@ -19,6 +19,8 @@ def test_cli_fleet_equity_empty_db_returns_empty_points(monkeypatch, tmp_path):
     assert body["points"] == []
     assert body["current_equity"] == 0.0
     assert body["change_today"] == 0.0
+    assert body["last_session"] is None
+    assert body["truncated"] is False
 
 
 def test_cli_fleet_equity_rejects_bad_lane(monkeypatch, tmp_path):
