@@ -19,7 +19,7 @@ idea — but everything you write lands in scratch.
 
 **The scratch pool is the only thing you write into**, plus two files at the worktree root
 (`leap-critic.jsonl` and `leap-report.md`), a temporary `leap-experiment.json` plan, `leap-source-review.json`, and recipe JSON files
-for the preflights below. Do not edit anything under `kb/` or `data/`, do not
+for the preflights below. Do not edit anything under `algua-kb/` or `data/`, do not
 commit, and do not try to reach the network (you have none, and web search is disabled this run).
 After you exit, a trusted driver imports your survivors into authority, re-running the collision
 and eligibility checks itself. **An idea counts only if you actually `research idea add` it** —

@@ -60,7 +60,7 @@ in paper. The forward gate, not this one, is the harsh threshold.
   agreement, not scientific validity.
 - **Tiny samples / degenerate periods.** Very short windows or flat data produce noisy metrics;
   prefer a multi-year `--start/--end`.
-- **The judgment layer.** `kb/principles/research-methodology.md` explains *why* these walls exist,
+- **The judgment layer.** `algua-kb/principles/research-methodology.md` explains *why* these walls exist,
   the leakage vectors no wall catches, and how to read an in-sample↔holdout gap honestly.
 - **Overlays show up as time-varying gross exposure.** A strategy with a `regime_gate` overlay sits
   partly in cash through stressed regimes, so `avg_gross_exposure` < 1 and Sharpe is earned on less

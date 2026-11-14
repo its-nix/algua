@@ -222,7 +222,7 @@ def test_parses_verdict_and_validated_merge_back(tmp_path):
     )]
     assert row["preview_gate"] == {"passed": True, "failed_checks": []}
     assert row["trailer_parse_error"] is False
-    assert row["report"] == "research-run/20260811-000000:kb/research-runs/20260811-000000.md"
+    assert row["report"] == "research-run/20260811-000000:algua-kb/research-runs/20260811-000000.md"
 
     items = _queue_items(queue_path)
     assert set(items) == {"strat_a@research-run/20260811-000000"}
@@ -474,7 +474,7 @@ def test_no_trailer_present_yields_empty_hypotheses_and_parse_error(tmp_path):
     assert not queue_path.exists()
 
 
-# --- (k) report path reflects the kb/research-runs/<stamp>.md migration --------------------------
+# --- (k) report path reflects the algua-kb/research-runs/<stamp>.md migration ------------------
 
 
 def test_report_field_uses_kb_research_runs_path(tmp_path):
@@ -483,7 +483,7 @@ def test_report_field_uses_kb_research_runs_path(tmp_path):
         branch="research-run/20301231-235959", stamp="20301231-235959")
     assert proc.returncode == 0, proc.stderr
     row = _last_digest_row(digest_path)
-    assert row["report"] == "research-run/20301231-235959:kb/research-runs/20301231-235959.md"
+    assert row["report"] == "research-run/20301231-235959:algua-kb/research-runs/20301231-235959.md"
     assert "run-report.md" not in row["report"]
 
 
@@ -768,7 +768,7 @@ def test_candidates_rename_branch_and_digest_and_queue_carry_final_name(tmp_path
     # The digest row records the FINAL branch, report ref included.
     row = _last_digest_row(digest_path)
     assert row["branch"] == final
-    assert row["report"] == f"{final}:kb/research-runs/20260811-000000.md"
+    assert row["report"] == f"{final}:algua-kb/research-runs/20260811-000000.md"
     # Every enqueue used the FINAL branch too.
     items = _queue_items(queue_path)
     assert set(items) == {f"strat_a@{final}", f"strat_b@{final}"}
@@ -1140,7 +1140,7 @@ def test_record_outcomes_writes_the_trailer_outcome_and_run_error_for_the_missin
     assert first["argv"][:6] == ["run", "algua", "research", "idea", "record-outcome", "7"]
     assert _flags(first["argv"]) == {
         "--token": "tok-7", "--outcome": "walkforward_refuted", "--reason": "windows disagree",
-        "--evidence-ref": "research-run/20260811-000000:kb/research-runs/20260811-000000.md"}
+        "--evidence-ref": "research-run/20260811-000000:algua-kb/research-runs/20260811-000000.md"}
     # The claimed idea the agent never reported on still gets an honest ledger entry.
     assert second["argv"][:6] == ["run", "algua", "research", "idea", "record-outcome", "8"]
     assert _flags(second["argv"])["--outcome"] == "run_error"

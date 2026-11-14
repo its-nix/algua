@@ -2,7 +2,7 @@
 Description=Algua forage — web inspiration foraging (agent, scratch worktree)
 # Fired by algua-forage.timer. An agent, with optional bwrap containment through run_agent.sh,
 # bash denied outright (it runs no algua command at all) and the runtime's
-# configured web tools, writes inspiration notes under kb/inspirations/ inside
+# configured web tools, writes inspiration notes under algua-kb/inspirations/ inside
 # a throwaway worktree (.runs/forage-<stamp>). The agent has NO registry path (no ALGUA_DB_PATH)
 # and is told never to run an `algua` command — it can only write markdown files. The TRUSTED
 # DRIVER (this unit's ExecStart, after the agent exits) validates and lands the survivors into the

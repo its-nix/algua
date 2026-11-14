@@ -263,7 +263,7 @@ print(reference)')" || return 1
 # trailer_parse_error null — no trailer was expected). A digest write failure NEVER fails the
 # run (it's feedback, not control flow) and never changes the script's exit code.
 DIGEST_BRANCH=""        # set once the run branch actually exists (null in the digest until then)
-DIGEST_REPORT_PATH=""   # set once a completed run may have written kb/research-runs/<stamp>.md
+DIGEST_REPORT_PATH=""   # set once a completed run may have written algua-kb/research-runs/<stamp>.md
 STRATEGY_MODULE_NAMES=""  # comma-joined module names this run's own commit added (cross-check set)
 rc=""                   # agent exit code (or the setup-failure exit code); null until known
 WORKER_EXIT=""          # actual worker exit, never overwritten by postprocessing failures
@@ -551,7 +551,7 @@ row = {
     "preview_gate": preview_gate,
     "trailer_parse_error": trailer_parse_error,
     "rate_limited": rate_limited == "1",
-    "report": (f"{final_branch}:kb/research-runs/{stamp}.md"
+    "report": (f"{final_branch}:algua-kb/research-runs/{stamp}.md"
                if outcome == "completed" and final_branch else None),
 }
 with open(digest_path, "a", encoding="utf-8") as f:
@@ -677,7 +677,7 @@ elif run_phase == "completed":
                       else "trailer_unparseable")
 else:
     aborted_reason = "run did not complete"  # skipped_lock: the firing never started
-evidence_ref = f"{branch}:kb/research-runs/{stamp}.md" if branch else None
+evidence_ref = f"{branch}:algua-kb/research-runs/{stamp}.md" if branch else None
 recorded = 0
 for idea in claimed:
     if not isinstance(idea, dict) or not isinstance(idea.get("id"), int):
@@ -1033,7 +1033,7 @@ print(json.dumps([{k: r.get(k) for k in KEEP} for r in rows if isinstance(r, dic
 fi
 
 # Everything the agent reads/writes lives INSIDE the worktree (so workspace-write contains it):
-#   scratch registry (seeded copy) + scratch kb/mlruns + a per-run COPY of the snapshots.
+#   scratch registry (seeded copy) + scratch algua-kb/mlruns + a per-run COPY of the snapshots.
 SCRATCH="${WORKTREE}/.funnel-scratch"
 export ALGUA_DB_PATH="${SCRATCH}/data/algua.db"
 export ALGUA_DATA_DIR="${SCRATCH}/data"
@@ -1150,11 +1150,11 @@ data inputs throughout. A raw registry transition is not a substitute for the ev
 Delegate results to the 'interpret' subagent for a promote/discard
 call. Never go past 'candidate'; never put a strategy live. Author strategy files under
 algua/strategies/<family>/ in this worktree; you do NOT need to 'git commit' — the launcher commits
-your files afterward. Write your run report to kb/research-runs/${STAMP}.md (relative to this
-worktree's root; create the kb/research-runs/ directory if it does not exist) summarizing every
+your files afterward. Write your run report to algua-kb/research-runs/${STAMP}.md (relative to this
+worktree's root; create the algua-kb/research-runs/ directory if it does not exist) summarizing every
 hypothesis, its walk-forward / sweep / preview-gate numbers, and the promote/discard reason.
 
-kb/research-runs/${STAMP}.md MUST END with a machine-readable trailer — exactly one fenced json code
+algua-kb/research-runs/${STAMP}.md MUST END with a machine-readable trailer — exactly one fenced json code
 block as the FINAL element of the file:
 \`\`\`json
 {"hypotheses": [{"idea_id": <the claimed idea's id>, "title": "<short hypothesis title>",
@@ -1416,12 +1416,12 @@ rate_limited=0
 grep -qiE 'rate.?limit|HTTP 429|429 Too Many|quota exceeded|usage limit' "${RUN_LOG}" 2>/dev/null && rate_limited=1
 
 # The agent doesn't commit (it's sandboxed off the git dir); the DRIVER (trusted) commits its files.
-# Scoped to the strategies tree + the kb/research-runs report (kb/** is diff-policy-allowlisted;
+# Scoped to the strategies tree + the algua-kb/research-runs report (algua-kb/** is diff-policy-allowlisted;
 # a root-level run-report.md is NOT — see the diff-policy landmine note at the top of this file) so
 # nothing stray is swept in. Best-effort: a failed commit (e.g. nothing authored) doesn't mask the
 # agent exit code.
 echo "Committing any authored strategies on ${BRANCH} (trusted driver)..."
-git -C "${WORKTREE}" add algua/strategies kb/research-runs 2>/dev/null || true
+git -C "${WORKTREE}" add algua/strategies algua-kb/research-runs 2>/dev/null || true
 n_strategy_files=0
 if git -C "${WORKTREE}" commit -q -m "research-run ${STAMP}: authored strategies + run report" 2>/dev/null; then
   echo "  committed."
@@ -1452,7 +1452,7 @@ fi
 # is read bounded-tail (last 64KB), must be EOF-anchored, and is strictly schema-validated —
 # missing/unparseable/non-conforming => hypotheses [], preview_gate null, trailer_parse_error true.
 echo "Appending run digest to ${AUTH_DIGEST}..."
-DIGEST_REPORT_PATH="${WORKTREE}/kb/research-runs/${STAMP}.md"
+DIGEST_REPORT_PATH="${WORKTREE}/algua-kb/research-runs/${STAMP}.md"
 if ! capture_research_memory; then
   echo "public experiment retention failed; retaining scratch and failing this firing." >&2
   CYCLE_PHASE=driver_failed
@@ -1533,7 +1533,7 @@ fi
 echo
 echo "Done. Review the run:"
 echo "  git -C ${REPO_ROOT} diff main...${FINAL_BRANCH}"
-echo "  git -C ${REPO_ROOT} show ${FINAL_BRANCH}:kb/research-runs/${STAMP}.md"
+echo "  git -C ${REPO_ROOT} show ${FINAL_BRANCH}:algua-kb/research-runs/${STAMP}.md"
 echo "  # Every valid 'merge_back' in the trailer above was just enqueued to ${AUTH_QUEUE}"
 echo "  # for the automated drainer (.opencode/scripts/drain-mergeback-queue.sh) to run for real."
 echo "  # To force one through right now instead of waiting for the next drain cycle:"

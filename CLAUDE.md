@@ -36,7 +36,7 @@ it changes runtime controls or permissions.
 
 ## Knowledgebase and Drive assets
 
-The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive asset bridge](kb/drive-assets.md) links the access-controlled commercial-assets folder and the canonical private [Nix company KB](https://github.com/its-nix/knowledgebase/blob/main/START-HERE.md). This repository is public: do not publish private Drive file links, credentials, trade or account records, or other restricted data. Do not duplicate notes in Drive or treat any document or company summary as permission to bypass runtime/trading gates.
+The [Algua KB](algua-kb/README.md) is the source for project knowledge; [its Drive asset bridge](algua-kb/drive-assets.md) links the access-controlled commercial-assets folder and the canonical private [Nix company KB](https://github.com/its-nix/knowledgebase/blob/main/START-HERE.md). This repository is public: do not publish private Drive file links, credentials, trade or account records, or other restricted data. Do not duplicate notes in Drive or treat any document or company summary as permission to bypass runtime/trading gates.
 
 ## Golden rules
 - Drive the system through `uv run algua ...`. Never reach into modules to bypass the CLI.
@@ -185,14 +185,14 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   **Driver-facing** — the research/leap drivers and the merge-back drainer run these against
   authority; an agent never does.
 - `uv run algua research inspirations accept/list/mark-used/mark-exhausted/propose/write-yield` —
-  the forage and leap drivers' vault-side commands over `kb/inspirations/`: accept a foraged
+  the forage and leap drivers' vault-side commands over `algua-kb/inspirations/`: accept a foraged
   inspiration note, list/mark its lifecycle, propose one from a driver, and write the leap yield
   back to the vault.
 - Three timers drive the ideation engine unattended: `algua-research.timer` (every 6h, claims ideas
   and runs the research loop), `algua-leap.timer` (every 2h at `:30`, inspirations → structured
   hypotheses, depth-gated), `algua-forage.timer` (daily `03:00 UTC`, web search →
-  `kb/inspirations/` notes). A human steers the engine through two files: `.opencode/categories.txt`
-  (the ideation category list) and `kb/inspirations/_sources.yaml` (the venue registry).
+  `algua-kb/inspirations/` notes). A human steers the engine through two files: `.opencode/categories.txt`
+  (the ideation category list) and `algua-kb/inspirations/_sources.yaml` (the venue registry).
 - **Drive ideation backend** (`docs/agent/drive.md`, off unless `ALGUA_DRIVE_FOLDER_ID` is set):
   the steering surfaces, inspirations and an owner **Inbox** live as Google Sheets; drivers export
   a run-start snapshot (`research steering export --to DIR`, read via `ALGUA_STEERING_DIR`), take

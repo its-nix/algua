@@ -5,11 +5,11 @@ pytest runs from the repo root. The fourth, real Alpaca HTTP, is documented on i
 ``_no_real_alpaca_http``, at the end of this file.
 
 **1. The knowledge vault (write leak).** ``Settings.knowledge_dir`` defaults to the RELATIVE path
-``kb`` — the developer's actual Obsidian vault. The gate commands sync the vault as a side effect
-(``_common.sync_kb_doc``, wired into ``backtest --register`` / ``registry transition`` /
+``algua-kb`` — the developer's actual Obsidian vault. The gate commands sync the vault as a side
+effect (``_common.sync_kb_doc``, wired into ``backtest --register`` / ``registry transition`` /
 ``research promote`` / ``paper promote``), and that sync now scaffolds a doc for a registered
 strategy that lacks one. Without this fixture, any test exercising those commands would create
-``kb/strategies/<fixture-strategy>.md`` in the working tree.
+``algua-kb/strategies/<fixture-strategy>.md`` in the working tree.
 
 Only the DEFAULT is redirected: a test that sets ``ALGUA_KNOWLEDGE_DIR`` itself (several do, to
 assert on the vault they built) still wins, because its own ``monkeypatch.setenv`` runs after this

@@ -347,7 +347,7 @@ Reject genuinely unsupported inputs/controls honestly; never silently substitute
 Your registry is a THROWAWAY SCRATCH COPY of the real pool (ALGUA_DB_PATH already points inside
 this worktree): dedup-check and add see the real pool's history, but write only scratch. A trusted
 driver imports the survivors into authority after you exit — an idea counts only if you actually
-\`add\` it, and only \`add\` reaches the pool (do not edit any file under kb/ or data/). You have
+\`add\` it, and only \`add\` reaches the pool (do not edit any file under algua-kb/ or data/). You have
 NO network and NO web search this run: work from the material below.
 
 Category vocabulary (one slug per hypothesis; a hint after the slug narrows market/horizon):
