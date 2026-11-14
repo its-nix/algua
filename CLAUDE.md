@@ -201,12 +201,12 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   hypotheses, depth-gated), `algua-forage.timer` (daily `03:00 UTC`, web search →
   `kb/inspirations/` notes). A human steers the engine through two files: `.opencode/categories.txt`
   (the ideation category list) and `kb/inspirations/_sources.yaml` (the venue registry).
-- **Drive ideation backend** (`docs/agent/drive.md`, off unless `ALGUA_DRIVE_FOLDER_ID` is set):
-  the steering surfaces, inspirations and an owner **Inbox** live as Google Sheets; drivers export
-  a run-start snapshot (`research steering export --to DIR`, read via `ALGUA_STEERING_DIR`), take
-  the Inbox in each leap firing (`research inbox intake`, each row exactly once, as a
-  `source_kind: human` inspiration) and project the pool back (`research idea publish`). Agents
-  never call Drive; trading/gates/capital/data never touch it. Driver-facing, like `idea` ops.
+- **Owner Inbox and dashboard:** the owner drops ideas into the registry Inbox with
+  `research inbox add --url U | --file F | --text T [--title] [--note]` and reads it with
+  `research inbox list`; every leap firing runs `research inbox intake` before its depth gate,
+  writing each item exactly once as a `source_kind: human` inspiration (fresh owner ideas from the
+  last 2 days bypass the depth gate). The owner dashboard lives in `web/` (a standalone uv
+  project). Agents never run intake themselves; trading/gates/capital/data never read the Inbox.
 - **The agent runtime is OpenCode, reached through ONE seam.** `.opencode/scripts/run_agent.sh` is
   the only file in the repo that names a runtime, a model or a sandbox flag. Models live in
   `.opencode/opencode.json`; agent definitions (research / leap / forage, plus the `author` and `interpret`

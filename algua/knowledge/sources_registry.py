@@ -1,7 +1,6 @@
 """`_sources.yaml` — the venue registry of the inspirations domain (spec 2026-09-08 §4/§5).
 
-Carved out of `inspirations.py`. With Drive enabled (spec 2026-11-12) the registry lives in the
-Steering Sheet's Sources tab; reads honour a run-start snapshot like every other steering read.
+Carved out of `inspirations.py`.
 """
 from __future__ import annotations
 
@@ -24,25 +23,17 @@ class SourcesRegistry:
     interleaved write would corrupt a surface nobody is watching between runs.
     """
 
-    def __init__(self, settings: Settings, backend: Any = None) -> None:
-        """`backend` (optional, `load()` + `save(venues)`) replaces the YAML file — the CLI passes
-        the Drive Sources table (spec 2026-11-12); this module never picks one itself."""
+    def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._backend = backend
         self.path = inspirations_dir(settings) / "_sources.yaml"
 
     def load(self) -> list[dict[str, Any]]:
-        if self._backend is not None:
-            return list(self._backend.load())
         if not self.path.exists():
             return []
         data = yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}
         return list(data.get("venues") or [])
 
     def _save(self, venues: list[dict[str, Any]]) -> None:
-        if self._backend is not None:
-            self._backend.save(venues)
-            return
         write_text_atomic(yaml.safe_dump({"venues": venues}, sort_keys=False), self.path)
 
     def write_yields(self, yields: dict[str, dict[str, Any]]) -> None:

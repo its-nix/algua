@@ -417,16 +417,11 @@ def test_retry_fingerprint_ignores_unrelated_deploys_and_tracks_capabilities(tmp
     assert capability_fingerprint(tmp_path) != original
 
 
-def test_drive_snapshot_sources_and_owner_priority(tmp_path):
+def test_owner_sources_come_first(tmp_path):
     settings = Settings(data_dir=tmp_path / "data", knowledge_dir=tmp_path / "kb")
-    note(settings, "local", recipe())
-    steering = tmp_path / "steering"
-    snapshot_settings = Settings(data_dir=settings.data_dir, knowledge_dir=steering)
-    owner = note(snapshot_settings, "owner")
-    note(snapshot_settings, "web", recipe())
-    path = steering / "inspirations" / f"{owner}.md"
+    note(settings, "aaa-web", recipe())
+    owner = note(settings, "owner")
+    path = settings.knowledge_dir / "inspirations" / f"{owner}.md"
     path.write_text(path.read_text().replace("status: fresh", "source_kind: human\nstatus: fresh"))
-    settings = settings.model_copy(update={"steering_dir": steering})
     plan = source_plan(settings, PROFILE)
     assert plan["sources"][0]["source_id"] == owner
-    assert all("local" not in s["source_id"] for s in plan["sources"])

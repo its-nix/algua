@@ -227,7 +227,7 @@ def test_sources_registry_write_yields_does_one_load_and_one_save(tmp_path, monk
     assert loaded == {"a/one": {"n": 6}, "b/two": {"n": 7}}
 
 
-# --- Drive step 1 (spec 2026-11-12): snapshot-aware reads and the human vocabulary ---------------
+# --- The owner's (human) vocabulary -------------------------------------------------------------
 
 def _human(note_id: str, category: str = "uncategorized_human") -> str:
     return (GOOD.replace("2026-09-08-quiet-turnover-drift", note_id)
@@ -235,13 +235,6 @@ def _human(note_id: str, category: str = "uncategorized_human") -> str:
                 .replace("venue: blog/example", "venue: inbox")
                 .replace("obscurity: niche", "obscurity: human")
                 .replace("category: momentum", f"category: {category}"))
-
-
-def test_inspirations_dir_uses_steering_dir_when_set(tmp_path):
-    from algua.knowledge.inspirations import inspirations_dir
-    s = Settings(_env_file=None, knowledge_dir=tmp_path / "kb", steering_dir=tmp_path / "snap")
-    assert inspirations_dir(s) == tmp_path / "snap" / "inspirations"
-    assert SourcesRegistry(s).path == tmp_path / "snap" / "inspirations" / "_sources.yaml"
 
 
 def test_validate_note_accepts_human_kind_and_reserved_category_only_for_human():

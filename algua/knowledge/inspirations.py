@@ -35,10 +35,7 @@ _TRACKING = re.compile(r"^(utm_.*|fbclid|gclid|mc_cid|mc_eid)$")
 
 
 def inspirations_dir(settings: Settings) -> Path:
-    """The vault's inspirations domain — or, when a driver exported a run-start Drive snapshot
-    (`settings.steering_dir`), that snapshot's copy (spec 2026-11-12 §4)."""
-    if settings.steering_dir is not None:
-        return settings.steering_dir / "inspirations"
+    """The vault's inspirations domain."""
     return settings.knowledge_dir / "inspirations"
 
 
@@ -99,18 +96,11 @@ class SeenFile:
 
 
 def accept_new_notes(*, staged_dir: Path, settings: Settings, seen_path: Path,
-                     categories: set[str], run_stamp: str, max_notes: int,
-                     store: Any = None) -> dict:
-    """Trusted acceptance of what the forage agent staged (spec §5 policy).
-
-    `store` (optional, `ids()` + `append(fm, body)`) is where accepted notes land instead of the
-    vault — the CLI passes the Drive Inspirations table (spec 2026-11-12). This module never
-    chooses a backend itself, so nothing that imports it can reach Drive."""
+                     categories: set[str], run_stamp: str, max_notes: int) -> dict:
+    """Trusted acceptance of what the forage agent staged (spec §5 policy)."""
     seen = SeenFile(seen_path)
     seen_hashes = seen.hashes()
     dest = inspirations_dir(settings)
-    table = store
-    sheet_ids = table.ids() if table is not None else set()
     accepted: list[str] = []
     rejected: list[dict] = []
     for path in sorted(staged_dir.glob("*.md")) if staged_dir.exists() else []:
@@ -155,20 +145,15 @@ def accept_new_notes(*, staged_dir: Path, settings: Settings, seen_path: Path,
             reasons.append("source_kind human / inbox_item_id are reserved for inbox intake")
         if not reasons and url_hash(str(fm["source_url"])) in seen_hashes:
             reasons.append("already seen: source_url")
-        exists = stem in sheet_ids if table is not None else (dest / path.name).exists()
-        if not reasons and exists:
+        if not reasons and (dest / path.name).exists():
             reasons.append("id already exists in the vault")
         if not reasons and len(accepted) >= max_notes:
             reasons.append("max_notes reached")
         if reasons:
             rejected.append({"file": path.name, "reasons": reasons})
             continue
-        if table is not None:
-            table.append(fm, parse_note(text)[1])
-            sheet_ids.add(stem)
-        else:
-            with kb_sync_lock(settings):
-                write_text_atomic(text, _safe_path(dest, path.name))
+        with kb_sync_lock(settings):
+            write_text_atomic(text, _safe_path(dest, path.name))
         seen.append(str(fm["source_url"]), run_stamp=run_stamp)
         seen_hashes.add(url_hash(str(fm["source_url"])))
         accepted.append(stem)
@@ -190,12 +175,9 @@ def write_note(settings: Settings, fm: dict[str, Any], body: str) -> Path:
 
 def _edit_frontmatter(
     settings: Settings, inspiration_id: str, mutate: Callable[[dict[str, Any]], None],
-    store: Any = None,
 ) -> dict[str, Any]:
     if not NOTE_ID_RE.match(inspiration_id):
         raise ValueError(f"bad inspiration id {inspiration_id!r}")
-    if store is not None:
-        return store.update(inspiration_id, mutate)
     path = _safe_path(inspirations_dir(settings), f"{inspiration_id}.md")
     with kb_sync_lock(settings):
         fm, body = parse_note(path.read_text(encoding="utf-8"))
@@ -204,8 +186,7 @@ def _edit_frontmatter(
     return fm
 
 
-def mark_used(settings: Settings, inspiration_id: str, *, idea_id: int,
-              store: Any = None) -> dict[str, Any]:
+def mark_used(settings: Settings, inspiration_id: str, *, idea_id: int) -> dict[str, Any]:
     def _m(fm):
         leaps = list(fm.get("leaps") or [])
         if idea_id not in leaps:
@@ -213,14 +194,13 @@ def mark_used(settings: Settings, inspiration_id: str, *, idea_id: int,
         fm["leaps"] = leaps
         if fm.get("status") == "fresh":
             fm["status"] = "used"
-    return _edit_frontmatter(settings, inspiration_id, _m, store)
+    return _edit_frontmatter(settings, inspiration_id, _m)
 
 
-def mark_exhausted(settings: Settings, inspiration_id: str, *,
-                   store: Any = None) -> dict[str, Any]:
+def mark_exhausted(settings: Settings, inspiration_id: str) -> dict[str, Any]:
     def _m(fm):
         fm["status"] = "exhausted"
-    return _edit_frontmatter(settings, inspiration_id, _m, store)
+    return _edit_frontmatter(settings, inspiration_id, _m)
 
 
 def list_notes(settings: Settings, *, status: str | None = None,

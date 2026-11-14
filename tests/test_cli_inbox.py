@@ -13,7 +13,6 @@ runner = CliRunner()
 def _env(monkeypatch, tmp_path):
     monkeypatch.setenv("ALGUA_KNOWLEDGE_DIR", str(tmp_path / "kb"))
     monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.delenv("ALGUA_STEERING_DIR", raising=False)
     yield tmp_path
 
 
