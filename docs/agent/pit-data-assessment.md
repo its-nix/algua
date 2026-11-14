@@ -27,6 +27,11 @@ The main qualification gap is also software: the reserved verified-PIT provenanc
 separately reviewed verifier. This work changes neither that path nor a frozen data contract.
 No new purchase is required for reproduction, source-fit improvements or this initial assessment.
 
+**Next step (2026-11-12, reconfirmed 2026-11-14):** the owner chose Sharadar as the backtest and
+qualification source and adopted a PIT standard for daily price-only strategies ([design](../superpowers/specs/2026-11-12-pit-data-pipeline-design.md)). The
+vendor sample check is run with [this runbook](sharadar-sample-check.md). The EODHD daily importer
+(`data ingest-bars --provider eodhd`) stays as a secondary source for cheap smoke runs.
+
 **Recommendation:** keep the current snapshot for machinery work. Before paying, obtain a small
 source sample proving historical membership, security identity, price vintages and terminal events;
 then implement one bounded importer/verifier through the existing store. Neither reviewed retail
