@@ -119,6 +119,26 @@ export function realized(points: DayPoint[]): Realized {
   }
 }
 
+/** The one-sided 95% lower bound on the annualized Sharpe, with the Lo/Mertens non-normal
+ * standard error `forward_gates._forward_sharpe_lcb` uses; null when degenerate. */
+export function sharpeLcb(points: DayPoint[]): number | null {
+  const eq = points.map((p) => p.equity)
+  const rets = eq.slice(1).map((v, i) => v / eq[i] - 1).filter(Number.isFinite)
+  const t = rets.length
+  if (t < 3) return null
+  const mean = rets.reduce((a, b) => a + b, 0) / t
+  const sd = Math.sqrt(rets.reduce((a, x) => a + (x - mean) ** 2, 0) / (t - 1))
+  if (!(sd > 0)) return null
+  const m2 = rets.reduce((a, x) => a + (x - mean) ** 2, 0) / t
+  const skew = rets.reduce((a, x) => a + (x - mean) ** 3, 0) / t / m2 ** 1.5
+  const kurt = rets.reduce((a, x) => a + (x - mean) ** 4, 0) / t / m2 ** 2
+  const sr = mean / sd
+  const v = 1 - skew * sr + ((kurt - 1) / 4) * sr * sr
+  if (!(v > 0)) return null
+  const lcb = (sr - 1.6448536 * Math.sqrt(v / (t - 1))) * Math.sqrt(252)
+  return Number.isFinite(lcb) ? lcb : null
+}
+
 /** Weekdays from `from` to `to` inclusive (holidays not removed, so coverage reads low, never
  * high). */
 export function weekdaysBetween(from: string, to: string): number {
@@ -159,9 +179,14 @@ export function forwardGate(
   const r = realized(lane)
   const checks: GateCheckView[] = []
   if (holdout !== null) {
-    const bar = Math.max(factor * holdout, floor)
+    // A recorded evaluation's bar already carries the multiple-testing tax; otherwise the bar
+    // is the untaxed first-look one.
+    const recorded = row?.decision?.checks?.find((c) => c.name === 'realized_sharpe')?.threshold
+    const bar = finite(recorded) ?? Math.max(factor * holdout, floor)
+    // `paper promote` passes only if BOTH the point estimate and its 95% lower bound clear the bar.
+    const lcb = sharpeLcb(lane)
     checks.push({ label: `Sharpe at least ${ratio(bar)}`, value: ratio(r.sharpe),
-      passed: r.sharpe !== null && r.sharpe >= bar })
+      passed: r.sharpe !== null && r.sharpe >= bar && lcb !== null && lcb >= bar })
   }
   const dd = r.maxDrawdown === null ? null : Math.abs(r.maxDrawdown)
   checks.push({ label: `Drawdown under ${fmtPct(limit)}`, value: dd === null ? '—' : fmtPct(dd, 1),

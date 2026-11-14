@@ -20,10 +20,11 @@ const DOT_INSET = 18
 /** The Strategy page top (detail.jpg): value since the lane began, the curve with the backtest's
  * expectation dashed behind it, the window control, three metrics beside their backtest or limit,
  * and progress toward the next gate. */
-export default function StrategyTop({ detail, series, seriesLoading }: {
+export default function StrategyTop({ detail, series, seriesLoading, seriesError }: {
   detail: StrategyDetailResponse
   series: SeriesPayload | undefined
   seriesLoading: boolean
+  seriesError: boolean
 }) {
   const stage = detail.registry?.stage ?? null
   const [win, setWin] = useState<Window>('stage')
@@ -37,7 +38,7 @@ export default function StrategyTop({ detail, series, seriesLoading }: {
   const daily = expectedDaily(holdout)
   const hasTicks = since.length > 0
   const noTicks = !hasTicks && (series !== undefined || !operating)
-  const seriesFailed = operating && series === undefined && !seriesLoading
+  const seriesFailed = operating && series === undefined && seriesError
 
   const raw = windowPoints(since, win === 'backtest' && daily === null ? 'stage' : win).map((p) => p.equity)
   const n = raw.length

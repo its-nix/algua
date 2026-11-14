@@ -133,7 +133,8 @@ export default function StrategyDetail({
 
   return (
     <main className="decision-page strategy-detail-page">
-      <StrategyTop detail={d} series={seriesPayload} seriesLoading={series.loading} />
+      <StrategyTop detail={d} series={seriesPayload} seriesLoading={series.loading}
+        seriesError={series.error !== null} />
       <section className="detail-header">
         {metaBits.length > 0 && <div className="dim-note">{metaBits.join(' · ')}</div>}
         {registry?.description != null && registry.description !== '' && (
