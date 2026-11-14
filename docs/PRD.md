@@ -449,12 +449,13 @@ Mandatory robustness should include, where applicable:
 Repeatedly searching the same historical data must never masquerade as independent confirmation.
 
 The implemented PIT masks, `t → t+1` lag, canonical/fast decision parity, burn-on-peek holdout
-accounting and measured search/family breadth remain binding. A replay cannot supply elapsed
+accounting and measured search breadth remain binding. A replay cannot supply elapsed
 broker-clocked forward observations. Do not lower enforced gates to make two-year evidence qualify;
 no qualifying strategy is a valid research outcome.
 
-Current research promotion retains a binding integrity floor while much of the statistical stack
-is recorded as advisory; frozen FDR accounting is not an active veto. The target's stronger
+Current research promotion has a binding integrity floor. Deflated Sharpe (DSR) with its
+bootstrap interval is the one trial-aware quality signal; it is recorded as advisory and does not
+veto. The target's stronger
 robustness requirements do not imply that all statistical checks currently block promotion. Agent
 advancement uses the actual promotion gates, never a board rank or a raw lifecycle flag.
 
