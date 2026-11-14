@@ -75,25 +75,20 @@ def transition_strategy(
             forward_certificate_verifier=forward_certificate_verifier,
         )
         code_hash, config_hash, dependency_hash = identity
-    elif (
-        rec.stage is Stage.BACKTESTED
-        and target == Stage.CANDIDATE
-        and transition_actor is not Actor.HUMAN
-    ):
-        # Wall D, scoped to the FORWARD edge: an agent reaches candidate from below ONLY by
+    elif rec.stage is Stage.BACKTESTED and target == Stage.CANDIDATE:
+        # Wall D, scoped to the FORWARD edge: every actor reaches candidate from below ONLY by
         # consuming a fresh, identity-matched, single-use gate token (minted by `research
-        # promote`). Humans are exempt. The PAPER -> CANDIDATE back-step is free for any actor —
-        # re-entry to candidate from below always re-runs the research gate.
+        # promote`). No actor is exempt (spec 2026-11-13). The PAPER -> CANDIDATE back-step is free
+        # for any actor — re-entry to candidate from below always re-runs the research gate.
         consume_gate_id = _validate_shortlist_gate(repo=repo, name=name, strategy_id=rec.id)
     elif rec.stage is Stage.PAPER and target == Stage.FORWARD_TESTED:
         refuse_frozen_deployment(repo, rec.id, target)
-        # Identity is pinned for BOTH actors: the agent's token consume re-checks it inside
-        # apply_transition, and a human raw transition records it for audit (#124).
+        # Every actor consumes a fresh forward token; its identity is re-checked inside
+        # apply_transition (#124). No actor is exempt (spec 2026-11-13).
         identity = _compute_hashes(name)
         code_hash, config_hash, dependency_hash = identity
-        if transition_actor is not Actor.HUMAN:
-            consume_forward_gate_id = _validate_forward_gate(
-                repo=repo, strategy_id=rec.id, identity=identity)
+        consume_forward_gate_id = _validate_forward_gate(
+            repo=repo, strategy_id=rec.id, identity=identity)
     from algua.operator.deployment_lock import operator_transition_lock
 
     with operator_transition_lock(rec.stage, target):
@@ -162,8 +157,8 @@ def _validate_live_gate(
 
 
 def _validate_shortlist_gate(*, repo: StrategyRepository, name: str, strategy_id: int) -> int:
-    """Return the id of a fresh passing AGENT gate token whose recomputed identity matches the
-    strategy's current code+config+dependency, or raise. Consumption itself happens inside
+    """Return the id of a fresh passing agent-minted gate token whose recomputed identity matches
+    the strategy's current code+config+dependency, or raise. Consumption itself happens inside
     apply_transition, in one transaction with the stage change."""
     identity = _compute_hashes(name)
     gate_id = repo.find_consumable_gate_evaluation(

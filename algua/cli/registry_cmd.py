@@ -327,12 +327,11 @@ def backfill_from_kb() -> None:
     }))
 
 
-# The two signing namespaces the trust anchor authenticates: the go-live gate and the human-actor
-# gate (#329). Enrollment is per-namespace; a go-live-only key does NOT authenticate a human actor.
+# The one signing namespace the trust anchor authenticates: the go-live gate. The human-actor
+# namespace (#329) was removed with the signed gate overrides (spec 2026-11-13); a key already
+# enrolled for `algua-human-actor` is harmless — nothing verifies that namespace any more.
 _NAMESPACE_CHOICES = {
     "go-live": "algua-go-live",
-    "human-actor": "algua-human-actor",
-    "both": "algua-go-live,algua-human-actor",
 }
 
 
@@ -343,12 +342,11 @@ def enroll_approver(
     pubkey: str = typer.Option(..., "--pubkey", help="SSH public key (ssh-ed25519 AAAA...)"),
     namespace: str = typer.Option(
         "go-live", "--namespace",
-        help="which gate(s) this key authenticates: 'go-live' (paper->live signature), "
-             "'human-actor' (authenticated --actor human for gate relaxations, #329), or 'both'"),
+        help="the gate this key authenticates: 'go-live' (forward_tested->live signature), the "
+             "only signed approval"),
 ) -> None:
-    """Enroll an approver PUBLIC key for one or both signing namespaces. The trust comes from
-    committing this through code-owner review — the gates use the reviewed copy on main. A key
-    enrolled only for 'go-live' cannot authenticate a human actor, and vice versa."""
+    """Enroll an approver PUBLIC key for the go-live signing namespace. The trust comes from
+    committing this through code-owner review — the gates use the reviewed copy on main."""
     if namespace not in _NAMESPACE_CHOICES:
         raise ValueError(
             f"--namespace must be one of {sorted(_NAMESPACE_CHOICES)}, got {namespace!r}")
@@ -373,7 +371,7 @@ def enroll_approver(
     if keyblob in enrolled:
         raise ValueError("that public key is already enrolled")
     # ALWAYS write an explicit namespaces= restriction (never an unscoped line): an unscoped line
-    # would authenticate EVERY namespace and collapse the go-live/human-actor separation (#329).
+    # would authenticate EVERY namespace, not just go-live (#329).
     line = f'{name} namespaces="{namespaces_field}" {keytype} {keyblob}\n'
     with ALLOWED_SIGNERS_PATH.open("a") as fh:
         fh.write(line)

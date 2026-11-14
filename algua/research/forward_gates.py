@@ -8,9 +8,9 @@ criteria evaluator ONLY: it receives an already-assembled ``ForwardEvidence`` (b
 endpoint, and the qualified backtest gate row) and returns a JSON-clean ``ForwardGateDecision``.
 No I/O, no SQL, no broker calls.
 
-CODEOWNERS-protected: the module-level threshold constants are walls, not knobs. Relaxing any of
-them is human-only at the CLI (exactly like ``--allow-non-pit``); an agent may only TIGHTEN a
-threshold via ``ForwardGateCriteria``.
+CODEOWNERS-protected: the module-level threshold constants are walls, not knobs. No actor may relax
+any of them at the CLI; every actor may only TIGHTEN a threshold via ``ForwardGateCriteria``
+(spec 2026-11-13 removed the signed human relaxation).
 """
 
 from __future__ import annotations

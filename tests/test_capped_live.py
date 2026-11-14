@@ -22,7 +22,7 @@ from algua.registry.experimental_sessions import PROFILE_DIGEST
 from algua.registry.store import SqliteStrategyRepository
 from algua.risk.layered import DrawdownPolicy
 from tests._frozen_paper_world import ACCOUNT_ID, GATE, TENANT, build_world, teardown_world
-from tests.test_human_actor import _anchor, _make_key, _sign
+from tests._ssh_signing import _anchor, _make_key, _sign
 from tests.test_trained_model_context import trained as trained
 
 pytestmark = pytest.mark.serial  # writes into the real algua/ source tree

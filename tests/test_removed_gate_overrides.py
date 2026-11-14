@@ -181,3 +181,117 @@ def test_human_label_cannot_found_a_family(tmp_path):
     ctx = _preflight(repo, Actor.AGENT)
     assert ctx.pending_novel_family is not None
     assert repo._conn.execute("SELECT COUNT(*) c FROM families").fetchone()["c"] == 0
+
+
+# --- paper promote and the rest of the signed path ----------------------------------------------
+
+def test_paper_promote_refuses_actor_signature():
+    _assert_unknown_option(runner.invoke(
+        app, ["paper", "promote", "s", "--actor", "human", "--actor-signature", "x.sig"]))
+
+
+def test_qualify_experimental_refuses_actor_signature():
+    _assert_unknown_option(runner.invoke(
+        app, ["paper", "qualify-experimental", "s", "--actor-signature", "x.sig"]))
+
+
+# Each threshold moved one step in its LOOSE direction from today's default.
+_LOOSENED = [
+    ("--degradation-factor", "0.4"),
+    ("--sharpe-floor", "0.2"),
+    ("--min-observations", "62"),
+    ("--min-coverage", "0.8"),
+    ("--min-vol", "0.01"),
+    ("--max-drawdown", "0.3"),
+    ("--max-staleness", "6"),
+    ("--forward-sharpe-confidence", "0.9"),
+]
+
+
+def _paper_tenant(name="fwd"):
+    from algua.registry.db import registry_conn
+    from tests._deployment_helpers import force_legacy_strategy
+
+    with registry_conn() as conn:
+        rec = SqliteStrategyRepository(conn).add(name)
+        force_legacy_strategy(conn, rec.id)
+
+
+@pytest.mark.parametrize(("flag", "value"), _LOOSENED)
+def test_paper_promote_human_cannot_loosen(flag, value):
+    """A loosened threshold is refused for `--actor human` exactly as for an agent, before the
+    broker is built and before any evaluation row."""
+    _paper_tenant()
+    errors = {}
+    for actor in ("agent", "human"):
+        r = runner.invoke(app, ["paper", "promote", "fwd", "--actor", actor, flag, value])
+        assert r.exit_code == 1, r.output
+        payload = json.loads(r.stdout)
+        assert payload["ok"] is False
+        assert "relax" in payload["error"]
+        errors[actor] = payload["error"]
+    assert errors["human"] == errors["agent"]
+    from algua.registry.db import registry_conn
+    with registry_conn() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM forward_gate_evaluations").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize("actor", [Actor.AGENT, Actor.HUMAN])
+def test_forward_guard_allows_tightening_for_every_actor(actor):
+    from algua.registry.forward_promotion import guard_forward_relaxations
+    from algua.research.forward_gates import ForwardGateCriteria
+
+    guard_forward_relaxations(
+        actor, ForwardGateCriteria(sharpe_floor=0.5, max_staleness_sessions=3))
+    with pytest.raises(ValueError, match="sharpe_floor"):
+        guard_forward_relaxations(actor, ForwardGateCriteria(sharpe_floor=0.1))
+
+
+_PUB = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl t"
+
+
+@pytest.mark.parametrize("namespace", ["human-actor", "both"])
+def test_enroll_approver_rejects_human_actor_namespace(tmp_path, monkeypatch, namespace):
+    anchor = tmp_path / "allowed_signers"
+    monkeypatch.setattr("algua.cli.registry_cmd.ALLOWED_SIGNERS_PATH", anchor)
+    r = runner.invoke(app, ["registry", "enroll-approver", "--name", "alice", "--pubkey", _PUB,
+                            "--namespace", namespace])
+    assert r.exit_code != 0, r.output
+    assert not anchor.exists() or "human-actor" not in anchor.read_text()
+
+
+def test_enroll_approver_go_live_still_accepted(tmp_path, monkeypatch):
+    anchor = tmp_path / "allowed_signers"
+    monkeypatch.setattr("algua.cli.registry_cmd.ALLOWED_SIGNERS_PATH", anchor)
+    r = runner.invoke(app, ["registry", "enroll-approver", "--name", "alice", "--pubkey", _PUB,
+                            "--namespace", "go-live"])
+    assert r.exit_code == 0, r.output
+    assert 'namespaces="algua-go-live"' in anchor.read_text()
+
+
+@pytest.mark.parametrize(("source", "target", "gate"), [
+    (Stage.BACKTESTED, Stage.CANDIDATE, "research promote"),
+    (Stage.PAPER, Stage.FORWARD_TESTED, "paper promote"),
+])
+def test_raw_service_transition_needs_the_gate_token_for_a_human(tmp_path, source, target, gate):
+    """transitions.transition_strategy has no human exemption on the two gated edges: a human
+    label without a gate token is refused exactly like an agent."""
+    from algua.contracts.lifecycle import TransitionError
+    from algua.registry.transitions import transition_strategy
+    from tests._deployment_helpers import force_legacy_strategy
+
+    repo = _repo(tmp_path)
+    rec = repo.add("cross_sectional_momentum")
+    if source is Stage.BACKTESTED:
+        repo.apply_transition(rec, Stage.BACKTESTED, Actor.AGENT, "bt")
+    else:
+        force_legacy_strategy(repo._conn, rec.id)
+    with pytest.raises(TransitionError, match=gate):
+        transition_strategy(repo, "cross_sectional_momentum", target, Actor.HUMAN, "manual")
+    assert repo.get("cross_sectional_momentum").stage is source
+
+
+def test_human_actor_module_is_gone():
+    import importlib.util
+
+    assert importlib.util.find_spec("algua.registry.human_actor") is None

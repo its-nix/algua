@@ -17,6 +17,7 @@ from algua.registry.store import SqliteStrategyRepository
 from algua.registry.transitions import transition_strategy
 from algua.strategies.loader import load_strategy
 from tests._deployment_helpers import force_legacy_strategy
+from tests._scaffold_helpers import scaffold_repo_transition
 
 pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
 
@@ -45,14 +46,14 @@ def _to_live(repo, name, actor, to=Stage.LIVE):
 def _advance_to_paper(repo, name):
     repo.add(name)
     transition_strategy(repo, name, Stage.BACKTESTED, Actor.AGENT)
-    # CANDIDATE via human: scaffolding to a later stage, not exercising the agent shortlist gate.
-    transition_strategy(repo, name, Stage.CANDIDATE, Actor.HUMAN)
+    # CANDIDATE via the test scaffold: a later stage, not exercising the shortlist gate.
+    scaffold_repo_transition(repo, name, Stage.CANDIDATE)
     force_legacy_strategy(repo._conn, repo.get(name).id)
 
 
 def _advance_to_forward_tested(repo, name):
     _advance_to_paper(repo, name)
-    transition_strategy(repo, name, Stage.FORWARD_TESTED, Actor.HUMAN, "test setup")
+    scaffold_repo_transition(repo, name, Stage.FORWARD_TESTED, "test setup")
 
 
 def test_live_requires_approval(repo):

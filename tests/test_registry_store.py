@@ -22,6 +22,7 @@ from algua.registry.store import SqliteStrategyRepository
 from algua.registry.transitions import transition_strategy
 from algua.research.clustering import clustering_version
 from tests._deployment_helpers import force_legacy_strategy
+from tests._scaffold_helpers import scaffold_repo_transition
 
 
 def test_no_mixin_shadows_another() -> None:
@@ -122,12 +123,12 @@ def test_illegal_transition_raises(repo):
 @pytest.mark.usefixtures("empty_exit_venues")
 def test_transition_service_allows_injected_live_approval_verifier(repo):
     repo.add("cross_sectional_momentum")
-    # CANDIDATE via human: scaffolding to forward_tested, not exercising the agent shortlist gate.
+    # CANDIDATE via the test scaffold: forward_tested, not exercising the shortlist gate.
     _transition(repo, "cross_sectional_momentum", Stage.BACKTESTED, Actor.AGENT)
-    _transition(repo, "cross_sectional_momentum", Stage.CANDIDATE, Actor.HUMAN)
+    scaffold_repo_transition(repo, "cross_sectional_momentum", Stage.CANDIDATE)
     force_legacy_strategy(repo._conn, repo.get("cross_sectional_momentum").id)
-    _transition(repo, "cross_sectional_momentum", Stage.FORWARD_TESTED, Actor.HUMAN,
-                "test setup")
+    scaffold_repo_transition(repo, "cross_sectional_momentum", Stage.FORWARD_TESTED,
+                             "test setup")
 
     rec = transition_strategy(
         repo,

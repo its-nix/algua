@@ -22,7 +22,7 @@ from algua.config.settings import get_settings
 from algua.registry.db import connect, migrate
 from algua.registry.store import SqliteStrategyRepository
 from tests._deployment_helpers import force_legacy_strategy
-from tests._human_actor_helpers import scaffold_transition
+from tests._scaffold_helpers import scaffold_transition
 
 STRATEGY = "cross_sectional_momentum"
 

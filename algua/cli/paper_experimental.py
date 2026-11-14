@@ -21,8 +21,6 @@ def register_experimental(app: typer.Typer) -> None:
     @json_errors
     def qualify(name: str, actor: str = typer.Option('agent', '--actor',
                     help='Reported author only; supplies no live authority.'),
-                actor_signature: str | None = typer.Option(None, '--actor-signature',
-                    help='Deprecated compatibility option; ignored for paper evidence.'),
                 preview: bool = typer.Option(False, '--preview',
                     help='Inspect eligibility without recording a qualification.')) -> None:
         """Record passing historical + five-session evidence; LIVE still needs human signing."""
