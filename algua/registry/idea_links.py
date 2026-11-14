@@ -42,14 +42,14 @@ def ideas_by_inspiration(conn: sqlite3.Connection) -> dict[str, list[dict[str, s
 def _outcome(idea: dict[str, str]) -> tuple[str, str] | None:
     """(label, tone) for what happened to the idea, or None while nothing has."""
     outcome, status = idea["latest_outcome"], idea["status"]
-    if idea["duplicate_of"]:
-        return f"Duplicate of idea #{idea['duplicate_of']}", "neutral"
     if outcome == AttemptOutcome.PROMOTED_CANDIDATE:
         return "Candidate", "progressed"
     if outcome in REFUTING_OUTCOMES or status == IdeaStatus.REFUTED:
         return f"Refuted: {idea['latest_reason'] or outcome or 'refuted'}", "refuted"
     if outcome == AttemptOutcome.CANDIDATE_PREVIEW_PASS:
         return "Backtested", "neutral"
+    if idea["duplicate_of"]:  # a deliberate --allow-duplicate idea not yet attempted
+        return f"Duplicate of idea #{idea['duplicate_of']}", "neutral"
     if outcome:  # data_blocked / abandoned / run_error: no clean label, show the raw outcome
         return f"Outcome: {outcome}", "neutral"
     if status == IdeaStatus.DISCARDED:

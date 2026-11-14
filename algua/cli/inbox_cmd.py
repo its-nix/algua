@@ -50,8 +50,6 @@ def add_cmd(
     kind = sources[0][0]
     if kind == "link" and not str(url).startswith(("http://", "https://")):
         raise ValueError("--url must be an http(s) link")
-    if file is not None and not file.is_file():
-        raise ValueError(f"--file is not a file: {file}")
     body = text
     if extracted_text_file is not None:
         if kind == "text":
