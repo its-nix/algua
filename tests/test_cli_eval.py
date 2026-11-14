@@ -17,6 +17,7 @@ def _run(argv: list[str]) -> dict:
     return json.loads(buf.getvalue())
 
 
+@pytest.mark.slow
 def test_eval_gate_emits_headline_fields():
     d = _run(["eval", "gate", "--k", "4"])
     assert d["ok"] is True

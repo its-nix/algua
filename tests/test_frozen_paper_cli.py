@@ -61,6 +61,8 @@ from tests._frozen_paper_world import (
     window,
 )
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 CHECKOUT_DOTTED = f"algua.strategies.momentum.{TENANT}"
 RAISING_MODULE = "raise RuntimeError('the frozen tenant was imported from the checkout')\n"
 

@@ -6,6 +6,8 @@ import pytest
 from algua.strategies.base import LoadedStrategy
 from algua.strategies.loader import StrategyNotFound, list_strategies, load_strategy
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 
 def test_load_bundled_momentum():
     strat = load_strategy("cross_sectional_momentum")

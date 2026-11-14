@@ -23,6 +23,8 @@ from algua.models import get_version_with_bytes
 from algua.research.multimodal_context import build_as_of_context
 from tests.test_cli_model_training import invoke, make_source
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 
 @pytest.fixture
 def trained(tmp_path, monkeypatch):
@@ -189,6 +191,7 @@ class Block(importlib.abc.MetaPathFinder):
             raise AssertionError(fullname)
 sys.meta_path.insert(0,Block())
 from algua.features.price_linear_context import score_price_linear
+
 assert callable(score_price_linear)
 '''
     result = subprocess.run([sys.executable, "-I", "-c", script], capture_output=True,

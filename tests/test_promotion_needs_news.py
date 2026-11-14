@@ -21,6 +21,8 @@ from algua.registry.promotion import promotion_preflight
 from algua.registry.store import SqliteStrategyRepository
 from algua.registry.transitions import transition_strategy
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 _FAM_PATH = Path(_momentum_fam.__path__[0])
 
 

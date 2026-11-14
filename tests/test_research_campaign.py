@@ -257,6 +257,7 @@ def test_actual_driver_passes_opt_in_selection_to_real_cli(pool, tmp_path):
     assert pool.execute("SELECT COUNT(*) FROM idea_attempts").fetchone()[0] == 1
 
 
+@pytest.mark.slow
 def test_persisted_controller_example_is_repeatable(tmp_path):
     import subprocess
     import sys

@@ -452,6 +452,7 @@ def test_sequential_reserve_blocks_second_claim(tmp_path):
             holdout_start="2022-12-01", holdout_end="2023-03-01", allow_reuse=False)
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not ALGUA_BIN.exists(), reason="algua console script not installed")
 def test_concurrent_research_promote_single_burn_e2e(tmp_path):
     """The issue's literal ask: two real `algua research promote` processes race the SAME

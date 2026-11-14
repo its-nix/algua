@@ -477,7 +477,7 @@ both key on the slug.
 ## Before you commit
 
 ```
-uv run pytest -q && uv run ruff check . && uv run mypy algua && uv run lint-imports
+uv run pytest -q -m "" && uv run ruff check . && uv run mypy algua && uv run lint-imports
 ```
 
 Touching `web/`? Also `uv run --project web pytest web/backend/tests -q` and

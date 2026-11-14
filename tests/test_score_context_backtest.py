@@ -34,6 +34,8 @@ from algua.strategies.base import (
 )
 from algua.strategies.loader import _loaded_for_test, load_strategy, load_tradable_strategy
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 _FAMILY_PATH = Path(momentum_family.__path__[0])
 
 

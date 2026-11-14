@@ -20,6 +20,8 @@ from algua.research.dsr import effective_funnel_breadth
 from algua.research.gates import FUNNEL_WINDOW_DAYS, GateCriteria
 from tests._deployment_helpers import force_legacy_strategy
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 _START = datetime(2024, 1, 1, tzinfo=UTC)
 _END = datetime(2024, 6, 1, tzinfo=UTC)
 

@@ -19,6 +19,8 @@ from tests._frozen_paper_world import (
 )
 from tests.test_trained_model_context import trained as trained
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 
 @pytest.fixture
 def world(trained, monkeypatch, tmp_path):

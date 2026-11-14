@@ -84,6 +84,7 @@ def long_result():
     return result
 
 
+@pytest.mark.slow
 def test_501_sessions_keep_actual_cost_bearing_fills_and_marked_cash(long_result):
     result = long_result
     assert len(result.decision_weights) == 501

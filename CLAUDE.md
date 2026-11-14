@@ -244,8 +244,15 @@ small change. Run broader integration checks when the scope warrants them or the
 Automatic CI/CD workflows are disabled; the full CI workflow is available manually when re-enabled.
 Preserve live authorization, execution lag, data integrity and other product safety controls.
 
+Default test run: `uv run pytest -q` runs in parallel (`pytest-xdist`, `-n auto`) and skips tests
+marked `slow` (>5s). Run the full set with `uv run pytest -q -m ""`; tests marked `serial` share one
+worker. Workers are capped at 6 (`--maxprocesses=6`): 10 workers crashed a 7.6 GB Docker VM.
+`algua.cli` does not import on macOS (`os.waitid`), so on macOS run pytest/mypy in Linux:
+`docker run --rm -v "$PWD":/w -v algua-linux-venv:/venv -w /w -e UV_PROJECT_ENVIRONMENT=/venv -e UV_LINK_MODE=copy ghcr.io/astral-sh/uv:python3.12-bookworm uv run --frozen pytest -q`
+(run `uv sync --frozen` in the same container first).
+
 Available full check, when needed:
-`uv run pytest -q && uv run ruff check . && uv run mypy algua && uv run lint-imports`
+`uv run pytest -q -m "" && uv run ruff check . && uv run mypy algua && uv run lint-imports`
 
 Two of those enforce structure, not style, and are worth knowing before you fight them:
 - **`lint-imports`** — 29 contracts fixing the package layering (`cli` composes everything; nothing

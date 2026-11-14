@@ -21,7 +21,7 @@ stdout**. You drive research; the system enforces the safety boundary.
    `algua/contracts/lifecycle.py`, `algua/backtest/engine.py`, or `algua/research/gates.py` to make
    something pass. These are human-owned (CODEOWNERS); changing them is out of scope for a run.
 4. **Keep the quality gate green** after any code you add:
-   `uv run pytest -q && uv run ruff check . && uv run mypy algua && uv run lint-imports`.
+   `uv run pytest -q -m "" && uv run ruff check . && uv run mypy algua && uv run lint-imports`.
 
 ## The lifecycle
 
