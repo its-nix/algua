@@ -2004,5 +2004,3 @@ a.system-strip { text-decoration: none; min-height: 44px; }
 }
 .shell-header { background: var(--ink); }
 .home-shell .content { padding: 0 0 24px; gap: 0; }
-.soon-links { display: flex; gap: 20px; }
-.soon-links a { min-height: 44px; display: inline-flex; align-items: center; }

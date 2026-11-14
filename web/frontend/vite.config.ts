@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vitest/config'
+import { manifest } from './src/pwaManifest.js'
 
 // Only the real `vite build` for the PRODUCTION (non-demo) bundle swaps `./transport` for the
 // fixture-free stub — never `vite build` for the demo bundle (VITE_ALGUA_DEMO=1, which needs
@@ -68,26 +69,7 @@ export default defineConfig(({ command }) => ({
       injectRegister: false,
       // Keep local fonts and versioned icon URLs available with the offline shell.
       injectManifest: { globPatterns: ['**/*.{js,css,html,png,svg,ttf}'] },
-      manifest: {
-        name: 'Algua',
-        short_name: 'Algua',
-        description: 'Research and portfolio dashboard',
-        display: 'standalone',
-        start_url: '/',
-        scope: '/',
-        theme_color: '#000000',
-        background_color: '#000000',
-        icons: [
-          { src: '/icon-192.png?v=20261106-wave', sizes: '192x192', type: 'image/png' },
-          { src: '/icon-512.png?v=20261106-wave', sizes: '512x512', type: 'image/png' },
-          {
-            src: '/icon-maskable-512.png?v=20261106-wave',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable',
-          },
-        ],
-      },
+      manifest,
     }),
   ],
   server: {
@@ -96,6 +78,7 @@ export default defineConfig(({ command }) => ({
       // binds 8787). Override with ALGUA_WEB_DEV_PROXY_TARGET to point the dev
       // server at a scratch backend without editing this file.
       '/api': process.env.ALGUA_WEB_DEV_PROXY_TARGET ?? 'http://127.0.0.1:8787',
+      '/share': process.env.ALGUA_WEB_DEV_PROXY_TARGET ?? 'http://127.0.0.1:8787',
     },
   },
   test: {

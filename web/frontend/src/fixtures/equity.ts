@@ -1,7 +1,6 @@
-/** Demo `/api/equity` and `/api/inbox` payloads. Invented, deterministic numbers (no real
+/** Demo `/api/equity` payloads. Invented, deterministic numbers (no real
  * account data): a P&L walk per lane over weekday sessions ending on the fixture date. */
 import type { ApiEnvelope, EquityPayload, EquityPoint } from '../types'
-import type { InboxListPayload } from '../inboxBadge'
 import { FETCHED_AT, envelope, rng } from './steady-state'
 
 const LAST_SESSION = FETCHED_AT.slice(0, 10)
@@ -61,15 +60,3 @@ export function equityFixture(url: string): ApiEnvelope<EquityPayload> {
   const lane = new URLSearchParams(url.split('?')[1] ?? '').get('lane')
   return payload(lane === 'paper' || lane === 'live' ? lane : null)
 }
-
-export const INBOX: ApiEnvelope<InboxListPayload> = envelope({
-  ok: true,
-  items: [
-    { id: 3, status: 'queued', journey: [{ label: 'Queued for the next leap', tone: 'pending' }] },
-    { id: 2, status: 'taken', journey: [
-      { label: 'Inspiration', tone: 'neutral' }, { label: 'Idea #41', tone: 'pending' }] },
-    { id: 1, status: 'taken', journey: [
-      { label: 'Inspiration', tone: 'neutral' }, { label: 'Idea #37', tone: 'neutral' },
-      { label: 'Candidate', tone: 'green' }] },
-  ],
-})

@@ -29,14 +29,15 @@ export default function App() {
   const isLeaderboard = location.pathname === LEADERBOARD_PATH
   const isHome = location.pathname === '/'
   const isList = location.pathname === '/strategies'
+  const isInbox = location.pathname === '/inbox'
   const inboxBadge = useInboxBadge(location.pathname.startsWith('/inbox'))
   const shellClass = isLeaderboard ? 'shell leaderboard-shell' : isHome ? 'shell home-shell'
-    : isList ? 'shell strats-shell' : isDetail ? 'shell detail-shell' : 'shell'
+    : isList ? 'shell strats-shell' : isInbox ? 'shell inbox-shell' : isDetail ? 'shell detail-shell' : 'shell'
 
   return (
     <FetchedAtContext.Provider value={setFetchedAt}>
       <div className={shellClass}>
-        {/* Home and the Strategies list draw their own titles; a strategy page has a
+        {/* Home, the Strategies list and the Inbox draw their own titles; a strategy page has a
             "‹ Strategies" back control in place of the centered brand. */}
         {isDetail ? (
           <nav className="sd-nav" aria-label="Back">
@@ -52,7 +53,7 @@ export default function App() {
               Strategies
             </button>
           </nav>
-        ) : !isHome && !isList && <header className="shell-header">
+        ) : !isHome && !isList && !isInbox && <header className="shell-header">
           <div className="topbar">
             <span aria-hidden="true" />
             <div className="brand"><Logo /></div>

@@ -20,7 +20,8 @@ import {
   rng,
   type Seed,
 } from './steady-state'
-import { INBOX, equityFixture } from './equity'
+import { equityFixture } from './equity'
+import { INBOX } from './inbox'
 import { forwardRowFor, seriesRowsFor, stageAnchors } from './strategySeries'
 import type {
   GateCheck,

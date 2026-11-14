@@ -5,18 +5,17 @@
 import { clientsClaim } from 'workbox-core'
 import { createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching'
 import { NavigationRoute, registerRoute } from 'workbox-routing'
+import { NAV_DENYLIST } from './swRoutes'
 
 declare const self: ServiceWorkerGlobalScope
 
 precacheAndRoute(self.__WB_MANIFEST)
 
-// Deep links (/s/x, /funnel, ...) get the precached shell; API/health never.
-// Workbox matches pathname+search, so the namespace rule must also stop at ? and #
-// (a bare /api?x=1 navigation is still API namespace).
+// Deep links (/s/x, /strategies, ...) get the precached shell; API/health/share never.
+// A NavigationRoute only ever matches GET navigations, so the share target's POST /share is
+// never intercepted: it goes straight to the backend (see swRoutes.ts).
 registerRoute(
-  new NavigationRoute(createHandlerBoundToURL('index.html'), {
-    denylist: [/^\/api(?:[/?#]|$)/, /^\/healthz(?:[?#]|$)/],
-  }),
+  new NavigationRoute(createHandlerBoundToURL('index.html'), { denylist: NAV_DENYLIST }),
 )
 
 // autoUpdate + injectManifest + injectRegister:false: nothing sends SKIP_WAITING,

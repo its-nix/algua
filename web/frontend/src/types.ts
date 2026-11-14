@@ -628,3 +628,31 @@ export interface EquityPayload {
   last_session: string | null
   truncated: boolean
 }
+
+/** One journey step of an Inbox item (`research inbox list`). Only the last step carries a
+ * tone other than neutral. */
+export interface InboxJourneyStep {
+  label: string
+  tone: 'pending' | 'progressed' | 'refuted' | 'neutral'
+}
+
+/** One `research inbox list` item: an `inbox_items` row plus its live journey. */
+export interface InboxItem {
+  id: number
+  created_at: string
+  kind: 'link' | 'file' | 'text'
+  url: string | null
+  title: string | null
+  note: string | null
+  file_path: string | null
+  text: string | null
+  status: 'queued' | 'taken'
+  taken_at: string | null
+  inspiration_id: string | null
+  journey: InboxJourneyStep[]
+}
+
+export interface InboxPayload {
+  ok?: boolean
+  items: InboxItem[]
+}

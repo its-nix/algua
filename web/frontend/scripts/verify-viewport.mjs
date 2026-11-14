@@ -144,7 +144,7 @@ const ROUTES = ['/', '/strategies', '/inbox', LEADERBOARD, '/strategies/research
 const ROUTE_CONTENT = {
   '/': 'as of 2026-08-27', // the equity change line: only drawn once /api/equity points loaded
   '/strategies': 'Day 41 · $1,550 slice', // a paper row's sub line: only once its series loaded
-  '/inbox': 'Everything you send feeds the next leap run.', // interim tab (Task 8)
+  '/inbox': 'Why small caps rebound after index deletions', // INBOX.data.items[0].title
   [LEADERBOARD]: 'liquid10_adj_momentum', // BOARD.data.rows[0], proving the leaderboard rendered
   '/now': 'cross_horizon_low_vol', // TRIAGE.items[0].title after the worst-first sort
   '/fleet': 'liquid10_adj_momentum', // a real "every strategy" row (FLEET.data.rows)
