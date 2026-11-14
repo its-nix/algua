@@ -25,7 +25,7 @@ artifacts/inference.
 
 ## ds — Data science (stats / experimentation)
 KB anchor: `/home/liornisimov/KB/data-science/`
-Audit for: statistical validity of the gates (DSR, FDR/LORD++, deflation), experiment tracking,
+Audit for: statistical validity of the gates (the integrity floor, DSR + bootstrap and its trial count), experiment tracking,
 metric definitions, sample-size/power floors, reproducibility of experiments, data leakage in
 feature construction (folded in).
 North-star focus: are the statistical gates sound enough to admit ML models (which overfit harder);

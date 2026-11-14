@@ -42,7 +42,7 @@ edge refuses it). The raw registry go-live route still refuses frozen deployment
 [capped live connector](agent/capped-live.md) accepts an exact frozen deployment under the approved
 experimental profile. It does not mint a strict forward certificate.
 
-On the STRICT route the forward gate is the harsh threshold (Sharpe ≥ max(0.5× holdout, 0.3) over 63 broker-clocked sessions). On the CAPPED experimental route the edge is judged only by the research gate's out-of-sample holdout (Sharpe > 0, ≥63 bars). That is a weak bar. The five paper sessions prove mechanics, not edge. The deflated-Sharpe signal recorded by the research gate is advisory — the quality measure, and a candidate for a future binding bar (an owner decision).
+On the STRICT route the forward gate is the harsh threshold (Sharpe ≥ max(0.5× holdout, 0.3) over 63 broker-clocked sessions). On the CAPPED experimental route the edge is judged only by the research gate's out-of-sample holdout (Sharpe > 0, ≥63 bars). That is a weak bar. The five paper sessions prove mechanics, not edge. The deflated-Sharpe signal (DSR + bootstrap; trials = max(own lifetime sweep combos, funnel-wide combos in the 90-day window)) recorded by the research gate is advisory — the one trial-aware quality measure, and a candidate for a future binding bar (an owner decision).
 
 The shipped frozen-paper slice includes the two-phase planner boundary, verified immutable
 content/environments, child execution and deployment-bound operational evidence/qualification
@@ -109,8 +109,8 @@ research database, MLflow instance, execution fork or speculative service split.
 | `features` / `portfolio` | signal computation; weight construction | I/O, registry, cli |
 | `backtest` | `simulate`/`run`, PIT masking (`pit_view`), the fast/canonical dual path + parity guard (`decision_path`), windowing (`walkforward`) | registry access, tracking, live/execution |
 | `calendar` | `MarketCalendar` + the settings-honouring `get_calendar()` factory | cli or registry imports |
-| `research` | the statistical gate: DSR, breadth deflation, regime robustness, forward gates | registry imports (`research` never imports `registry`) |
-| `registry` | **the lifecycle authority**: stages, transitions, gate tokens, allocations, approvals, families, the SQLite schema | live-lane imports |
+| `research` | the statistical gate: the integrity floor, DSR (the advisory trial-aware signal), forward gates | registry imports (`research` never imports `registry`) |
+| `registry` | **the lifecycle authority**: stages, transitions, gate tokens, allocations, approvals, the SQLite schema | live-lane imports |
 | `execution` | broker adapters, order state, ledgers, sizing, flatten/drain | cli imports |
 | `live` | the shared tick engine (`run_tick`), book exposure | cli imports |
 | `risk` | limits, breaches, kill-switch, global halt, peaks, book breaker | cli or live-lane imports |
