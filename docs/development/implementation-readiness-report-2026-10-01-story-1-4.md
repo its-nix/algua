@@ -18,7 +18,7 @@ baseline: 14621bf (main after PR #683, Story 1.3d)
 # Implementation Readiness Assessment Report
 
 **Date:** 2026-10-01 · **Project:** Algua — Story 1.4 · **Assessor:** independent reviewer (Claude),
-BMAD method, non-interactive defaults. Code claims were checked at `14621bf`. Scratch probes ran
+Code claims were checked at `14621bf`. Scratch probes ran
 against registries built by the repo's `migrate()`; the production registry was read only through
 `file:…/data/algua.db?mode=ro`. Targeted tests in `tests/test_deployments.py` (operator lock,
 retirement matrix, legacy, candidate episode) pass at baseline.

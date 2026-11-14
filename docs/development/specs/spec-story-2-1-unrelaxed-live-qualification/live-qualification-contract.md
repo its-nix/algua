@@ -1,5 +1,9 @@
 # Story 2.1 live qualification contract
 
+> **Policy revision required, 2026-11-14.** Read the supersession notice in [SPEC.md](SPEC.md).
+> The older predicate below must be reconciled with PRD §16 before implementation; existing
+> executable gates remain unchanged.
+
 Normative companion to [SPEC.md](SPEC.md). Baseline: `e875b6d` (line references below are to that
 tree). "Row" means a `gate_evaluations` row (research gate) or a `forward_gate_evaluations` row
 (forward evaluation; the newest one for a deployment is its certificate).

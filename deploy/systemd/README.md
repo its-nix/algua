@@ -547,17 +547,20 @@ the research loop each serialize against THEMSELVES only, on their own
 `data/{leap,forage,research-loop}.lock` flock, so an overlapping firing of the same unit skips
 cleanly instead of queueing.
 
-**Privileges (spec §9).** All three run a sandboxed agent behind `.opencode/scripts/run_agent.sh`, which re-imposes a kernel write wall with bwrap
-(writes confined to its throwaway run worktree) with a TRUSTED, unsandboxed DRIVER doing every
-authoritative write after the agent exits: the forage agent gets the shell network off and only
-the runtime's own web search (the FORAGE_MCP bypass is GONE: OpenCode configures MCP declaratively in opencode.json, so no wall has to drop —
-loudly logged) and no registry path at all, with the driver validating and landing survivors via
-`research inspirations accept`; the leap agent gets no web access and a THROWAWAY SCRATCH COPY of
-the registry (it can read the real pool's history but write only scratch), with the driver doing
-the real `research idea import` (re-dedup, eligibility, cap), the critic ledger, and the
-inspirations bookkeeping; the research agent is unchanged (shell network on for `uv`, scratch
-registry copy, `claim` before / `record-outcome` after via the driver, `link` via the drainer). No
-agent in this trio ever holds a path to the authoritative registry or vault directly.
+**Privileges.** All three agents launch through `.opencode/scripts/run_agent.sh`.
+`ALGUA_AGENT_SANDBOX=bwrap` adds a filesystem write boundary: most host paths are read-only,
+`/tmp` is private, and the worktree plus runtime-state paths remain writable. `auto` selects bwrap
+when available and otherwise runs with `none`; it is not a fail-closed sandbox guarantee.
+The seam does not isolate networking or hide all readable host files. The forage profile denies
+the shell tool and enables web tools; leap denies web tools but allows a shell, whose networking
+is not disabled. MCP uses declarative runtime configuration; there is no `FORAGE_MCP` bypass.
+
+Research and leap receive scratch registry paths; forage receives no configured registry path.
+These routing choices are not proof that authoritative host files are inaccessible. Trusted
+drivers validate and perform authoritative writes after the agent exits: forage accepts notes,
+leap imports hypotheses and records critic outcomes, and research records claims/outcomes and
+queues eligible merge-backs. Verify the actual sandbox mode and deployment permissions before
+relying on containment.
 
 **The vault's sources registry.** `kb/inspirations/` is runtime state and git-ignored; the tracked
 artifact is the SEED at `deploy/kb/inspirations/_sources.yaml`, which `install-user-units.sh` (and
@@ -569,8 +572,8 @@ your curation and the `write-yield` stamps are never overwritten.
 `ALGUA_RESEARCH_HYPOTHESES_PER_RUN`, `ALGUA_IDEA_POOL_FLOOR_DAYS`, `ALGUA_IDEA_POOL_CEILING_DAYS`,
 `ALGUA_IDEA_CLAIM_TTL_MINUTES`, `ALGUA_IDEA_PREVIEW_HOLD_HOURS` drive the pool-depth math
 (`refill_at`/`ceiling` = `runs_per_day * hypotheses_per_run * {floor,ceiling}_days`); `LEAP_MAX_IDEAS`
-bounds hypotheses per leap; `FORAGE_MAX_NOTES`/`FORAGE_SLICES`/`FORAGE_MCP` bound notes per forage
-run, the category rotation width, and the MCP opt-in.
+bounds hypotheses per leap; `FORAGE_MAX_NOTES`/`FORAGE_SLICES` bound notes per forage run and
+the category rotation width.
 
 **Done.** `uv run algua research idea depth` shows a non-empty pool that recovers above
 `refill_at` within one leap interval after a research run; `uv run algua research idea scorecard

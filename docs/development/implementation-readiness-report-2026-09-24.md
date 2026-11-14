@@ -25,9 +25,6 @@ No sharded duplicate of these primary documents was found. The older
 `docs/algua-architecture.html` are supporting/historical material, not replacement product
 authority. No separate UX specification was found; this story introduces no UI.
 
-The repository has no `_bmad` configuration. Use the workflow path bindings recorded in
-`docs/development/README.md`, with installed skill defaults and English output.
-
 Lior confirmed this inventory with `C`. Later stories are unprepared and outside this assessment.
 
 ## PRD analysis
@@ -111,7 +108,7 @@ internal refactor. No missing UX design blocks it; no new dashboard work is impl
 
 ## Final assessment — 2026-09-24
 
-Assessor: Codex, using BMAD implementation-readiness.
+Assessor: Codex, using the recorded readiness criteria.
 
 **READY for Story 1.1 only. Whole Phase 1: NEEDS WORK.**
 

@@ -1,26 +1,24 @@
 #!/usr/bin/env bash
 #
-# Forage: send a sandboxed agent to the web for inspiration about what works, in a throwaway
+# Forage: send an agent to the web for inspiration about what works, in a throwaway
 # worktree, then land the survivors in the vault via a TRUSTED DRIVER (this script, after the agent
 # exits) — never the agent itself (ideation engine spec 2026-09-08 §5).
 #
-# Two independent walls keep the agent off the authoritative funnel:
-#   1. FILESYSTEM CONTAINMENT, imposed by the run_agent.sh seam (bwrap: everything outside the
-#      worktree is read-only, and /tmp is a private tmpfs — which closes the hole the 2026-09-08
-#      sandbox spike found, where /tmp and $TMPDIR stayed agent-writable). The working root is the
-#      throwaway worktree ${REPO_ROOT}/.runs/forage-<stamp>; model-generated writes land only
-#      inside it.
-#   2. NO REGISTRY ACCESS, NO ALGUA COMMANDS — by CAPABILITY, not by instruction. The `forage`
-#      agent denies the `bash` tool outright, so it cannot run an `algua` command even if its
-#      prompt were subverted; it is also given no ALGUA_DB_PATH — its only expected output is markdown files under
+# Controls separating exploration from authoritative writes:
+#   1. OPTIONAL FILESYSTEM CONTAINMENT through run_agent.sh. In bwrap mode most host paths are
+#      read-only and /tmp is private; worktree and runtime-state paths remain writable. auto
+#      falls back to none without bwrap. Host read access and networking are not isolated.
+#      The working root is the throwaway worktree ${REPO_ROOT}/.runs/forage-<stamp>.
+#   2. SHELL TOOL DENIED by the forage profile; ALGUA_DB_PATH is not passed to the agent.
+#      These controls do not establish that all host data is inaccessible. Expected output is markdown files under
 #      kb/inspirations/ in the worktree, plus a forage-report.md summary. The TRUSTED DRIVER (this
 #      script, after the agent exits) does all the authoritative work: `research inspirations accept`
 #      validates and copies survivors into the real vault; a small validator turns the report's
 #      "## Proposed venues" list into `research inspirations propose` calls; one digest line lands
 #      in data/forage-runs.jsonl. The worktree and its branch are always removed on exit.
 #
-# MCP tools (paper-search, page extraction) require the sandbox bypass and are therefore OPT-IN
-# is loudly warned. Package specs are pinned to an exact version when used.
+# MCP tools are configured declaratively in opencode.json. There is no FORAGE_MCP bypass flag;
+# do not infer that adding a tool preserves an isolation guarantee.
 #
 # Usage:
 #   .opencode/scripts/forage.sh [--categories a,b] [--max-notes N] [--timeout DUR] [--dry-run]
@@ -361,12 +359,12 @@ fi
 # --- Agent invocation (spec §5). The runtime, sandbox posture and model live behind ONE seam
 # (.opencode/scripts/run_agent.sh); this driver names none of them. Forage is the only loop granted
 # web access, and it is the only one with `bash` DENIED — it runs no `algua` command at all, so the
-# registry is out of reach by capability rather than by discipline.
+# shell tool denial is separate from the filesystem and environment controls.
 #
 # The FORAGE_MCP escape hatch is GONE. Under Codex, attaching the paper-search MCP server required
 # `--dangerously-bypass-approvals-and-sandbox` — dropping the OS wall to gain a tool. OpenCode
 # configures MCP servers declaratively in opencode.json, so if that server is wanted it is added
-# there with every wall intact. A flag whose only purpose was to disable a safety wall should not
+# there under the configured tool and sandbox policy. A flag whose only purpose was to disable a safety wall should not
 # survive a migration that no longer needs it.
 #
 # The agent still gets NO registry path: even though this driver needs ALGUA_DATA_DIR /

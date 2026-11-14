@@ -54,9 +54,10 @@ in paper. The forward gate, not this one, is the harsh threshold.
   trials (breadth is measured, never declared) and feeds it to the DSR as its trial count; a failed
   `dsr_evidence` after a wide search is the signal that the holdout Sharpe may be selection luck.
   The holdout is your defense against search-induced overfitting.
-- **Look-ahead.** The engine enforces the `t→t+1` decision lag centrally, so a *correctly authored*
-  strategy can't peek — but if results look too good to be true, re-read `compute_weights` (and
-  `compute_weights_panel` if present) for any accidental use of current-bar information.
+- **Look-ahead.** The engine enforces the `t→t+1` execution lag, which does not detect leakage
+  inside a feature or signal. Re-read `signal`/`signal_panel`, or `score(context)` for context
+  strategies, for future-data access and full-sample fitting. Fast/canonical parity proves
+  agreement, not scientific validity.
 - **Tiny samples / degenerate periods.** Very short windows or flat data produce noisy metrics;
   prefer a multi-year `--start/--end`.
 - **The judgment layer.** `kb/principles/research-methodology.md` explains *why* these walls exist,
