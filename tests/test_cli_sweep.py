@@ -112,8 +112,7 @@ def test_promote_full_emits_deep_diagnostics():
     assert res.exit_code == 0, res.stdout
     payload = json.loads(res.stdout)
     # full output is unchanged: deep gate diagnostics present, no summary marker
-    assert "dsr_confidence" in payload and "haircut_would_have_blocked" in payload
-    assert "dsr_trial_sr_var_ann" in payload
+    assert "dsr_confidence" in payload and "dsr_trial_sr_var_ann" in payload
     assert "summary" not in payload
 
 
@@ -123,8 +122,8 @@ def test_promote_summary_drops_deep_diagnostics():
     assert res.exit_code == 0, res.stdout
     payload = json.loads(res.stdout)
     # summary drops the deep dsr_*/shadow-audit fields
-    assert "dsr_confidence" not in payload and "haircut_would_have_blocked" not in payload
-    assert "dsr_trial_sr_var_ann" not in payload and "own_lifetime_combos" not in payload
+    assert "dsr_confidence" not in payload and "dsr_trial_sr_var_ann" not in payload
+    assert "own_lifetime_combos" not in payload
     # keeps the decision essence + marker
     assert payload["summary"] is True and payload["ok"] is True
     assert "promoted" in payload and "checks" in payload and "passed" in payload

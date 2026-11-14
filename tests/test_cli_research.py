@@ -72,8 +72,9 @@ def test_promote_passes_and_shortlists():
     assert payload["promoted"] is True
     assert payload["n_funnel"] == 4
     assert payload["breadth_provenance"] == "measured"
-    # Measured breadth raises the bar: effective > base.
-    assert payload["effective_min_holdout_sharpe"] > payload["base_min_holdout_sharpe"]
+    # The measured breadth is the DSR trial count (no haircut on the holdout-Sharpe bar).
+    assert payload["dsr_n_trials"] == payload["n_funnel"]
+    assert "effective_min_holdout_sharpe" not in payload
     assert _stage() == "candidate"
 
 

@@ -1,35 +1,27 @@
 """Promotion gate (backtested -> candidate) composer (#335 extraction).
 
-GATE PHILOSOPHY — market-first selection (the strategy-factory pivot, see
-``docs/superpowers/specs/2026-08-10-strategy-factory-design.md``). Backtest evidence is cheap and
-search can overfit it; forward evidence cannot be overfit by prior search. Selection therefore
-happens at the FORWARD gate (the harsh threshold: ≥63 broker-clocked observations, realized Sharpe
-≥ max(0.5×holdout, 0.3), vol/drawdown bounds), where multiplicity cannot reach. This gate is an
-INTEGRITY FLOOR, not a statistical exam: only the correctness checks BIND —
-``min_holdout_observations`` (the power floor), ``pit_required`` (Wall B), and
-``holdout_sharpe_floor`` (raw holdout Sharpe > 0). The entire statistical stack — the
-breadth-deflated ``holdout_sharpe`` bar, ``holdout_return``, DSR evidence and the
-serial-dependence bootstrap — is RECORDED on every check (``"advisory": true``) but never vetoes
-``passed``. (Window stability, regime robustness and the idiosyncratic-alpha screen were removed
-in lean trim step 7; ``wf.stability`` itself stays in walk-forward results.) The recorded holdout
-Sharpe still parameterizes the forward bar (0.5×holdout), so an overfit-inflated holdout
-self-punishes at the forward gate.
+GATE PHILOSOPHY — this gate is an INTEGRITY FLOOR, not a statistical exam. Only the correctness
+checks BIND: ``min_holdout_observations`` (the 63-bar power floor), ``pit_required`` (Wall B) and
+``holdout_sharpe_floor`` (raw holdout Sharpe > 0). Everything statistical is RECORDED on its check
+(``"advisory": true``) and never vetoes ``passed``: ``holdout_sharpe`` (against the base
+``min_holdout_sharpe``), ``holdout_return``, and the one trial-aware quality signal, DSR
+(``dsr_evidence``) plus its serial-dependence bootstrap (``dsr_bootstrap``), whose trial count is
+``max(own lifetime combos, funnel-wide windowed combos)`` (spec 2026-11-12 §4.7). Making DSR
+binding is a separate owner decision. Lean trim step 7 removed the breadth haircut, window
+stability, regime robustness, the idiosyncratic-alpha screen and the FDR ledger.
 
-The pure-maths responsibilities that ``evaluate_gate`` composes live in cohesive sibling
-modules (mirroring the ``backtest/bootstrap.py`` / ``backtest/neff.py`` precedent):
+The recorded holdout Sharpe (the ``holdout_sharpe`` check's VALUE) parameterizes the strict
+forward bar (``paper promote``: Sharpe >= max(0.5x holdout, 0.3) over 63 broker-clocked
+observations), so an overfit-inflated holdout self-punishes there.
 
-- ``algua.research.dsr``       — DSR SR*/confidence, dispersion floor, effective funnel breadth.
-- ``algua.research.haircut``   — the deflated-Sharpe multiple-testing haircut.
+The pure maths ``evaluate_gate`` composes lives in sibling modules:
+
+- ``algua.research.dsr``        — DSR SR*/confidence, dispersion floor, the trial count.
 - ``algua.research._constants`` — the shared holdout-power floor (MIN_HOLDOUT_OBSERVATIONS).
 
 This module keeps the gate-orchestration surface: ``GateCriteria``, ``GateDecision``, the
 declarative ``GateSpec``/``GATE_SPECS``, the orchestration-level constants, and ``evaluate_gate``.
-The re-export shim left behind by the #335 extraction was removed in stage 7 task 4: every
-importer of a moved name (promotion.py, store.py, the CLIs, the test suite) now imports it
-directly from its real owner (``algua.research.dsr`` / ``.haircut`` /
-``._constants``, or ``algua.backtest.walkforward``/``._constants``). ``__all__`` below lists only
-what this module actually defines. ``GateDecision.to_dict()`` delegates to
-``algua.research.gate_serialization.gate_decision_to_dict`` (also carved out in task 4).
+``GateDecision.to_dict()`` delegates to ``algua.research.gate_serialization.gate_decision_to_dict``.
 """
 from __future__ import annotations
 
@@ -43,18 +35,13 @@ from algua.backtest.walkforward import WalkForwardResult
 from algua.research._constants import MIN_HOLDOUT_OBSERVATIONS
 from algua.research.dsr import DSR_ALPHA, dsr_confidence
 from algua.research.gate_serialization import gate_decision_to_dict
-from algua.research.haircut import sharpe_haircut
 
 __all__ = [
-    "DOMINANCE_AUDIT_MIN_PROMOTIONS",
-    "DOMINANCE_AUDIT_MIN_WINDOW_DAYS",
-    "DOMINANCE_AUDIT_ZERO_HAIRCUT_EXCEPTIONS",
     "FUNNEL_WINDOW_DAYS",
     "GATE_SPECS",
     "GateCriteria",
     "GateDecision",
     "GateSpec",
-    "PHASE3_COMPONENT_MASK",
     "evaluate_gate",
 ]
 
@@ -62,25 +49,6 @@ __all__ = [
 # (relaxing it would weaken the gate). Rolling window keeps the bar bounded; the wait-out-the-window
 # trade-off is accepted and auditable via search_trials.created_at.
 FUNNEL_WINDOW_DAYS = 90
-
-# Dominance-audit predeclaration (#221, Phase 3 Slice 4). CODEOWNERS-protected constants — these
-# thresholds are committed HERE (before any audit data accumulates) so the Slice 5
-# haircut-retirement audit cannot select them post-hoc. The retirement audit (Slice 5) filters
-# decision_json rows where `phase3_component_mask` has all required bits set, then checks that no
-# row where `haircut_would_have_blocked=True AND dsr_raw_N_pass=True` exceeds
-# DOMINANCE_AUDIT_ZERO_HAIRCUT_EXCEPTIONS over >= DOMINANCE_AUDIT_MIN_PROMOTIONS promotions
-# across >= DOMINANCE_AUDIT_MIN_WINDOW_DAYS of real-traffic wall time. SHADOW/AUDIT ONLY in
-# Slice 4 — these constants are read only by the Slice 5 audit, not by any gate pass/fail logic.
-DOMINANCE_AUDIT_MIN_PROMOTIONS = 30        # min promotions in the audit window for a verdict
-DOMINANCE_AUDIT_MIN_WINDOW_DAYS = 90       # min calendar days of traffic for the audit to bind
-DOMINANCE_AUDIT_ZERO_HAIRCUT_EXCEPTIONS = 0  # haircut-blocked-but-DSR-passed cases allowed: none
-
-# Phase 3 component mask — bitmask recording which Phase 3 slices are active on a gate evaluation.
-# Bits 0-4 = Slices 0-4; all five set = 0b11111 = 31. Stored as `phase3_component_mask` in
-# decision_json so the Slice 5 audit can filter rows where all Phase 3 components are active.
-# SHADOW/AUDIT ONLY — does not affect passed.
-PHASE3_COMPONENT_MASK = 0b11111  # bits 0-4 = Phase 3 slices 0-4, all five active
-
 
 @dataclass
 class GateCriteria:
@@ -99,7 +67,6 @@ class GateDecision:
     n_combos: int | None = None
     breadth_provenance: str | None = None
     base_min_holdout_sharpe: float | None = None
-    effective_min_holdout_sharpe: float | None = None
     own_lifetime_combos: int | None = None
     windowed_total_combos: int | None = None
     funnel_window_days: int | None = None
@@ -135,17 +102,6 @@ class GateDecision:
     dsr_n_eff: int | None = None
     dsr_rho_bar: float | None = None
     dsr_n_siblings: int | None = None
-    # Dominance-audit shadow fields (#221 Slice 4). SHADOW/AUDIT ONLY — not in checks, not in
-    # passed. Recorded on every evaluate_gate call so the Slice 5 retirement audit can accumulate
-    # real-traffic statistics with pre-committed thresholds.
-    # haircut_would_have_blocked: True iff the holdout Sharpe cleared the BASE bar but failed the
-    #   haircut-inflated bar (the haircut is what blocked an otherwise-passing holdout). When the
-    #   effective bar is +inf (degenerate zero-length holdout), True iff the base bar passed.
-    # phase3_component_mask: PHASE3_COMPONENT_MASK (0b11111 = 31) — all five Slice 0-4 components
-    #   active. Allows the audit to filter rows where the full Phase 3 stack was live.
-    haircut_would_have_blocked: bool = False
-    phase3_component_mask: int | None = None
-
     def to_dict(self) -> dict[str, Any]:
         return gate_decision_to_dict(self)
 
@@ -183,9 +139,6 @@ GATE_SPECS: tuple[GateSpec, ...] = (
 )
 
 
-_HOLDOUT_SHARPE_SPEC = "holdout_sharpe"
-
-
 def evaluate_gate(
     wf: WalkForwardResult,
     criteria: GateCriteria,
@@ -213,42 +166,27 @@ def evaluate_gate(
 
     Factory soft gate: ``passed`` composes ONLY the binding integrity-floor checks
     (``min_holdout_observations``, ``holdout_sharpe_floor``, ``pit_required``). Every statistical
-    check is computed and recorded exactly as before, marked ``"advisory": true``, and never
-    vetoes. The holdout-Sharpe threshold of the (advisory) ``holdout_sharpe`` check is still
-    DEFLATED by ``sharpe_haircut(n_combos, T)`` where T is the holdout sample size
-    (``wf.holdout_metrics["n_bars"]``) — the multiple-testing telemetry: the more combos the agent
-    searched, the higher the recorded bar. At N=1 (or no breadth) the haircut is 0 and the
-    effective bar equals the base. ``breadth_provenance`` ("measured"/"declared") is carried into
+    check is computed and recorded, marked ``"advisory": true``, and never vetoes. The
+    (advisory) ``holdout_sharpe`` check's threshold is the base ``criteria.min_holdout_sharpe``;
+    the trial-aware multiple-testing signal is DSR (``dsr_evidence`` + ``dsr_bootstrap``), whose
+    trial count is ``n_combos`` (lean trim step 7 removed the breadth haircut on this bar).
+    ``breadth_provenance`` ("measured"/"declared") is carried into
     the decision for the audit trail; it does not change the math. The ``holdout_sharpe`` check's
     VALUE is read by name by the forward gate (``qualified_holdout_sharpe``) to parameterize the
     forward bar — its name/value/threshold semantics are a stable contract.
     """
     sources = {"holdout": wf.holdout_metrics}
     base_holdout_sharpe = float(criteria.min_holdout_sharpe)
-    haircut = (
-        sharpe_haircut(n_combos, int(wf.holdout_metrics["n_bars"]))
-        if n_combos is not None
-        else 0.0
-    )
-    effective_holdout_sharpe = base_holdout_sharpe + haircut
 
     checks: list[dict[str, Any]] = []
     for spec in GATE_SPECS:
         value = float(sources[spec.source][spec.metric_key])
         threshold = float(getattr(criteria, spec.threshold_attr))
-        if spec.name == _HOLDOUT_SHARPE_SPEC:
-            threshold = effective_holdout_sharpe
-        # A non-finite EFFECTIVE THRESHOLD means a degenerate (zero-length) holdout drove the
-        # haircut to inf: there is no out-of-sample evidence, so the check FAILS CLOSED — never a
-        # pass — and the inf threshold is nulled out of the payload to keep it JSON-clean.
-        if not math.isfinite(threshold):
-            check: dict[str, Any] = {"name": spec.name, "value": None, "threshold": None,
-                                     "op": spec.op, "passed": False}
         # A non-finite metric (inf trivially clears >=/>, NaN is never a real result) is a
         # gate failure, never a pass — and is never recorded as a NaN/inf in the payload.
-        elif not math.isfinite(value):
-            check = {"name": spec.name, "value": None, "threshold": threshold,
-                     "op": spec.op, "passed": False}
+        if not math.isfinite(value):
+            check: dict[str, Any] = {"name": spec.name, "value": None, "threshold": threshold,
+                                     "op": spec.op, "passed": False}
         else:
             check = {"name": spec.name, "value": value, "threshold": threshold,
                      "op": spec.op, "passed": bool(_OPS[spec.op](value, threshold))}
@@ -257,7 +195,7 @@ def evaluate_gate(
         checks.append(check)
     # Integrity floor (factory soft gate): the RAW holdout Sharpe must be strictly positive — a
     # correctness screen (a strategy that lost money out-of-sample has no business in the paper
-    # book), NOT a statistical bar (the breadth-deflated holdout_sharpe check above is advisory).
+    # book), NOT a statistical bar (the holdout_sharpe check above is advisory).
     # Same value the holdout_sharpe check scores; fixed threshold 0.0, no criteria knob, no actor
     # split. A non-finite value FAILS CLOSED and is nulled out of the payload (same convention as
     # the spec loop above).
@@ -325,16 +263,6 @@ def evaluate_gate(
     else:
         dsr_skip_reason = "no_measured_dispersion"
 
-    # Dominance-audit shadow field (#221 Slice 4): did the haircut alone block an otherwise-passing
-    # holdout? True iff the holdout Sharpe clears the BASE bar but fails the haircut-inflated bar.
-    # The haircut is still BINDING (this is shadow recording only). When the effective bar is +inf
-    # (degenerate zero-length holdout drove the haircut to inf), the haircut blocks everything the
-    # base bar passed, so True iff the base bar passed. SHADOW/AUDIT ONLY — does not affect passed.
-    haircut_would_have_blocked = bool(
-        sr_obs_ann >= base_holdout_sharpe
-        and (not math.isfinite(effective_holdout_sharpe) or sr_obs_ann < effective_holdout_sharpe)
-    )
-
     return GateDecision(
         # Factory soft gate: only BINDING checks (no "advisory" marker — the integrity floor:
         # min_holdout_observations, holdout_sharpe_floor, pit_required) compose `passed`.
@@ -344,7 +272,6 @@ def evaluate_gate(
         n_combos=n_combos,
         breadth_provenance=breadth_provenance,
         base_min_holdout_sharpe=base_holdout_sharpe,
-        effective_min_holdout_sharpe=effective_holdout_sharpe,
         own_lifetime_combos=own_lifetime_combos,
         windowed_total_combos=windowed_total_combos,
         funnel_window_days=funnel_window_days,
@@ -366,6 +293,4 @@ def evaluate_gate(
         dsr_bootstrap_seed=(bootstrap_seed if effective_bootstrap_binding else None),
         dsr_bootstrap_b=(bootstrap_b if effective_bootstrap_binding else None),
         dsr_bootstrap_block_len=(bootstrap_block_len if effective_bootstrap_binding else None),
-        haircut_would_have_blocked=haircut_would_have_blocked,
-        phase3_component_mask=PHASE3_COMPONENT_MASK,
     )

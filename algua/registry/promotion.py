@@ -241,8 +241,8 @@ def run_gate(
     rec = repo.get(name)
 
     # Effective independent trials N_eff (#221 Slice 3) — SHADOW-ONLY: recorded for the audit trail,
-    # NEVER passed as the binding DSR trial count (a lower N_eff would loosen the gate; it goes
-    # binding only at Slice 5 with haircut retirement). Sibling-only read (excludes own vector).
+    # NEVER passed as the DSR trial count (a lower N_eff would loosen the deflation). Sibling-only
+    # read (excludes own vector).
     # Guarded on holdout_metrics["start"/"end"] presence (omit-not-fail for legacy fixtures
     # that pre-date Slice 1 and don't carry the OOS interval in the WalkForwardResult).
     h_start_neff = wf.holdout_metrics.get("start")
@@ -401,7 +401,6 @@ def _gate_reason(decision: GateDecision) -> str:
         f"; own={decision.own_lifetime_combos}, windowed={decision.windowed_total_combos}"
         f", window={decision.funnel_window_days}d)"
         f"; min_holdout_sharpe={decision.base_min_holdout_sharpe:.4g}"
-        f"->{decision.effective_min_holdout_sharpe:.4g}"
         if decision.n_combos is not None else ""
     )
     return "gate pass: " + ", ".join(parts) + breadth

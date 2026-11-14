@@ -22,9 +22,8 @@ DSR_BOOTSTRAP_RESAMPLES = 2000            # stationary-bootstrap resample count 
 DSR_BOOTSTRAP_LOWER_QUANTILE = 0.05       # lower quantile of the bootstrap DSR-confidence dist.
 MAX_BOOTSTRAP_BLOCK_LEN_FRACTION = 0.5    # cap block length at max(1, floor(T * FRACTION))
 
-# Effective independent trials N_eff (#221, Phase 3 Slice 3). SHADOW-ONLY in Phase 3 — recorded in
-# the audit payload, never the binding DSR trial count (a lower N_eff would loosen the gate; it goes
-# binding only at Slice 5, bundled with haircut retirement). Protected — load-bearing from Slice 5.
+# Effective independent trials N_eff (#221, Phase 3 Slice 3). SHADOW-ONLY — recorded in the audit
+# payload, never the DSR trial count (a lower N_eff would loosen the deflation). Protected.
 MIN_N_EFF_SIBLINGS = 5          # min overlapping-OOS sibling streams to attempt an N_eff estimate
 MIN_CORR_OVERLAP_BARS = 21      # min date-aligned shared bars per sibling pair to estimate a corr
 RHO_BAR_SHRINKAGE_K = 1.0       # SE multiplier for the conservative (lower-bound) rho_bar

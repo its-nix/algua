@@ -17,7 +17,7 @@ app.add_typer(research_app, name="research")
 # excluded-by-default from the operator-facing summary (context-rot defense).
 _PROMOTE_SUMMARY_KEYS = (
     "promoted", "strategy", "passed", "checks", "n_combos", "n_funnel", "breadth_provenance",
-    "base_min_holdout_sharpe", "effective_min_holdout_sharpe", "pit_ok", "pit_override",
+    "base_min_holdout_sharpe", "pit_ok", "pit_override",
     "dsr_binding", "dsr_bootstrap_binding", "returns_available", "holdout", "stability",
     "config_hash", "snapshot_id", "universe_name", "universe_snapshots", "fundamentals_snapshot",
     "news_snapshot",
@@ -62,9 +62,9 @@ def promote(
 
     BINDING (the floor): PIT universe (`--universe`; non-PIT fails closed), holdout >= 63
     observations (underpowered holdouts fail closed), and raw holdout Sharpe > 0. Everything
-    statistical — the breadth-DEFLATED holdout-Sharpe bar and the DSR/bootstrap evidence — is
-    computed and recorded as ADVISORY
-    (`"advisory": true` on the check; never vetoes). The FORWARD gate is the harsh threshold (its
+    statistical — the holdout-Sharpe/return bars and the DSR/bootstrap evidence (the one
+    trial-aware signal) — is computed and recorded as ADVISORY (`"advisory": true` on the check;
+    never vetoes). The FORWARD gate is the harsh threshold (its
     bar is 0.5x the holdout Sharpe recorded here — overfit self-punishes). Breadth is MEASURED as
     the sum of recorded `search_trials` (from `backtest sweep`); no measured trials => refused. The
     holdout is single-use. The gates are the same for every `--actor`: there is no override. See

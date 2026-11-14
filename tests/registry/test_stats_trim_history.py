@@ -172,6 +172,12 @@ def test_old_and_new_gate_rows_render(conn: sqlite3.Connection) -> None:
     assert [c["name"] for c in old["decision"]["checks"]] == [c["name"] for c in OLD_CHECKS]
     assert old_run["gate_decision"]["appraisal_ratio"] == 0.4
 
+    # Haircut keys (Task 4) stay visible on the old row.
+    for key in ("effective_min_holdout_sharpe", "haircut_would_have_blocked",
+                "phase3_component_mask"):
+        assert old["decision"][key] == OLD_STATS_KEYS[key], key
+        assert key not in new["decision"]
+
 
 def test_historical_keys_are_disjoint_from_current_fields() -> None:
     from algua.registry.gate_history import (
@@ -198,3 +204,23 @@ def test_old_family_tables_stay_as_history(conn: sqlite3.Connection) -> None:
     assert rows[new_id]["family_id"] is None
     gates, _ = strategy_gate_history(conn, sid)
     assert {g["id"] for g in gates} == {old_id, new_id}
+
+
+def test_forward_bar_reads_value_not_threshold(conn: sqlite3.Connection) -> None:
+    """The forward gate reads the holdout_sharpe check's VALUE (raw holdout Sharpe), never its
+    threshold: an old row (haircut-deflated threshold) and a new row (base threshold) with the
+    same value give the same forward bar input."""
+    from algua.registry.forward_evidence import qualified_holdout_sharpe
+    from algua.registry.repository import ArtifactIdentity
+
+    repo = SqliteStrategyRepository(conn)
+    identity = ArtifactIdentity("c", "cfg", "dep")
+    results = []
+    for name, threshold in (("old_s", 0.9), ("new_s", 0.5)):
+        rec = repo.add(name)
+        checks = [{**c, "threshold": threshold} if c["name"] == "holdout_sharpe" else c
+                  for c in _BASE_CHECKS]
+        _insert_gate(conn, rec.id, {**_new_decision(), "checks": checks}, fdr=None,
+                     family_id=None)
+        results.append(qualified_holdout_sharpe(conn, rec.id, identity))
+    assert results == [1.1, 1.1]

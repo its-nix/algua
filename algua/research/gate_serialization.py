@@ -3,15 +3,14 @@ task 4).
 
 Pure mapping from a ``GateDecision`` to the exact JSON-safe payload persisted as
 ``gate_evaluations.decision_json`` (``algua/registry/promotion.py``) and threaded through the CLI
-and the dominance-audit / negative-results consumers. Non-finite floats are nulled so the payload
+and the negative-results consumer. Non-finite floats are nulled so the payload
 stays JSON-clean (mirrors how non-finite check values are already nulled in ``checks``).
 
 CODEOWNERS-protected (see ``CODEOWNERS`` + ``tests/test_repo_hygiene.py``'s
 ``INTEGRITY_CRITICAL_MODULES``): this function decides exactly which fields reach the persisted
 decision record. It cannot flip ``passed`` (that is decided upstream in ``evaluate_gate``), but it
-COULD silently drop an audit-only field — e.g. one of the dominance-audit shadow fields
-(``haircut_would_have_blocked``, ``phase3_component_mask``) that the Slice 5 retirement audit reads
-from ``decision_json`` — which would quietly disarm that downstream guard with no error anywhere.
+COULD silently drop an audit-only field — e.g. the DSR evidence fields that are the one advisory,
+trial-aware quality signal — which would quietly blank that record with no error anywhere.
 That is exactly the "an agent could change this alone and weaken a guarantee" case the CODEOWNERS
 file exists to catch, so this module is walled the same way ``gates.py`` is.
 
@@ -31,9 +30,6 @@ if TYPE_CHECKING:
 
 def gate_decision_to_dict(decision: GateDecision) -> dict[str, Any]:
     """The exact dict payload ``GateDecision.to_dict()`` returns."""
-    # A degenerate holdout drives the effective bar to inf (fail-closed); null it so the
-    # payload stays JSON-clean, mirroring how non-finite check values are nulled.
-    eff = decision.effective_min_holdout_sharpe
 
     def _f(x: float | None) -> float | None:
         return x if x is None or math.isfinite(x) else None
@@ -44,9 +40,6 @@ def gate_decision_to_dict(decision: GateDecision) -> dict[str, Any]:
         "n_combos": decision.n_combos,
         "breadth_provenance": decision.breadth_provenance,
         "base_min_holdout_sharpe": decision.base_min_holdout_sharpe,
-        "effective_min_holdout_sharpe": (
-            eff if eff is None or math.isfinite(eff) else None
-        ),
         "own_lifetime_combos": decision.own_lifetime_combos,
         "windowed_total_combos": decision.windowed_total_combos,
         "funnel_window_days": decision.funnel_window_days,
@@ -72,7 +65,4 @@ def gate_decision_to_dict(decision: GateDecision) -> dict[str, Any]:
         "dsr_n_eff": decision.dsr_n_eff,
         "dsr_rho_bar": _f(decision.dsr_rho_bar),
         "dsr_n_siblings": decision.dsr_n_siblings,
-        # Dominance-audit shadow fields (#221 Slice 4)
-        "haircut_would_have_blocked": decision.haircut_would_have_blocked,
-        "phase3_component_mask": decision.phase3_component_mask,
     }

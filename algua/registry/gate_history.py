@@ -31,7 +31,6 @@ GATE_DECISION_ALLOWLIST: frozenset[str] = frozenset({
     "n_combos",
     "breadth_provenance",
     "base_min_holdout_sharpe",
-    "effective_min_holdout_sharpe",
     "own_lifetime_combos",
     "windowed_total_combos",
     "funnel_window_days",
@@ -57,8 +56,6 @@ GATE_DECISION_ALLOWLIST: frozenset[str] = frozenset({
     "dsr_n_eff",
     "dsr_rho_bar",
     "dsr_n_siblings",
-    "haircut_would_have_blocked",
-    "phase3_component_mask",
 })
 
 # Keys of GateDecision fields REMOVED by lean trim step 7 (spec 2026-11-12 §4.8). New rows never
@@ -95,6 +92,10 @@ GATE_DECISION_HISTORICAL: frozenset[str] = frozenset({
     "ir_alpha_ann",
     "ir_residual_vol_ann",
     "appraisal_ratio",
+    # the breadth haircut + its dominance-audit shadow fields (Task 4)
+    "effective_min_holdout_sharpe",
+    "haircut_would_have_blocked",
+    "phase3_component_mask",
 })
 
 # GateDecision fields deliberately NOT projected. Empty since lean trim step 7 removed
