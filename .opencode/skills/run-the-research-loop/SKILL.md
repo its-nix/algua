@@ -85,14 +85,17 @@ For each claimed idea:
 3. **Backtest + register.** `uv run algua backtest run <name> <data-options> --register` (advances `idea →
    backtested`).
 4. **Out-of-sample evidence.** `uv run algua backtest walk-forward <name> <data-options>` (K windows +
-   stability; the holdout is withheld until `research promote`). Optionally `uv run algua backtest sweep <name> <data-options> --param KEY=v1,v2,...`
-   to scan parameters — but remember every combo you search raises the bar the holdout must clear
-   (see `interpret-results` on search breadth).
+   stability; the holdout is withheld until `research promote`). If matching measured breadth is
+   not already recorded, run `uv run algua backtest sweep <name> <data-options> --param KEY=v1,v2,...`
+   within the predeclared budget. Count every attempted variant;
+   breadth-deflated statistics remain advisory (see `interpret-results`).
 5. **Interpret.** Delegate the results JSON to the `interpret` subagent for a promote/discard
    recommendation with reasoning, and assess the idea's own `falsification` statement against the
    walk-forward evidence -> `falsification_assessment` (`refuted` | `survived` | `untested`).
-6. **Gate.** Run `uv run algua research promote <name> <data-options>` (record the combos you searched with
-   `--n-combos K`). The gate advances `backtested → candidate` **only on pass**; on a fail it
+6. **Gate.** Run `uv run algua research promote <name> <data-options>` using measured breadth from
+   `backtest sweep`, a fresh holdout and PIT universe inputs. `--n-combos` is an authenticated
+   human-only declaration; research workers never pass it. The gate advances
+   `backtested → candidate` **only on pass**; on a fail it
    reports why and leaves the stage unchanged. Trust the gate — do not lower thresholds to force a pass.
 7. **Record.** Sync the synced fact blocks: `uv run algua strategy doc <name>`. Then write
    the doc's `## Verdict & next` (what was learned + the next idea as a `[[dangling-link]]`),

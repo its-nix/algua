@@ -49,11 +49,13 @@ in paper. The forward gate, not this one, is the harsh threshold.
 ## Pitfalls to watch
 
 - **Search breadth / overfitting.** The more parameter combos you sweep, the more likely one looks
-  good by chance. Record the number searched (`promote --n-combos K`); treat a thin holdout margin
-  after a wide search as weak. The holdout is your defense against search-induced overfitting.
-- **Look-ahead.** The engine enforces the `t→t+1` decision lag centrally, so a *correctly authored*
-  strategy can't peek — but if results look too good to be true, re-read `compute_weights` (and
-  `compute_weights_panel` if present) for any accidental use of current-bar information.
+  good by chance. Research workers use measured breadth from `backtest sweep`; `--n-combos` is
+  an authenticated human-only declaration. Treat a thin holdout margin after a wide search as
+  weak. Breadth-deflated statistics are advisory, not an enforced multiple-testing guarantee.
+- **Look-ahead.** The engine enforces the `t→t+1` execution lag, which does not detect leakage
+  inside a feature or signal. Re-read `signal`/`signal_panel`, or `score(context)` for context
+  strategies, for future-data access and full-sample fitting. Fast/canonical parity proves
+  agreement, not scientific validity.
 - **Tiny samples / degenerate periods.** Very short windows or flat data produce noisy metrics;
   prefer a multi-year `--start/--end`.
 - **The judgment layer.** `kb/principles/research-methodology.md` explains *why* these walls exist,

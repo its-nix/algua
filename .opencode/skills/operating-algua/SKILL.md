@@ -42,7 +42,9 @@ commands may reach `forward_tested` under their gates. Stage lives in the SQLite
 - `uv run algua backtest run <name> --demo --register` — backtest + register + advance to `backtested`.
 - `uv run algua backtest walk-forward <name> --demo` — K windows + stability (out-of-sample evidence); the holdout is withheld until `research promote`.
 - `uv run algua backtest sweep <name> --demo --param KEY=v1,v2` — bounded parameter grid, ranked.
-- `uv run algua research promote <name> --demo` — gate `backtested → candidate`; promotes only on pass.
+- `uv run algua research promote <name> --snapshot <id> --universe <pit-universe> --start D --end D`
+  — gate `backtested → candidate`; requires measured sweep breadth and a fresh holdout, and
+  promotes only on pass. Research workers never use the human-only `--n-combos` declaration.
 - `uv run algua paper promote <name>` — gate `paper → forward_tested`; requires ≥63 broker-clocked daily return observations, ≥90% coverage, realized Sharpe ≥ max(0.5×holdout, 0.3), vol/DD bounds, clean integrity + hygiene, evidence ≤5 sessions stale. Relaxation flags are human-only.
 - `uv run algua data inspect --summary` — what data snapshots exist.
 
@@ -51,8 +53,9 @@ ONLY the decision-relevant scalars (drops the per-window/per-combo lists and the
 diagnostics; the payload is stamped `"summary": true`). Prefer it for unattended operation so
 verbose tool output doesn't rot your context (#349); omit it when you need the full detail.
 
-`--demo` uses the synthetic data provider (offline, deterministic). Swap in real bars with
-`--snapshot <id>` from `data ingest-bars` when you want real data.
+`--demo` uses the synthetic data provider for explicit offline smoke tests, not economic evidence.
+Research uses the assigned real `--snapshot <id>`, dates, universe and sidecars. Snapshot existence
+does not prove PIT eligibility; report missing inputs or a refused gate rather than inventing them.
 
 ## Where to look
 
