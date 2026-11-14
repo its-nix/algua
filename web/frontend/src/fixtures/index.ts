@@ -21,6 +21,7 @@ import {
   type Seed,
 } from './steady-state'
 import { INBOX, equityFixture } from './equity'
+import { seriesRowsFor, stageAnchors } from './strategySeries'
 import type {
   GateCheck,
   GateDecision,
@@ -32,7 +33,6 @@ import type {
   RunDetail,
   RunSeriesPayload,
   SeriesPayload,
-  SeriesRow,
   StrategyDetailResponse,
   Transition,
 } from '../types'
@@ -79,10 +79,12 @@ function transitionsFor(seed: Seed): Transition[] {
   const path = idx === -1 ? ['idea'] : LIFECYCLE_ORDER.slice(0, idx + 1)
   if (seed.stage === 'dormant') path.push('dormant')
   const newestFirst = [...path].reverse()
+  // A seed with drawn tick history enters its lane on its first tick's session.
+  const anchors = stageAnchors(seed)
   let ts = FETCHED_AT
   const dated = newestFirst.map((stage) => {
-    const at = ts
-    ts = addDays(ts, -(STAGE_GAP_DAYS[stage] ?? 7))
+    const at = anchors[stage] ?? ts
+    ts = addDays(at, -(STAGE_GAP_DAYS[stage] ?? 7))
     return { stage, at }
   })
   const chronological = [...dated].reverse()
@@ -182,11 +184,13 @@ function buildGateRow(seed: Seed, id: number, kind: 'research' | 'forward'): Gat
   // confidence twice), so two independent `r()` calls previously showed the gate card and the
   // ledger disagreeing (0.8482 vs 0.8931) on one number for the same run.
   const dsrConfidence = kind === 'research' ? Number((0.6 + r() * 0.35).toFixed(4)) : null
+  // Drawn in the same order as before (the observations check came next), so earlier values hold.
+  const holdoutObs = kind === 'research' ? 90 + r() * 400 : 0
   const checks: GateCheck[] =
     kind === 'research'
       ? [
           { name: 'pit_universe', passed: true },
-          buildGateCheck('holdout_observations', 63, 90 + r() * 400),
+          buildGateCheck('holdout_observations', 63, holdoutObs),
           buildGateCheck('holdout_sharpe_floor', 0, holdoutSharpe),
           buildGateCheck('dsr_confidence', 0.9, dsrConfidence as number, { advisory: true }),
         ]
@@ -210,6 +214,13 @@ function buildGateRow(seed: Seed, id: number, kind: 'research' | 'forward'): Gat
     decision,
     fdr_p_value: null,
     fdr_alpha_level: null,
+    // `registry gates` research rows carry the holdout record the expected line compounds:
+    // a 12% annualized vol, so the return follows the Sharpe over the holdout's length.
+    ...(kind === 'research' ? {
+      sharpe_oos: Number(holdoutSharpe.toFixed(4)),
+      total_return_oos: Number((Math.pow(1 + holdoutSharpe * 0.12, holdoutObs / 252) - 1).toFixed(4)),
+      n_obs_oos: Math.round(holdoutObs),
+    } : {}),
   }
 }
 
@@ -241,30 +252,10 @@ function strategyDetail(name: string): StrategyDetailResponse {
   }
 }
 
-function buildSeriesRows(seedNum: number, base: number, n: number): SeriesRow[] {
-  const r = rng(seedNum)
-  let equity = base
-  let peak = base
-  const out: SeriesRow[] = []
-  for (let i = 0; i < n; i++) {
-    equity = equity * (1 + (r() - 0.45) * 0.02)
-    peak = Math.max(peak, equity)
-    out.push({
-      id: 2000 + i,
-      tick_ts: addDays(FETCHED_AT, -(n - i)),
-      recorded_at: addDays(FETCHED_AT, -(n - i)),
-      equity: Number(equity.toFixed(2)),
-      peak_equity: Number(peak.toFixed(2)),
-      reconcile_ok: true,
-    })
-  }
-  return out
-}
-
 function seriesFor(name: string): SeriesPayload {
   const seed = SEEDS.find((s) => s.name === name)
   const hasSlice = seed !== undefined && seed.capital > 0
-  const rowsForLane = hasSlice ? buildSeriesRows(seed.id * 31, seed.capital, 8) : []
+  const rowsForLane = hasSlice ? seriesRowsFor(seed) : []
   const isLive = seed?.stage === 'live'
   return {
     strategy: name,

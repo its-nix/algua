@@ -136,14 +136,14 @@ if (externalBase !== undefined) {
 }
 
 const ROUTES = ['/', '/strategies', '/inbox', LEADERBOARD, '/strategies/research', '/now', '/fleet',
-  '/strategy/1', '/s/liquid10_adj_momentum']
+  '/strategy/1', '/s/liquid10_adj_momentum', '/s/dual_horizon_skip_month']
 
 // One string per route that only appears if the real fixture data rendered — picked from
 // src/fixtures/steady-state.ts (kept as literals here rather than imported: this script runs
 // as plain Node against the BUILT demo bundle, not through the TS/Vitest module graph).
 const ROUTE_CONTENT = {
   '/': 'as of 2026-08-27', // the equity change line: only drawn once /api/equity points loaded
-  '/strategies': 'Leaderboard', // interim tab (Task 7 replaces it with the strategy list)
+  '/strategies': 'Day 41 · $1,550 slice', // a paper row's sub line: only once its series loaded
   '/inbox': 'Everything you send feeds the next leap run.', // interim tab (Task 8)
   [LEADERBOARD]: 'liquid10_adj_momentum', // BOARD.data.rows[0], proving the leaderboard rendered
   '/now': 'cross_horizon_low_vol', // TRIAGE.items[0].title after the worst-first sort
@@ -151,6 +151,7 @@ const ROUTE_CONTENT = {
   '/strategies/research': 'Turn-of-month seasonal drift, liquid10', // Actual default idea-pool fixture.
   '/strategy/1': 'Cross-sectional momentum over the liquid10 universe', // ID resolver -> detail
   '/s/liquid10_adj_momentum': 'Cross-sectional momentum over the liquid10 universe', // registry.description
+  '/s/dual_horizon_skip_month': '41 of 63 sessions', // the forward-gate card, from the fixture series
 }
 const DIR = 'dist-demo'
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',

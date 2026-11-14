@@ -66,18 +66,21 @@ it.each([
   expect(screen.getByRole('link', { name }).getAttribute('aria-current')).toBe('page')
 })
 
-it('Home draws its own header; other screens keep the shell header', () => {
+it('Home and the Strategies list draw their own header; other screens keep the shell header', () => {
   const home = mount('/')
   expect(home.container.querySelector('header.shell-header')).toBeNull()
   cleanup()
-  const other = mount('/strategies')
+  const list = mount('/strategies')
+  expect(list.container.querySelector('header.shell-header')).toBeNull()
+  cleanup()
+  const other = mount('/strategies/research')
   expect(other.container.querySelector('header.shell-header .brand')).not.toBeNull()
 })
 
-it('keeps the logo on detail screens and publishes update time in the footer', () => {
+it('gives strategy pages a back-to-Strategies control and publishes update time in the footer', () => {
   const { container } = mount('/s/example')
-  expect(container.querySelector('header .brand')).not.toBeNull()
-  expect(screen.getByRole('button', { name: 'Back' })).not.toBeNull()
+  expect(container.querySelector('header.shell-header')).toBeNull()
+  expect(screen.getByRole('button', { name: 'Strategies' })).not.toBeNull()
   expect(container.querySelector('header time')).toBeNull()
   expect(container.querySelector('footer time')?.getAttribute('datetime')).toBe('2026-11-06T10:00:00Z')
   expect(container.querySelector('footer')?.textContent).toContain('Updated')

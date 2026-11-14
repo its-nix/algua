@@ -86,7 +86,10 @@ export const BUDGETS: Record<string, { min: number; max: number; marks: number }
   // The collapsed decision report is intentionally terse; supporting/raw evidence is mounted
   // only after explicit disclosure. Measured at 57 words, with a 10% ceiling. Expanded evidence
   // has its own assertion below so lowering the persistent-copy budget cannot hide lost detail.
-  StrategyDetail: { min: 28, max: 63, marks: 0 },
+  // Raised 63 -> 95 (Task 7, deliberate): the owner-approved page top (detail.jpg) adds the
+  // value line, y labels, window control and three metric cells — 86 words measured on this
+  // live fixture with its series loaded, +10%.
+  StrategyDetail: { min: 28, max: 95, marks: 0 },
 }
 
 function mockFetch(overrides: Record<string, unknown> = {}) {

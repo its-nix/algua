@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, useFetch } from '../api'
 import { useSetFetchedAt } from '../App'
@@ -9,6 +9,7 @@ import { money } from '../format'
 import type {
   ApiEnvelope, BookPayload, EquityPayload, ListPayload, StrategyRecord, TriagePayload,
 } from '../types'
+import { useWidth } from '../useWidth'
 import { RANGES, latestChange, pointsInRange, type Range } from './homeRange'
 import './home.css'
 
@@ -45,22 +46,6 @@ export default function Home() {
       <StageCounts />
     </div>
   )
-}
-
-function useWidth<T extends HTMLElement>(fallback: number) {
-  const ref = useRef<T>(null)
-  const [width, setWidth] = useState(fallback)
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (el === null) return
-    const measure = () => { if (el.clientWidth > 0) setWidth(el.clientWidth) }
-    measure()
-    if (typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-  return [ref, width] as const
 }
 
 function FetchError({ error, refetch }: { error: Error | null; refetch: () => void }) {

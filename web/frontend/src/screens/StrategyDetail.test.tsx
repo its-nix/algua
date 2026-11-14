@@ -1,12 +1,15 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, expect, it, vi } from 'vitest'
+import { clearFetchCache } from '../api'
+import { resolveFixture } from '../fixtures'
 import type {
   ApiEnvelope,
   RunDetail,
   RunSeriesPayload,
   RunsListPayload,
   SeriesPayload,
+  SeriesRow,
   StrategyDetailResponse,
 } from '../types'
 import StrategyDetail from './StrategyDetail'
@@ -220,3 +223,118 @@ it('renders the degraded paper banner and the rest of the page when paper is nul
 // module-level fetch cache with a non-empty response — a second, empty-runs fixture for the SAME
 // URL in this file would silently read back the FIRST test's cached response (the precedent
 // `TrialDistribution.render.test.tsx`'s header comment documents).
+
+// ---- Task 7: the new top (curve, expected line, metrics, next-gate card) ----
+
+/** `n` weekday ticks from 2026-10-05 rising linearly from 1550 to `end`. */
+function paperRows(n: number, end: number): SeriesRow[] {
+  const out: SeriesRow[] = []
+  const d = new Date('2026-10-05T20:00:00Z')
+  while (out.length < n) {
+    if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6) {
+      const i = out.length
+      out.push({ id: i, tick_ts: d.toISOString(), recorded_at: d.toISOString(),
+        equity: 1550 + ((end - 1550) * i) / Math.max(n - 1, 1), peak_equity: null, reconcile_ok: true })
+    }
+    d.setUTCDate(d.getUTCDate() + 1)
+  }
+  return out
+}
+
+function paperDetail(gateExtra: Record<string, unknown>): StrategyDetailResponse {
+  return {
+    ...detail,
+    strategy: 'dual_test',
+    paper: null,
+    part_errors: {},
+    registry: { ...detail.registry!, name: 'dual_test', stage: 'paper', transitions: [
+      { from_stage: 'candidate', to_stage: 'paper', actor: 'agent', reason: null,
+        created_at: '2026-10-03T12:00:00+00:00' },
+    ] },
+    gates: { strategy: 'dual_test', forward_gate_evaluations: [], gate_evaluations: [
+      // The newest row failed: the line must come from the newest PASSING row.
+      { id: 9, passed: 0, actor: 'agent', created_at: '2026-10-02T00:00:00+00:00',
+        decision: { passed: false }, sharpe_oos: 0.2, total_return_oos: 0.5, n_obs_oos: 100 },
+      { id: 8, passed: 1, actor: 'agent', created_at: '2026-10-01T00:00:00+00:00',
+        decision: { passed: true }, ...gateExtra },
+    ] },
+  }
+}
+
+function stubDetail(body: StrategyDetailResponse, rowsForPaper: SeriesRow[]) {
+  clearFetchCache()
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    const json = url.endsWith('/series') && url.startsWith('/api/strategy/')
+      ? { ...seriesEnvelope, data: { ...seriesEnvelope.data, strategy: body.strategy,
+        series: { paper: rowsForPaper, live: null } } }
+      : url.startsWith('/api/strategy/') ? body
+        : url.startsWith('/api/runs/series') ? runSeriesEnvelope
+          : /^\/api\/runs\/\d+$/.test(url) ? runDetailEnvelope
+            : url.startsWith('/api/runs?') ? runsListEnvelope : undefined
+    return json === undefined
+      ? { ok: false, status: 404, json: async () => ({ error: 'not fixtured' }) }
+      : { ok: true, status: 200, json: async () => json }
+  }) as unknown as typeof fetch)
+}
+
+function mountDetail(name: string) {
+  return render(
+    <MemoryRouter initialEntries={[`/s/${name}`]}>
+      <Routes><Route path="/s/:name" element={<StrategyDetail />} /></Routes>
+    </MemoryRouter>,
+  )
+}
+
+it('StrategyDetail draws expected line from passing gate', async () => {
+  stubDetail(paperDetail({ sharpe_oos: 1.65, total_return_oos: 0.254, n_obs_oos: 252 }),
+    paperRows(42, 1584.1))
+  const { container } = mountDetail('dual_test')
+  await screen.findByText('$1,584.10')
+  expect(screen.getByText(/since paper · Oct 3/)).toBeTruthy()
+  const line = await waitFor(() => {
+    const el = container.querySelector('[data-testid="expected-line"]')
+    expect(el).not.toBeNull()
+    return el!
+  })
+  // daily = 1.254^(1/252) - 1, compounded from the first point (1550) over 41 steps.
+  const daily = Math.pow(1.254, 1 / 252) - 1
+  expect(Number(line.getAttribute('data-end'))).toBeCloseTo(1550 * Math.pow(1 + daily, 41), 1)
+  expect(line.querySelector('svg')?.getAttribute('data-points')).toBe('42')
+  expect(screen.getByText('Backtest expectation')).toBeTruthy()
+  expect(screen.getByText('Backtest 1.65')).toBeTruthy()
+  for (const r of ['1W', '1M', 'Since paper', 'Backtest']) {
+    expect(screen.getByRole('button', { name: r })).toBeTruthy()
+  }
+})
+
+it('StrategyDetail hides expected line when gate fields missing', async () => {
+  stubDetail(paperDetail({}), paperRows(42, 1584.1))
+  const { container } = mountDetail('dual_test')
+  await screen.findByText('$1,584.10')
+  expect(container.querySelector('[data-testid="expected-line"]')).toBeNull()
+  expect(screen.queryByText('Backtest expectation')).toBeNull()
+  expect((screen.getByRole('button', { name: 'Backtest' }) as HTMLButtonElement).disabled).toBe(true)
+})
+
+it('StrategyDetail with no ticks shows "No ticks yet"', async () => {
+  stubDetail(paperDetail({ sharpe_oos: 1.65, total_return_oos: 0.254, n_obs_oos: 252 }), [])
+  const { container } = mountDetail('dual_test')
+  expect(await screen.findByText('No ticks yet')).toBeTruthy()
+  expect(container.querySelector('[data-testid="expected-line"]')).toBeNull()
+  expect(screen.getByTestId('gate-card').textContent).toContain('0 of 63 sessions')
+})
+
+it('gate card shows 41 of 63 sessions from fixture', async () => {
+  clearFetchCache()
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    const json = resolveFixture(url)
+    return json === undefined
+      ? { ok: false, status: 404, json: async () => ({ error: 'not fixtured' }) }
+      : { ok: true, status: 200, json: async () => json }
+  }) as unknown as typeof fetch)
+  mountDetail('dual_horizon_skip_month')
+  const card = await screen.findByTestId('gate-card')
+  await waitFor(() => expect(card.textContent).toContain('41 of 63 sessions'))
+  expect(card.textContent).toContain('Forward gate')
+  expect(within(card).getAllByTestId('gate-check').length).toBe(3)
+})

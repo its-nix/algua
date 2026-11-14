@@ -28,27 +28,33 @@ export default function App() {
   const isDetail = location.pathname.startsWith('/s/') || location.pathname.startsWith('/strategy/')
   const isLeaderboard = location.pathname === LEADERBOARD_PATH
   const isHome = location.pathname === '/'
+  const isList = location.pathname === '/strategies'
   const inboxBadge = useInboxBadge(location.pathname.startsWith('/inbox'))
+  const shellClass = isLeaderboard ? 'shell leaderboard-shell' : isHome ? 'shell home-shell'
+    : isList ? 'shell strats-shell' : isDetail ? 'shell detail-shell' : 'shell'
 
   return (
     <FetchedAtContext.Provider value={setFetchedAt}>
-      <div className={isLeaderboard ? 'shell leaderboard-shell' : isHome ? 'shell home-shell' : 'shell'}>
-        {/* Home draws its own mark and lane picker in place of the centered brand. */}
-        {!isHome && <header className="shell-header">
+      <div className={shellClass}>
+        {/* Home and the Strategies list draw their own titles; a strategy page has a
+            "‹ Strategies" back control in place of the centered brand. */}
+        {isDetail ? (
+          <nav className="sd-nav" aria-label="Back">
+            <button
+              type="button"
+              className="sd-back"
+              onClick={() => {
+                if (window.history.length > 1) navigate(-1)
+                else navigate('/strategies')
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+              Strategies
+            </button>
+          </nav>
+        ) : !isHome && !isList && <header className="shell-header">
           <div className="topbar">
-            {isDetail ? (
-              <button
-                type="button"
-                className="back-btn"
-                aria-label="Back"
-                onClick={() => {
-                  if (window.history.length > 1) navigate(-1)
-                  else navigate('/')
-                }}
-              >
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m14 5-7 7 7 7" /></svg>
-              </button>
-            ) : <span aria-hidden="true" />}
+            <span aria-hidden="true" />
             <div className="brand"><Logo /></div>
             <span aria-hidden="true" />
           </div>
@@ -65,7 +71,9 @@ export default function App() {
               key={to}
               to={to}
               end={end}
-              className={({ isActive }) => isActive ? 'bottom-link active' : 'bottom-link'}
+              // A strategy page sits under the Strategies tab.
+              className={({ isActive }) =>
+                isActive || (to === '/strategies' && isDetail) ? 'bottom-link active' : 'bottom-link'}
             >
               <span className="bottom-icon">
                 <NavigationIcon name={icon} />

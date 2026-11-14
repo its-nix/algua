@@ -13,7 +13,8 @@ import Now from './screens/Now'
 import Research from './screens/Research'
 import StrategyDetail from './screens/StrategyDetail'
 import StrategyIdResolver from './screens/StrategyIdResolver'
-import { InboxSoon, StrategiesSoon } from './screens/Soon'
+import { InboxSoon } from './screens/Soon'
+import Strategies from './screens/Strategies'
 
 // PROD only — a dev service worker would fight the Vite proxy. With registerType
 // 'autoUpdate' the virtual module owns activation AND the post-update reload; a second
@@ -28,7 +29,7 @@ createRoot(document.getElementById('root')!).render(
       <Routes>
         <Route element={<App />}>
           <Route index element={<Home />} />
-          <Route path="strategies" element={<StrategiesSoon />} />
+          <Route path="strategies" element={<Strategies />} />
           <Route path="strategies/research" element={<Research />} />
           <Route path={LEADERBOARD_PATH.slice(1)} element={<Leaderboard />} />
           <Route path="inbox" element={<InboxSoon />} />

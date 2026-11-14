@@ -11,7 +11,7 @@ import HealthBadge, { healthColor } from '../components/HealthBadge'
 import MetricTile from '../components/MetricTile'
 import PassMark from '../components/PassMark'
 import ReturnOverlay from '../components/ReturnOverlay'
-import StageChip from '../components/StageChip'
+import StrategyTop from './StrategyTop'
 import TrialDistribution from '../components/TrialDistribution'
 import WalkForwardEvidence from '../components/WalkForwardEvidence'
 import { num, pct, utcDateTime } from '../format'
@@ -133,11 +133,8 @@ export default function StrategyDetail({
 
   return (
     <main className="decision-page strategy-detail-page">
+      <StrategyTop detail={d} series={seriesPayload} seriesLoading={series.loading} />
       <section className="detail-header">
-        <div className="detail-title-row">
-          <h1 className="detail-name">{d.strategy}</h1>
-          {registry && <StageChip stage={registry.stage} />}
-        </div>
         {metaBits.length > 0 && <div className="dim-note">{metaBits.join(' · ')}</div>}
         {registry?.description != null && registry.description !== '' && (
           <p className="detail-description">{registry.description}</p>
