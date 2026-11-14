@@ -10,6 +10,7 @@
     "verify:demo-build": "node scripts/verify-demo-build.mjs",
     "verify:viewport": "node scripts/verify-viewport.mjs",
     "check": "tsc --noEmit && vitest run",
+    "test": "vitest",
     "preview": "vite preview"
   },
   "dependencies": {
