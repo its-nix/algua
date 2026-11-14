@@ -171,6 +171,19 @@ def accept_new_notes(*, staged_dir: Path, settings: Settings, seen_path: Path,
     return {"accepted": accepted, "rejected": rejected}
 
 
+def write_note(settings: Settings, fm: dict[str, Any], body: str) -> Path:
+    """Atomically write a new note into the vault; refuses to overwrite an existing one."""
+    note_id = str(fm["id"])
+    if not NOTE_ID_RE.match(note_id):
+        raise ValueError(f"bad inspiration id {note_id!r}")
+    path = _safe_path(inspirations_dir(settings), f"{note_id}.md")
+    with kb_sync_lock(settings):
+        if path.exists():
+            raise FileExistsError(f"inspiration already exists: {note_id}")
+        write_text_atomic(render_doc(fm, body), path)
+    return path
+
+
 def _edit_frontmatter(
     settings: Settings, inspiration_id: str, mutate: Callable[[dict[str, Any]], None],
     store: Any = None,
