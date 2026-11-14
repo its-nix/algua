@@ -38,12 +38,20 @@ def test_planner_returns_validated_weights_and_sorted_rebalance_intents():
     assert again.intents == result.intents
 
 
-@pytest.mark.parametrize("version", [0, 2, -1, True, 1.0, "1", None])
+@pytest.mark.parametrize("version", [0, 99, -1, True, 1.0, "1", None])
 def test_unsupported_protocol_fails_before_strategy_access(version):
     from algua.live.planner import PlannerInput, plan
 
     request = PlannerInput(pd.DataFrame(), {}, datetime(2023, 1, 4, tzinfo=UTC), version)
     with pytest.raises(ValueError, match="unsupported planner protocol"):
+        plan(object(), request)
+
+
+def test_model_profile_without_context_fails_before_strategy_access():
+    from algua.live.planner import PlannerInput, plan
+
+    request = PlannerInput(pd.DataFrame(), {}, datetime(2023, 1, 4, tzinfo=UTC), 2)
+    with pytest.raises(ValueError, match="bound decision context"):
         plan(object(), request)
 
 
@@ -73,6 +81,23 @@ def test_planner_retains_shared_weight_rails(weights, kind):
     with pytest.raises(RiskBreach) as exc:
         plan(strategy, PlannerInput(pd.DataFrame(), {}, datetime(2023, 1, 4, tzinfo=UTC)))
     assert exc.value.kind == kind
+
+
+@pytest.mark.parametrize("target", [float("nan"), float("inf"), float("-inf")])
+def test_build_intents_rejects_nonfinite_targets_before_constructing_any_intent(
+    monkeypatch, target,
+):
+    from algua.live import planner_decision as decision
+
+    def forbidden_intent(*args, **kwargs):
+        pytest.fail("OrderIntent constructed before validating all targets")
+
+    monkeypatch.setattr(decision, "OrderIntent", forbidden_intent)
+    with pytest.raises(RiskBreach) as exc:
+        decision.build_intents(
+            pd.Series({"AAA": 0.25, "ZZZ": target}), {}, datetime(2023, 1, 4, tzinfo=UTC),
+        )
+    assert exc.value.kind == "non_finite_weight"
 
 
 def _run_planner_entry(entry: str, current: dict, target: float) -> None:
@@ -345,7 +370,9 @@ def test_planner_dependency_closure_has_no_operational_authority():
         "algua.live.planner_contract", "algua.live.planner_decision",
         "algua.live.planner_early", "algua.live.planner_late",
         "algua.live.planner_validation", "algua.risk.limits",
-        "algua.strategies.base",
+        "algua.strategies.base", "algua.strategies.context_inputs",
+        "algua.live.model_context", "algua.live.frozen_model_wire",
+        "algua.live.frozen_wire_json",
     }
     forbidden = {
         name for name in dependencies if name.startswith("algua.")

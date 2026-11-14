@@ -81,7 +81,22 @@ Rules that matter:
   latter weights by **magnitude**. Produce scores whose sign/scale carry the meaning the policy reads.
 - **Never look ahead.** The `view` contains bars only up to the current timestamp, and the engine
   enforces the `t→t+1` execution lag (`decision_lag_bars=1`). Do not re-implement or weaken this.
-- `rebalance_frequency` is `"1d"` (daily) for now.
+- `rebalance_frequency` is `"1d"` (daily) only. This retargets portfolio weights each day;
+  it does not implement weekly/monthly fixed-share holding. Frozen scores or repeated target
+  weights still rebalance daily. Do not change an admitted holding claim to fit the engine.
+- **Preflight all mandatory controls before numerical work.** The traded strategy obeys the
+  supplied top-20 construction. A broad diagnostic control may use equal_weight_positive with
+  positive scores on its stated eligible universe; mark its CONFIG.params evaluation_role=benchmark
+  and benchmark_for=<primary name>, matching its paired sweep task. Keep identical market data,
+  execution, terminal handling and conservative feature_lookback/embargo. Its ordinary smoke,
+  registration and promotion routes refuse the marker; the primary agent tests it in the paired
+  sweep batch. Do not silently substitute top-20 for a broad control. If a required holding rule
+  or control is genuinely unsupported,
+  report the actual incompatibility rather than relabeling the experiment or inventing metrics.
+  Record the existing non-refuting `run_error` outcome, with reason prefix `unsupported_cadence:`
+  or `incompatible_control:`. This is an engineering failure, not evidence against the hypothesis.
+  A legacy non-chooser caller may retry a structurally incompatible control up to the existing
+  `MAX_IDEA_ATTEMPTS` cap; do not invent a new outcome or claim that this prompt removes that risk.
 - **Prices: derive returns/momentum from `adj_close`, NEVER raw `close`.** Do **not** rationalize
   raw close/volume as "leak-safe" — raw is corporate-action **CONTAMINATED**: a split inside a
   lookback window fabricates fake momentum, and dividends distort returns. `close` is kept only for
@@ -250,20 +265,16 @@ per bar. Rules:
   the as-of masking can't be reproduced by a whole-period panel fn. The fast path is static-universe
   only. See `algua/strategies/momentum/cross_sectional_momentum.py` for a worked example.
 
-## Optional: the fundamentals lane
+## Fundamentals and news inputs
 
-To read point-in-time fundamentals, set `needs_fundamentals=True` in `CONFIG` and author the **3-arg**
-form `signal(view, params, fundamentals) -> pd.Series` (the loader binds it as the active signal and
-the engine injects the PIT-correct fundamentals frame per bar). Wiring today is **narrow**: only
-`backtest run --fundamentals-snapshot <id>` supplies a fundamentals provider. **Everything else fails
-closed** on a `needs_fundamentals` strategy — paper, live, and (critically) `walk-forward` and
-`sweep`, which means a fundamentals strategy **cannot be promoted via `research promote` yet** (the
-trading- and research-lane wiring is a #132 follow-up). Construction composes exactly the same — the
-third arg only feeds the score.
+Fundamentals and news ingestion has been removed pending a redesign, so no new fundamentals or
+news snapshot can be produced and the former bundled fundamentals/news strategies are gone. Do not
+author a strategy with `needs_fundamentals=True` or `needs_news=True`; author from bars only. If an
+idea needs those inputs, report that the data is unavailable instead of substituting an OHLCV proxy.
 
 ## Multimodal research: `context_v1`
 
-For an idea requiring the implemented shared bars/news/model context, scaffold once with the same
+For an idea requiring the implemented shared bars/model context, scaffold once with the same
 `strategy new` command, then replace its legacy callback with `STRATEGY_INTERFACE = "context_v1"`
 and exactly one pure `score(context)` callback. Remove the scaffold's `signal`; do not add
 `signal_panel` or `target_weights`. The callback returns scores, and existing construction/risk

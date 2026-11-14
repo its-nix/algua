@@ -1,0 +1,9 @@
+[Unit]
+Description=Start bounded research when trusted ideation imports new work
+
+[Path]
+PathChanged=/opt/algua/data/research-ready
+Unit=algua-research.service
+
+[Install]
+WantedBy=multi-user.target

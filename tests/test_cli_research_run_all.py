@@ -35,6 +35,44 @@ def _run_all(tmp_path, tasks):
     return runner.invoke(app, ["research", "run-all", "--tasks", _write_tasks(tmp_path, tasks)])
 
 
+def test_recipe_preflight_requires_no_authored_strategy_or_numerical_run(tmp_path):
+    tasks = [{'action': 'sweep', 'name': 'not_authored_yet', 'demo': True,
+              'param': ['lookback=20'], 'required_window_metrics': ['total_return']}]
+    result = runner.invoke(app, ['research', 'run-all', '--tasks', _write_tasks(tmp_path, tasks),
+                                 '--preflight-only'])
+    assert result.exit_code == 0, result.stdout
+    body = json.loads(result.stdout)
+    assert body['preflight'] is True and body['strategy_checked'] is False
+    assert not (tmp_path / 'r.db').exists()
+
+
+def test_unobservable_comparison_stops_batch_before_any_trial(tmp_path, monkeypatch):
+    from algua.cli import research_batch_cmd
+    calls = []
+    monkeypatch.setitem(research_batch_cmd._DISPATCH, 'backtest', lambda *a, **k: calls.append(1))
+    result = _run_all(tmp_path, [
+        {'action': 'backtest', 'name': 'cross_sectional_momentum', 'demo': True},
+        {'action': 'sweep', 'name': 'cross_sectional_momentum', 'demo': True,
+         'required_window_metrics': ['invented_alpha']},
+    ])
+    assert result.exit_code == 1 and 'not observable' in result.stdout
+    assert calls == []
+    assert not (tmp_path / 'r.db').exists()
+
+
+def test_declared_experiment_checks_parameter_grid_before_any_trial(tmp_path, monkeypatch):
+    from algua.cli import research_batch_cmd
+    calls = []
+    monkeypatch.setitem(research_batch_cmd._DISPATCH, 'backtest', lambda *a, **k: calls.append(1))
+    result = _run_all(tmp_path, [
+        {'action': 'backtest', 'name': 'cross_sectional_momentum', 'demo': True},
+        {'action': 'sweep', 'name': 'cross_sectional_momentum', 'demo': True,
+         'param': ['typo_lookback=20'], 'required_window_metrics': ['total_return']},
+    ])
+    assert result.exit_code == 1, result.stdout
+    assert 'typo_lookback' in result.stdout and calls == []
+
+
 def _seed_bars(tmp_path):
     """Seed ~330 calendar-day bars over the full 5-symbol CONFIG universe so a 0.2 holdout
     clears the 63-obs floor (and a PIT universe can cover CONFIG for the #559 subset guard).
@@ -101,9 +139,8 @@ def test_bad_task_is_isolated_siblings_still_run(tmp_path):
 
 def test_holdout_single_use_preserved_across_warm_batch(tmp_path):
     bid, end_iso = _seed_bars(tmp_path)
-    # A batch worker is AGENT-only — a human actor cannot sign a challenge inside a batch (#329), so
-    # this exercises the holdout guard on the agent-legal path: MEASURED breadth (a sweep task) +
-    # a PIT universe, no human-only relaxation.
+    # The gates have no relaxation for any actor (spec 2026-11-13), so this exercises the holdout
+    # guard on the only path there is: MEASURED breadth (a sweep task) + a PIT universe.
     # #559: the gated universe must COVER the strategy CONFIG universe (agent subset guard).
     runner.invoke(app, ["data", "ingest-universe", "csm_uni",
                         "--symbols", "AAPL,MSFT,NVDA,AMZN,GOOGL",
@@ -115,22 +152,8 @@ def test_holdout_single_use_preserved_across_warm_batch(tmp_path):
          "start": "2025-01-01", "end": end_iso, "universe": "csm_uni", "windows": 2,
          "param": ["lookback=20,40"], "top": 3},
     ]).exit_code == 0
-    # Pre-seed an existing family membership so the agent promote classifies MERGE (an agent
-    # cannot mint a NOVEL family — the separate #222 human wall, out of scope here).
-    from algua.registry.store import SqliteStrategyRepository
-    _c = sqlite3.connect(tmp_path / "r.db")
-    _c.row_factory = sqlite3.Row
-    try:
-        _repo = SqliteStrategyRepository(_c)
-        _fid = _repo.create_family("csm", actor="human")
-        _repo.assign_strategy_to_family(
-            "cross_sectional_momentum", _fid, actor="human", verdict="MERGE",
-            similarity_score=1.0, clustering_version="t", clustering_config_json="{}",
-            axis_json="{}")
-    finally:
-        _c.close()
-    relax = {"min_holdout_sharpe": -100.0, "min_holdout_return": -100.0, "min_pct_positive": 0.0,
-             "min_window_sharpe": -100.0, "windows": 2, "universe": "csm_uni",
+    relax = {"min_holdout_sharpe": -100.0, "min_holdout_return": -100.0,
+             "windows": 2, "universe": "csm_uni",
              "snapshot": bid, "start": "2025-01-01", "end": end_iso}
     # TWO promote tasks on the SAME holdout window in ONE warm process: the 2nd must fail closed
     # exactly as two separate cold processes would (the burn is a committed DB row).

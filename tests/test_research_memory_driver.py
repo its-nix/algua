@@ -411,6 +411,7 @@ def test_seed_failure_prevents_fixture_worker_and_retains_source(driver_memory):
 @pytest.mark.parametrize("worker_exit, archive_failure, canonical", [
     (0, False, False), (3, False, False), (0, True, False), (0, False, True),
 ])
+@pytest.mark.slow
 def test_actual_seed_worker_capture_finish_cleanup_and_show(
         driver_memory, worker_exit, archive_failure, canonical):
     repo, worker, metadata, _ = driver_memory

@@ -14,8 +14,13 @@ from algua.contracts.types import OrderIntent
 from algua.execution.alpaca_broker import _AlpacaBroker
 from algua.live import planner as decision_planner
 from algua.live.planner import PlannerPort, TickStrategy, in_process_planner
+from algua.live.planner_context import (
+    PlannerContext as PlannerContext,
+)
+from algua.live.planner_context import (
+    planner_context_for_deployment as planner_context_for_deployment,
+)
 from algua.live.planner_contract import (
-    BOUNDARY_VERSION,
     CapturedStrategyState,
     Decision,
     EarlyNoDecision,
@@ -129,32 +134,6 @@ class TickResult:
     peak_equity: float | None = None
     reconcile_ok: bool = True
     realized_gross: float = 0.0
-
-
-@dataclass(frozen=True)
-class PlannerContext:
-    """Supervisor-verified identity values copied into one planner request."""
-
-    deployment_id: int | None
-    artifact_id: int | None
-    manifest_digest: str | None
-    config_hash: str
-    resolved_config_json: str
-    calendar_code: str
-
-
-def planner_context_for_deployment(deployment: Any, calendar_code: str) -> PlannerContext | None:
-    """Copy an already-verified deployment record into the authority-free planner envelope."""
-    if deployment is None:
-        return None
-    return PlannerContext(
-        deployment.id,
-        deployment.artifact_id,
-        deployment.manifest_digest,
-        deployment.config_hash,
-        deployment.resolved_config_json,
-        calendar_code,
-    )
 
 
 @dataclass
@@ -279,7 +258,7 @@ def run_tick(
     bars = provider.get_bars(universe_and_held, start, end, timeframe)
     context = hooks.planner_context or _default_planner_context(strategy)
     early = EarlyPlannerInput(
-        boundary_version=BOUNDARY_VERSION,
+        boundary_version=context.protocol_version,
         request_id=secrets.token_hex(16),
         strategy_name=strategy.name,
         deployment_id=context.deployment_id,
@@ -294,6 +273,7 @@ def run_tick(
         early_positions=dict(held_qtys),
         gate_universe=tuple(strategy.universe),
         max_drawdown=max_drawdown,
+        bars_snapshot_id=context.bars_snapshot_id,
     )
     first = planner.phase_a(early)
     _raise_planner_failure(first)

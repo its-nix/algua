@@ -163,11 +163,56 @@ def test_reclassify_reopens_when_market_becomes_supported(tmp_path, monkeypatch)
     repo = IdeaRepository(auth)
     parked = _add(repo, "crypto idea words here", "crypto hypothesis words here",
                   market=Market.CRYPTO, status=IdeaStatus.NEEDS_DATA, parked_reason="market:crypto")
-    import algua.registry.idea_import as mod
+    import algua.registry.idea_eligibility as mod
     monkeypatch.setattr(mod, "supported_markets", lambda: frozenset({Market.CRYPTO, Market.ANY}))
     out = reclassify(auth)
     assert out["reopened"] == [parked.id]
     assert repo.get(parked.id).status is IdeaStatus.OPEN
+
+
+def test_reclassify_parks_unsupported_open_ideas_without_refuting_or_rewriting(
+        tmp_path, monkeypatch):
+    auth = _db(tmp_path / 'auth.db')
+    repo = IdeaRepository(auth)
+    monthly = _add(repo, 'monthly holding specification', 'hold shares for a calendar month',
+                   horizon=Horizon.MONTHLY)
+    daily = _add(repo, 'daily price continuation', 'daily retargeted basket', family='daily',
+                 category='daily')
+    (claimed,) = IdeaAttemptsRepository(auth).claim(run_stamp='active', limit=1,
+                                                   ttl_minutes=180, category='daily')
+    refuted = _add(repo, 'historical rejected recipe', 'prior empirical failure',
+                   status=IdeaStatus.REFUTED, horizon=Horizon.MONTHLY)
+    import algua.registry.idea_eligibility as mod
+    monkeypatch.setattr(mod, 'supported_horizons', lambda: frozenset())
+    before_attempts = [tuple(r) for r in auth.execute('SELECT * FROM idea_attempts')]
+    result = reclassify(auth)
+    assert result['parked'] == [monthly.id]
+    parked = repo.get(monthly.id)
+    assert parked.status is IdeaStatus.NEEDS_DATA and parked.parked_reason == 'horizon:monthly'
+    assert parked.hypothesis == monthly.hypothesis and parked.tags == monthly.tags
+    assert repo.get(daily.id).claim_token == claimed.claim_token
+    assert repo.get(refuted.id).status is IdeaStatus.REFUTED
+    assert [tuple(r) for r in auth.execute('SELECT * FROM idea_attempts')] == before_attempts
+    assert reclassify(auth)['parked'] == []
+
+
+def test_reclassify_refuses_inside_an_existing_transaction(tmp_path):
+    auth = _db(tmp_path / 'auth.db')
+    auth.execute('BEGIN')
+    with pytest.raises(RuntimeError, match='top level'):
+        reclassify(auth)
+    assert auth.in_transaction
+    auth.rollback()
+
+
+def test_reclassify_preserves_manual_park_without_a_capability_reason(tmp_path):
+    auth = _db(tmp_path / 'auth.db')
+    repo = IdeaRepository(auth)
+    idea = _add(repo, 'manual provenance hold', 'requires an additional provenance decision',
+                status=IdeaStatus.NEEDS_DATA)
+    before = repo.get(idea.id)
+    assert reclassify(auth) == {'reopened': [], 'parked': []}
+    assert repo.get(idea.id) == before
 
 
 # --- Final fix wave (whole-branch review 2026-09-09) ---------------------------------------------

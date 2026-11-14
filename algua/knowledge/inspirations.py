@@ -13,18 +13,20 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-import yaml
-
 from algua.config.settings import Settings
 from algua.knowledge.frontmatter import parse_doc, render_doc
 from algua.knowledge.sync import _safe_path, kb_sync_lock
 from algua.primitives.atomic_io import write_text_atomic
 
 NOTE_ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]{2,60}$")
-SOURCE_KINDS = frozenset({"book_summary", "paper", "forum", "video", "blog", "other"})
+SOURCE_KINDS = frozenset({"book_summary", "paper", "forum", "video", "blog", "other",
+                          "human"})
 MARKETS = frozenset({"us_equities", "crypto", "forex", "prediction", "any"})
 HORIZONS = frozenset({"intraday", "daily", "weekly", "monthly", "event"})
-OBSCURITY = frozenset({"canon", "common", "niche", "rare"})
+OBSCURITY = frozenset({"canon", "common", "niche", "rare", "human"})
+#: Category an owner inbox idea gets when it names none (or an unknown one); legal ONLY for
+#: `source_kind: human` notes — leap still assigns the idea a real category.
+RESERVED_HUMAN_CATEGORY = "uncategorized_human"
 NOTE_STATUSES = frozenset({"fresh", "used", "exhausted"})
 REQUIRED = ("id", "found_at", "source_url", "venue", "source_kind", "category", "market",
             "horizon", "mechanism", "obscurity", "status")
@@ -33,6 +35,10 @@ _TRACKING = re.compile(r"^(utm_.*|fbclid|gclid|mc_cid|mc_eid)$")
 
 
 def inspirations_dir(settings: Settings) -> Path:
+    """The vault's inspirations domain — or, when a driver exported a run-start Drive snapshot
+    (`settings.steering_dir`), that snapshot's copy (spec 2026-11-12 §4)."""
+    if settings.steering_dir is not None:
+        return settings.steering_dir / "inspirations"
     return settings.knowledge_dir / "inspirations"
 
 
@@ -60,7 +66,9 @@ def validate_note(fm: dict[str, Any], *, stem: str, categories: set[str]) -> lis
     for key, allowed in checks:
         if fm.get(key) and str(fm[key]) not in allowed:
             problems.append(f"{key}: {fm[key]}")
-    if fm.get("category") and str(fm["category"]) not in categories:
+    human_reserved = (fm.get("source_kind") == "human"
+                      and fm.get("category") == RESERVED_HUMAN_CATEGORY)
+    if fm.get("category") and str(fm["category"]) not in categories and not human_reserved:
         problems.append(f"category: {fm['category']}")
     if fm.get("status") not in (None, "fresh"):
         problems.append("status must be fresh on acceptance")
@@ -91,11 +99,18 @@ class SeenFile:
 
 
 def accept_new_notes(*, staged_dir: Path, settings: Settings, seen_path: Path,
-                     categories: set[str], run_stamp: str, max_notes: int) -> dict:
-    """Trusted acceptance of what the forage agent staged (spec §5 policy)."""
+                     categories: set[str], run_stamp: str, max_notes: int,
+                     store: Any = None) -> dict:
+    """Trusted acceptance of what the forage agent staged (spec §5 policy).
+
+    `store` (optional, `ids()` + `append(fm, body)`) is where accepted notes land instead of the
+    vault — the CLI passes the Drive Inspirations table (spec 2026-11-12). This module never
+    chooses a backend itself, so nothing that imports it can reach Drive."""
     seen = SeenFile(seen_path)
     seen_hashes = seen.hashes()
     dest = inspirations_dir(settings)
+    table = store
+    sheet_ids = table.ids() if table is not None else set()
     accepted: list[str] = []
     rejected: list[dict] = []
     for path in sorted(staged_dir.glob("*.md")) if staged_dir.exists() else []:
@@ -136,16 +151,20 @@ def accept_new_notes(*, staged_dir: Path, settings: Settings, seen_path: Path,
             continue
         if not reasons and url_hash(str(fm["source_url"])) in seen_hashes:
             reasons.append("already seen: source_url")
-        if not reasons and (dest / path.name).exists():
+        exists = stem in sheet_ids if table is not None else (dest / path.name).exists()
+        if not reasons and exists:
             reasons.append("id already exists in the vault")
         if not reasons and len(accepted) >= max_notes:
             reasons.append("max_notes reached")
         if reasons:
             rejected.append({"file": path.name, "reasons": reasons})
             continue
-        with kb_sync_lock(settings):
-            target = _safe_path(dest, path.name)
-            write_text_atomic(text, target)
+        if table is not None:
+            table.append(fm, parse_note(text)[1])
+            sheet_ids.add(stem)
+        else:
+            with kb_sync_lock(settings):
+                write_text_atomic(text, _safe_path(dest, path.name))
         seen.append(str(fm["source_url"]), run_stamp=run_stamp)
         seen_hashes.add(url_hash(str(fm["source_url"])))
         accepted.append(stem)
@@ -154,9 +173,12 @@ def accept_new_notes(*, staged_dir: Path, settings: Settings, seen_path: Path,
 
 def _edit_frontmatter(
     settings: Settings, inspiration_id: str, mutate: Callable[[dict[str, Any]], None],
+    store: Any = None,
 ) -> dict[str, Any]:
     if not NOTE_ID_RE.match(inspiration_id):
         raise ValueError(f"bad inspiration id {inspiration_id!r}")
+    if store is not None:
+        return store.update(inspiration_id, mutate)
     path = _safe_path(inspirations_dir(settings), f"{inspiration_id}.md")
     with kb_sync_lock(settings):
         fm, body = parse_note(path.read_text(encoding="utf-8"))
@@ -165,7 +187,8 @@ def _edit_frontmatter(
     return fm
 
 
-def mark_used(settings: Settings, inspiration_id: str, *, idea_id: int) -> dict[str, Any]:
+def mark_used(settings: Settings, inspiration_id: str, *, idea_id: int,
+              store: Any = None) -> dict[str, Any]:
     def _m(fm):
         leaps = list(fm.get("leaps") or [])
         if idea_id not in leaps:
@@ -173,26 +196,36 @@ def mark_used(settings: Settings, inspiration_id: str, *, idea_id: int) -> dict[
         fm["leaps"] = leaps
         if fm.get("status") == "fresh":
             fm["status"] = "used"
-    return _edit_frontmatter(settings, inspiration_id, _m)
+    return _edit_frontmatter(settings, inspiration_id, _m, store)
 
 
-def mark_exhausted(settings: Settings, inspiration_id: str) -> dict[str, Any]:
+def mark_exhausted(settings: Settings, inspiration_id: str, *,
+                   store: Any = None) -> dict[str, Any]:
     def _m(fm):
         fm["status"] = "exhausted"
-    return _edit_frontmatter(settings, inspiration_id, _m)
+    return _edit_frontmatter(settings, inspiration_id, _m, store)
 
 
 def list_notes(settings: Settings, *, status: str | None = None,
                exclude_status: str | None = None,
-               limit: int | None = None) -> list[dict[str, Any]]:
-    """Frontmatter of every well-named note, newest id first. `status` keeps only that status;
-    `exclude_status` drops it (what the leap driver wants: everything not yet `exhausted`)."""
+               limit: int | None = None,
+               source_kind: str | None = None) -> list[dict[str, Any]]:
+    """Frontmatter of every well-named note: the owner's own (`source_kind: human`) first, then
+    newest id first. `status` keeps only that status; `exclude_status` drops it (what the leap
+    driver wants: everything not yet `exhausted`); `source_kind` keeps only that kind."""
     d = inspirations_dir(settings)
-    notes = []
-    for path in sorted(d.glob("*.md"), reverse=True) if d.exists() else []:
+    paths = sorted(d.glob("*.md"), reverse=True) if d.exists() else []
+    parsed = []
+    for path in paths:
         if not NOTE_ID_RE.match(path.stem):
             continue
         fm, _ = parse_note(path.read_text(encoding="utf-8"))
+        parsed.append(fm)
+    parsed.sort(key=lambda fm: fm.get("source_kind") != "human")  # stable: keeps newest-first
+    notes = []
+    for fm in parsed:
+        if source_kind is not None and fm.get("source_kind") != source_kind:
+            continue
         note_status = fm.get("status")
         if status is not None and note_status != status:
             continue
@@ -221,44 +254,3 @@ def load_note(settings: Settings, inspiration_id: str) -> dict[str, Any] | None:
         return None
     return fm if isinstance(fm, dict) and fm else None
 
-
-class SourcesRegistry:
-    """`_sources.yaml`: `{venues: [...]}`. Only trusted code writes it.
-
-    Every write goes through `write_text_atomic` under the vault's `kb_sync_lock`, exactly like
-    the note writes above — the registry is a human-edited steering file, and a torn or
-    interleaved write would corrupt a surface nobody is watching between runs.
-    """
-
-    def __init__(self, settings: Settings) -> None:
-        self._settings = settings
-        self.path = inspirations_dir(settings) / "_sources.yaml"
-
-    def load(self) -> list[dict[str, Any]]:
-        if not self.path.exists():
-            return []
-        data = yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}
-        return list(data.get("venues") or [])
-
-    def _save(self, venues: list[dict[str, Any]]) -> None:
-        write_text_atomic(yaml.safe_dump({"venues": venues}, sort_keys=False), self.path)
-
-    def write_yields(self, yields: dict[str, dict[str, Any]]) -> None:
-        """Stamp a yield object onto every named venue in ONE load + ONE save (a per-venue
-        load/save loop re-read and rewrote the whole file once per venue)."""
-        with kb_sync_lock(self._settings):
-            venues = self.load()
-            for v in venues:
-                obj = yields.get(str(v.get("key")))
-                if obj is not None:
-                    v["yield"] = obj
-            self._save(venues)
-
-    def propose(self, venue: dict[str, Any]) -> None:
-        with kb_sync_lock(self._settings):
-            venues = self.load()
-            if any(v.get("key") == venue.get("key") for v in venues):
-                return
-            venues.append({**venue, "added_by": "forage",
-                           "added_at": datetime.now(UTC).date().isoformat()})
-            self._save(venues)

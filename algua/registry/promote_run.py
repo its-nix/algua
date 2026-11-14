@@ -8,9 +8,9 @@ cli-independence contract (issue #165) — the last cli->cli escape on this seam
 importable by both ``cli`` and ``registry`` without ``algua.registry`` importing
 ``algua.cli`` itself. ``promote_task`` opens+closes its own registry connection, re-syncs the kb
 doc, and records the advisory negative-result capture exactly as it did in ``research_cmd``, via the
-shared ``algua.registry.db.registry_conn``, ``algua.registry.kb_sync.sync_kb_doc``, and
-``algua.registry.human_actor.authenticate_actor`` — the owning leaves — so none of those idioms is
-duplicated here.
+shared ``algua.registry.db.registry_conn`` and ``algua.registry.kb_sync.sync_kb_doc`` — the owning
+leaves — so none of those idioms is duplicated here. ``actor`` is an audit label: every gate below
+applies to every actor (spec 2026-11-13, go-live is the only approval).
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from typing import Any
 
 from algua.backtest.walkforward import holdout_window, walk_forward
 from algua.config.settings import get_settings
-from algua.contracts.lifecycle import Actor, Stage
+from algua.contracts.lifecycle import Actor
 from algua.data.models import Dataset
 from algua.data.serve import StoreBackedFundamentalsProvider, StoreBackedNewsProvider
 from algua.data.store import DataStore
@@ -31,24 +31,16 @@ from algua.evaluation.inputs import (
 from algua.knowledge.experience import write_experience_note
 from algua.observability.log import get_logger
 from algua.primitives.timeparse import now_iso
-from algua.registry import approvals
 from algua.registry.db import registry_conn
-from algua.registry.human_actor import authenticate_actor, canonical_run_context
 from algua.registry.kb_sync import sync_kb_doc
 from algua.registry.negative_results import (
     build_gate_fail_record,
     record_negative_result,
     sanitize_record,
 )
-from algua.registry.promotion import (
-    _revalidate_pending_novel,
-    promotion_preflight,
-    run_gate,
-)
+from algua.registry.promotion import promotion_preflight, run_gate
 from algua.registry.store import SqliteStrategyRepository
 from algua.research.gates import GateCriteria
-
-_HOLDOUT_REUSE_OVERRIDE = "override"
 
 
 def capture_gate_fail_experience(
@@ -105,12 +97,8 @@ def promote_task(  # noqa: PLR0913, PLR0915
     snapshot: str | None = None, fundamentals_snapshot: str | None = None,
     news_snapshot: str | None = None, universe: str | None = None, windows: int = 4,
     holdout_frac: float = 0.2, min_holdout_sharpe: float = 0.5, min_holdout_return: float = 0.0,
-    min_pct_positive: float = 0.6, min_window_sharpe: float = 0.0, n_combos: int | None = None,
-    allow_holdout_reuse: bool = False, allow_non_pit: bool = False, delistings: str | None = None,
-    assume_terminal_last_close: bool = False, actor: str = "agent",
-    actor_signature: str | None = None,
-    new_family: str | None = None, reload: bool = False,
-    attempt_token: str | None = None,
+    delistings: str | None = None,
+    actor: str = "agent", reload: bool = False, attempt_token: str | None = None,
 ) -> dict:
     """Run the backtested->candidate gate and return the (pre-``--summary``) payload dict — the
     body of ``research promote``, shared with the ``research run-all`` batch worker (#326).
@@ -121,20 +109,6 @@ def promote_task(  # noqa: PLR0913, PLR0915
     committed-burn overlap and fails closed, identical to two separate cold processes. ``reload``
     force-reloads the strategy module (warm-worker state hygiene)."""
     actor_enum = Actor(actor)  # fail fast on a bad actor before running the walk-forward
-    if n_combos is not None and n_combos < 1:
-        raise ValueError("--n-combos must be >= 1 when provided")
-    if not 0.0 <= min_pct_positive <= 1.0:
-        raise ValueError("--min-pct-positive must be in [0, 1]")
-    # HUMAN-ONLY guard (same mechanism as guard_agent_relaxations in promotion_preflight):
-    # --assume-terminal-last-close is a data-integrity relaxation that must never be granted to
-    # an agent. An agent must supply explicit delisting records; a held-into-gap name with no
-    # record fails closed on the agent path. Humans may pass the flag (and accept the cost).
-    if assume_terminal_last_close and actor_enum is not Actor.HUMAN:
-        raise ValueError(
-            "--assume-terminal-last-close is human-only (an agent must supply delisting records "
-            "via --delistings; a held-into-gap name without a record fails closed for the agent "
-            "path). Pass --actor human to accept the cost."
-        )
     # 1. Resolve inputs. The PIT universe is resolved up front alongside the other inputs (a bad
     # --universe refuses here, before any holdout is peeked at). The universe is intentionally NOT
     # part of the holdout-burn identity below (conservative: the same OOS data window is burned
@@ -180,47 +154,16 @@ def promote_task(  # noqa: PLR0913, PLR0915
     period_end = end_dt.date().isoformat()
     criteria = GateCriteria(
         min_holdout_sharpe=min_holdout_sharpe, min_holdout_return=min_holdout_return,
-        min_pct_positive_windows=min_pct_positive, min_window_sharpe=min_window_sharpe,
     )
 
     experience_log: dict[str, Any] | None = None
     with registry_conn() as conn:
         repo = SqliteStrategyRepository(conn)
-        rec0 = repo.get(name)  # StrategyNotFound -> JSON error before any work
-        # AUTHENTICATE the human actor (#329) BEFORE any relaxation is honored or the holdout is
-        # touched: a bare `--actor human` is forgeable, so it needs an SSH signature over a fresh
-        # single-use challenge binding this command + strategy + the RECOMPUTED checkout identity +
-        # the FULL canonical run_context (every gate input, incl. the relaxation set); unsigned, a
-        # challenge is printed and NOTHING runs. An agent is returned unchanged, never hashed.
-        actor_enum = authenticate_actor(
-            conn, command="research promote", name=name, rec=rec0, stage_to=Stage.CANDIDATE.value,
-            declared_actor=actor_enum, actor_signature=actor_signature,
-            identity=lambda: approvals.compute_artifact_hashes(name),
-            run_context=canonical_run_context({
-                "start": start, "end": end, "demo": demo, "snapshot": snapshot,
-                "fundamentals_snapshot": fundamentals_snapshot, "news_snapshot": news_snapshot,
-                "universe": universe, "windows": windows, "holdout_frac": holdout_frac,
-                "min_holdout_sharpe": min_holdout_sharpe, "min_holdout_return": min_holdout_return,
-                "min_pct_positive": min_pct_positive, "min_window_sharpe": min_window_sharpe,
-                "n_combos": n_combos, "allow_holdout_reuse": allow_holdout_reuse,
-                "allow_non_pit": allow_non_pit, "delistings": delistings,
-                "assume_terminal_last_close": assume_terminal_last_close,
-                "new_family": new_family,
-                # Bind the RESOLVED immutable data provenance, not just the mutable name: an agent
-                # can `data ingest-universe`/`import-delistings` a new effective-date between the
-                # challenge and the signature to change what the SAME name resolves to. Binding the
-                # resolved snapshot ids/effective-dates makes a captured signature fail if the
-                # named universe/delistings timeline shifts under it (codex GATE-2 CRITICAL).
-                "universe_prov": universe_prov, "delistings_prov": delisting_prov,
-            }),
-        )
-        # PREFLIGHT (pre-peek): relaxations-need-human + stage legality + breadth. Refuses here,
-        # before walk_forward touches the holdout.
+        repo.get(name)  # StrategyNotFound -> JSON error before any work
+        # PREFLIGHT (pre-peek): actor + stage legality + every integrity wall + breadth. Refuses
+        # here, before walk_forward touches the holdout.
         breadth = promotion_preflight(
-            repo, name, actor=actor_enum, declared_combos=n_combos,
-            allow_holdout_reuse=allow_holdout_reuse, allow_non_pit=allow_non_pit,
-            provider=provider, start=start_dt, end=end_dt,
-            new_family_slug=new_family,
+            repo, name, actor=actor_enum, provider=provider, start=start_dt, end=end_dt,
             universe_name=universe, universe_by_date=universe_by_date)
         # Atomic holdout reservation (#161): claim the window under the write lock (fast SELECT +
         # INSERT a pending row), run walk_forward with NO lock held, then finalize on success /
@@ -234,27 +177,12 @@ def promote_task(  # noqa: PLR0913, PLR0915
             strategy, provider, start_dt, end_dt,
             holdout_frac=holdout_frac, universe_by_date=universe_by_date)
         sid = repo.get(name).id
-        reservation_id, reused = repo.reserve_holdout(
+        reservation_id = repo.reserve_holdout(
             sid, data_source=data_source, snapshot_id=snapshot_id,
             period_start=period_start, period_end=period_end, holdout_frac=holdout_frac,
             holdout_start=holdout_start, holdout_end=holdout_end,
-            allow_reuse=allow_holdout_reuse)  # raises here = fail closed (overlap, no reuse)
-        # #524 (R9-H4): the holdout-burn-on-drift window is NARROWED, not fully closed. on_peek
-        # commits the reservation the instant BEFORE the holdout metric is read; wrap it so it FIRST
-        # re-runs the pending-NOVEL revalidation (still-unassigned + graph fingerprint + per-window
-        # rate cap — all pure DB reads) and raises BEFORE finalize on drift/bound. Drift
-        # caught here → the reservation stays pending → the except-release below frees the window →
-        # no holdout burned. RESIDUAL (documented + monitored, NOT silently "closed"): run_gate
-        # below runs its OWN pre-lock pending-NOVEL re-check AFTER walk_forward has returned — AFTER
-        # on_peek already committed the burn. Drift that first becomes visible in that post-peek
-        # pre-lock window burns the holdout and then fails the gate. That path is given the same
-        # release-on-failure discipline as walk_forward (release_holdout_reservation, a post-burn
-        # no-op) PLUS an explicit WARNING audit record below, so the race is observable and cannot
-        # masquerade as fully closed. Fully closing it would require folding finalize_holdout into
-        # the same atomic tx as the mint (record_gate_with_fdr_and_maybe_promote) — deferred.
+        )  # raises here = fail closed (overlap; the holdout is single-use)
         def _on_peek(cfg: str) -> None:
-            if breadth.pending_novel_family is not None:
-                _revalidate_pending_novel(repo, name, breadth.pending_novel_family)
             repo.finalize_holdout_reservation(
                 reservation_id, config_hash=cfg, strategy_id=sid)
 
@@ -265,7 +193,6 @@ def promote_task(  # noqa: PLR0913, PLR0915
                 universe_name=universe, universe_snapshots=universe_prov,
                 fundamentals_provider=fundamentals_provider, news_provider=news_provider,
                 delisting_records=delisting_records,
-                assume_terminal_last_close=assume_terminal_last_close,
                 # Burn-on-peek: commit the reservation into a burn the instant BEFORE walk_forward
                 # evaluates the holdout metric. Because release_holdout_reservation no-ops on a
                 # committed row, the except-release below is then correct for EVERY post-peek
@@ -282,22 +209,19 @@ def promote_task(  # noqa: PLR0913, PLR0915
                 pass
             raise
         # walk_forward returned, so on_peek ran and the holdout burn is ALREADY committed. Give
-        # run_gate the same release-on-failure discipline (#524 R9-H4 residual): a raise here —
-        # including run_gate's own pre-lock pending-NOVEL drift re-check — leaves a burned holdout,
-        # so release_holdout_reservation is a post-burn no-op. Emit an explicit WARNING audit record
-        # for exactly this post-peek/pre-commit failure so the narrowed race is monitored, never
-        # silently masquerading as fully closed. Then re-raise unchanged.
+        # run_gate the same release-on-failure discipline: a raise here (e.g. the #339 funnel CAS)
+        # leaves a burned holdout, so release_holdout_reservation is a post-burn no-op. Emit an
+        # explicit WARNING audit record for this post-peek/pre-commit failure so it is monitored.
+        # Then re-raise unchanged.
         try:
             outcome = run_gate(
                 repo, wf, name=name, actor=actor_enum, criteria=criteria, breadth=breadth,
                 universe_name=universe, universe_snapshots=universe_prov,
                 period_start=start_dt.date(), period_end=end_dt.date(), holdout_frac=holdout_frac,
-                data_source=data_source, snapshot_id=snapshot_id, allow_non_pit=allow_non_pit,
+                data_source=data_source, snapshot_id=snapshot_id,
                 holdout_evaluation_id=reservation_id, attempt_token=attempt_token,
                 comparison_inputs=({"delisting_snapshot": None, "assume_terminal_last_close": False}
-                                   if delistings is None and not assume_terminal_last_close
-                                   else None),
-                reason_suffix=("; holdout_reuse=" + _HOLDOUT_REUSE_OVERRIDE) if reused else "")
+                                   if delistings is None else None))
         except BaseException as exc:
             try:
                 repo.release_holdout_reservation(reservation_id)  # post-burn no-op
@@ -308,8 +232,7 @@ def promote_task(  # noqa: PLR0913, PLR0915
                 extra={"fields": {
                     "strategy": name, "reservation_id": reservation_id,
                     "exc_type": type(exc).__name__, "exc_message": str(exc),
-                    "note": "#524 R9-H4 narrowed residual: holdout was burned at on_peek before "
-                            "run_gate raised; window documented + monitored, not fully closed",
+                    "note": "holdout was burned at on_peek before run_gate raised",
                 }},
             )
             raise
@@ -337,8 +260,6 @@ def promote_task(  # noqa: PLR0913, PLR0915
         "fundamentals_snapshot": wf.fundamentals_snapshot,
         "news_snapshot": wf.news_snapshot,
     }
-    if reused:
-        payload["holdout_reuse"] = _HOLDOUT_REUSE_OVERRIDE
     if experience_log is not None:
         payload["experience_log"] = experience_log
     # Re-sync the kb doc to the (possibly) new stage (#331): best-effort, out-of-transaction —

@@ -4,7 +4,13 @@ baseline_commit: e875b6d
 
 # Story 2.5: Enforce the experimental capital envelope
 
-Status: backlog
+Status: partial — owner-approved capped route implemented 2026-11-08
+
+November 8 update: [capped live](../../agent/capped-live.md) implements the separate owner-approved
+historical-plus-five-session route, frozen signature/runtime and signed capital policy. Strict
+certificate migration and complete production-readiness acceptance from this original story are
+not claimed. The approved route includes its exact allocation in the signature transaction;
+legacy compatibility remains. No deployment, funding or activation occurred.
 
 Prepared: 2026-10-04. Baseline: `e875b6d` (main after PR #686). Epic: 2.
 Requirements: FR11 (instrument policy and capital ceiling), NFR4, NFR6, NFR7. PRD §§15, 19, 21.

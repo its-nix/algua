@@ -11,13 +11,16 @@ from algua.operator.campaign_memory_schema import (
     SELECTION_PROTOCOLS,
     VIEW_FIELDS,
     MemoryContextError,
+    context_limit,
     exact,
     integer,
     require,
     validate_payload,
     validate_snapshot,
+    window_protocol,
 )
 from algua.operator.research_memory_checkpoint import (
+    MAX_CHECKPOINT_BYTES,
     CheckpointError,
     canonical,
     load_checkpoint,
@@ -40,7 +43,9 @@ def normalized_store(uri: str) -> str:
 class _Projection:
     """Keep only a detached bounded prefix while each verified full archive is in scope."""
 
-    def __init__(self) -> None:
+    def __init__(self, selection_protocol: str) -> None:
+        self.window_records = window_protocol(selection_protocol)
+        self.context_bytes = context_limit(selection_protocol)
         self.receipts: list[dict] = []
         self.observations: list[dict] = []
         self.truncations: list[dict] = []
@@ -58,8 +63,14 @@ class _Projection:
             "attempt_evidence_ids": sorted((r["evidence_id"] for r in payload["attempt_refs"]),
                 key=lambda ref: int(ref.rsplit(":", 1)[1]))})
         self.retained += len(payload["evaluations"])
-        for row in sorted(payload["evaluations"], key=lambda row: row["source_run_id"]):
-            if len(canonical(row["inputs"])) > context_input_limit(row["kind"], row["inputs"]):
+        def priority(row: dict) -> tuple:
+            window = row["kind"] in {"walk_forward", "sweep_trial"} \
+                and "public_window_record" in row["inputs"]
+            return (self.window_records and not window, row["source_run_id"])
+
+        for row in sorted(payload["evaluations"], key=priority):
+            if len(canonical(row["inputs"])) > context_input_limit(
+                    row["kind"], row["inputs"], window_records=self.window_records):
                 self.omitted_inputs += 1
                 continue
             if not self.slots:
@@ -71,7 +82,7 @@ class _Projection:
                 continue
             view = {k: row[k] for k in VIEW_FIELDS if k != "archive_ref"}
             raw = canonical(view | {"archive_ref": receipt["reference"]})
-            if len(raw) > 24 * 1024:
+            if len(raw) > self.context_bytes:
                 # This record and every later candidate must leave via tail trimming; no backfill.
                 self.prefix_closed = True
                 self.omitted_context += 1
@@ -105,7 +116,7 @@ class _Projection:
                 truncated_sweeps=markers,
                 omitted_truncation_markers=self.total_markers - len(markers))
             snapshot["status"] = "available" if self.observations else "unavailable"
-            if len(canonical(snapshot)) <= 24 * 1024:
+            if len(canonical(snapshot)) <= self.context_bytes:
                 return validate_snapshot(snapshot)
             require(self.observations, "context_bytes_exceeded")
             self.observations.pop()
@@ -115,7 +126,7 @@ class _Projection:
 def project_snapshot(items: Iterable[dict], *, coverage: dict, cutoff: int,
                      tracking_uri: str, selection_protocol: str = LEGACY_SELECTION_PROTOCOL,
                      ) -> dict:
-    projection = _Projection()
+    projection = _Projection(selection_protocol)
     for item in items:
         projection.add(item)
         del item  # Release the previous full payload before advancing a producer to its next read.
@@ -123,7 +134,8 @@ def project_snapshot(items: Iterable[dict], *, coverage: dict, cutoff: int,
 
 
 def _verified_items(request: dict) -> Iterator[dict]:
-    archive_budget, checkpoint_budget = ReadBudget(32 * 1024 * 1024), ReadBudget(512 * 1024)
+    archive_budget = ReadBudget(32 * 1024 * 1024)
+    checkpoint_budget = ReadBudget(2 * MAX_CHECKPOINT_BYTES)
     archive = None
     for cycle in request["cycles"]:
         require(exact(cycle, {"research_cycle_id", "evidence_ref", "attempts"}), "request_invalid")

@@ -15,6 +15,7 @@ into this package, defeating the reason it was split out.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Collection, Mapping
 from datetime import date, datetime
 
@@ -40,7 +41,8 @@ def select_provider(demo: bool, snapshot: str | None) -> DataProvider:
 
 
 def resolve_eval_inputs(
-    name: str, demo: bool, snapshot: str | None, start: str, end: str, *, reload: bool = False
+    name: str, demo: bool, snapshot: str | None, start: str, end: str, *, reload: bool = False,
+    evaluation_role: str = 'strategy', benchmark_for: str | None = None,
 ) -> tuple[LoadedStrategy, DataProvider, datetime, datetime]:
     """Resolve the shared backtest-family preamble: load the strategy, pick the provider, and
     parse the period. Returns ``(strategy, provider, start_dt, end_dt)``.
@@ -49,6 +51,14 @@ def resolve_eval_inputs(
     long-lived ``research run-all`` batch worker (#326) so a warm process does not carry a
     strategy's own module-level state from one task into the next."""
     strategy = load_strategy(name, reload=reload)
+    if evaluation_role not in {'strategy', 'benchmark'}:
+        raise ValueError('invalid evaluation role')
+    marker = strategy.config.params.get('evaluation_role')
+    if marker == 'benchmark' or evaluation_role == 'benchmark':
+        if (evaluation_role != 'benchmark' or marker != 'benchmark' or not benchmark_for
+                or strategy.config.params.get('benchmark_for') != benchmark_for
+                or os.environ.get('ALGUA_RESEARCH_PROFILE') is None):
+            raise ValueError('diagnostic benchmark requires its paired sweep; no promotion')
     provider = select_provider(demo, snapshot)
     return strategy, provider, utc(start), utc(end)
 

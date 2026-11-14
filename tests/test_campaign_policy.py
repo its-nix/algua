@@ -1,4 +1,5 @@
 """Pure policy selection from aggregate lifetime evidence."""
+import json
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 
@@ -10,6 +11,34 @@ from algua.registry.idea_scorecard import campaign_scorecard
 from algua.registry.negative_results import record_negative_result
 from algua.research.campaign_policy import campaign_exclusions, campaign_menu
 from tests.campaign_fixtures import add_idea, attempt
+
+
+def test_unattempted_feasibility_criticism_is_context_not_permanent_veto(history_db):
+    idea = add_idea(history_db, "daily low dollar range ranking", family="volatility")
+    for _ in range(6):
+        record_negative_result(history_db, kind="discard", verdict="CRITIC:untestable",
+                               actor="agent", source="auto:leap_critic",
+                               hypothesis=idea.hypothesis, reason="snapshot unavailable in scratch")
+    before = campaign_scorecard(history_db)
+    choice, = campaign_menu(before, budget=1, novelty_min=0)
+    assert choice.hypothesis_id == idea.id
+    assert {f"negative_results:{i}" for i in range(1, 7)} <= set(choice.prior_evidence_ids)
+    assert campaign_scorecard(history_db) == before
+    attempt(history_db, idea, AttemptOutcome.WALKFORWARD_REFUTED)
+    add_idea(history_db, idea.title, family="volatility")
+    assert campaign_menu(campaign_scorecard(history_db), budget=1, novelty_min=0) == ()
+
+
+@pytest.mark.parametrize("changes", [
+    {"source": "manual"}, {"kind": "gate_fail"}, {"verdict": "CRITIC:paraphrase_of_refuted"},
+    {"strategy_name": "measured-strategy"},
+])
+def test_feasibility_exception_does_not_ignore_other_negative_evidence(history_db, changes):
+    idea = add_idea(history_db, "daily low dollar range ranking", family="volatility")
+    row = dict(kind="discard", verdict="CRITIC:untestable", actor="agent",
+               source="auto:leap_critic", hypothesis=idea.hypothesis, reason="prior evidence")
+    record_negative_result(history_db, **{**row, **changes})
+    assert campaign_menu(campaign_scorecard(history_db), budget=1, novelty_min=0) == ()
 
 
 def test_rejected_family_changes_future_menu_with_exact_evidence(tmp_path):
@@ -148,8 +177,15 @@ def test_newer_outcome_invalidates_preexisting_duplicate_even_with_its_exact_id(
 ])
 def test_declared_changes_are_checked_against_persisted_idea_fields(history_db, field,
                                                                  old_fields, new_fields, eligible):
-    old = add_idea(history_db, "opening imbalance persistence", family="a", **old_fields)
+    # Seed historical metadata after the attempt: today's claim boundary correctly refuses
+    # unsupported capabilities, but this test concerns comparison with an older experiment.
+    old = add_idea(history_db, "opening imbalance persistence", family="a",
+                   **{k: v for k, v in old_fields.items() if k != 'required_data'})
     attempt(history_db, old, AttemptOutcome.HOLDOUT_NEGATIVE)
+    if 'required_data' in old_fields:
+        history_db.execute('UPDATE ideas SET required_data=? WHERE id=?',
+                           (json.dumps(old_fields['required_data']), old.id))
+        history_db.commit()
     candidate = add_idea(history_db, old.title, family="a", duplicate_of_idea_id=old.id,
                          override_reason=f"changed_fields={field}; ideas:1 idea_attempts:1; "
                                          "Measure archived auction-only next-session drift",

@@ -233,11 +233,14 @@ def test_actual_driver_passes_opt_in_selection_to_real_cli(pool, tmp_path):
     values = {"AUTH_DB": env["ALGUA_DB_PATH"], "AUTH_DATA_DIR": env["ALGUA_DATA_DIR"],
               "STAMP": "driver", "N_HYPOTHESES": "3", "TIMEOUT": "45m", "WORKER_LIMIT": "1",
               "CPU_SECONDS": "2700", "MEMORY_MB": "16384", "FILE_MB": "512", "MAX_COST": "",
-              "CATEGORY": "", "CAMPAIGN": ""}
+              "CATEGORY": "", "CAMPAIGN": "", "REPO_ROOT": str(Path.cwd()),
+              "AUTH_TRACKING_BACKEND": "mlflow-sqlite",
+              "AUTH_TRACKING_URI": f"sqlite:///{tmp_path / 'absent-tracking.db'}"}
     preamble = 'set -euo pipefail\n' + '\n'.join(
         f'{k}={shlex.quote(v)}' for k, v in values.items())
     preamble += f'\nAUTH_CLI=({shlex.quote(sys.executable)} -c {shlex.quote(entry)})\n'
-    preamble += 'set -- --campaign ' + shlex.quote(str(path)) + '\n'
+    # This fixture tests manual claim transport, not default memory recapture (covered separately).
+    preamble += 'set -- --no-public-memory-context --campaign ' + shlex.quote(str(path)) + '\n'
     # Keep the prepared interpreter for the existing JSON extraction in this bounded fixture.
     source = source.replace('python3 -c', shlex.quote(sys.executable) + ' -c')
     command = preamble + parser + source + '\nprintf "%s" "$CLAIMED_JSON"'
@@ -254,6 +257,7 @@ def test_actual_driver_passes_opt_in_selection_to_real_cli(pool, tmp_path):
     assert pool.execute("SELECT COUNT(*) FROM idea_attempts").fetchone()[0] == 1
 
 
+@pytest.mark.slow
 def test_persisted_controller_example_is_repeatable(tmp_path):
     import subprocess
     import sys
@@ -306,17 +310,21 @@ def test_new_evidence_duplicate_is_admitted_and_bare_duplicate_is_not(pool, tmp_
     assert [i.id for i in claimed] == [changed.id]
 
 
-def test_novelty_reservation_stays_unspent_when_only_familiar_work_is_eligible(pool, tmp_path):
+@pytest.mark.parametrize('budget', [1, 2])
+def test_single_slot_fallback_preserves_multi_slot_novelty_reserve(pool, tmp_path, budget):
     from algua.contracts.idea import AttemptOutcome
     from tests.campaign_fixtures import attempt
 
     attempt(pool, pool_idea(pool, 1), AttemptOutcome.RUN_ERROR)
+    add_idea(pool, 'range expansion price persistence', family='a')
     cycle = ResearchCycle(pool, tmp_path / "cycles", "reserve")
-    args = request(limits=CycleLimits(max_hypotheses=1), category="a")
+    args = request(limits=CycleLimits(max_hypotheses=budget), category="a")
     menu = cycle.campaign_menu(**args)
-    assert menu["choices"] == []
-    claimed, result = cycle.start(**args, campaign=choose(menu))
-    assert claimed == [] and result["attempts_total"] == 0
+    assert [choice['hypothesis_id'] for choice in menu['choices']] == [2]
+    assert ('unused novelty reserve reallocated' in menu['choices'][0]['reason']) == (budget == 1)
+    claimed, result = cycle.start(**args, campaign=choose(menu, 2))
+    assert [idea.id for idea in claimed] == [2] and result['attempts_total'] == 1
+    assert result['unfinished_count'] == 1  # Admission is not an economic success.
     assert campaign_scorecard(pool)["totals"]["economic_evaluated"] == 0
 
 

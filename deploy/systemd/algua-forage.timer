@@ -1,14 +1,11 @@
 [Unit]
-Description=Algua forage timer — daily web inspiration foraging
+Description=Algua forage timer — bounded inspiration refill checks
 
 [Timer]
-# Daily, off-peak (03:00 UTC). Each firing takes the next FORAGE_SLICES (default 2) categories
-# off a persisted rotation cursor (data/forage-cursor), so every category in .opencode/categories.txt
-# is foraged at least weekly (the launcher asserts ceil(n_categories / FORAGE_SLICES) <= 7 at
-# startup and fails closed otherwise). A single daily fire has no same-day retry: a lost run just
-# waits for tomorrow's rotation slice, which is fine — foraging is a slow-feeding background
-# input to the idea pool, not a time-critical operator loop.
-OnCalendar=*-*-* 03:00:00 UTC
+# Check hourly. The trusted driver launches only for an empty eligible research queue or the
+# 03 UTC refresh, at most twice per UTC day and at least two hours apart. Idle checks do not
+# rotate categories or spend a launch. Each actual launch advances the existing category cursor.
+OnCalendar=*-*-* *:05:00 UTC
 # Catch up a fire missed while the box was off; the rotation cursor is durable on disk, so a late
 # fire just forages whatever slice is next.
 Persistent=true

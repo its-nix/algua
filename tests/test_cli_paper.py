@@ -20,25 +20,9 @@ from algua.risk import kill_switch
 from algua.risk.limits import RiskBreach
 from tests._deployment_helpers import force_legacy_strategy
 from tests._gate_row_helpers import seed_passing_gate
-from tests._human_actor_helpers import (
-    install_human_actor_anchor,
-    promote_signed,
-    scaffold_transition,
-)
+from tests._scaffold_helpers import scaffold_transition
 
 runner = CliRunner()
-
-# --- #329 authenticated --actor human plumbing ---------------------------------------------------
-_HUMAN_KEY = None
-_TMP_PATH = None
-
-
-def _promote(args):
-    """Drop-in for `runner.invoke(app, args)` at gated promote call sites: when `args` requests
-    `--actor human`, run the signed challenge dance; otherwise a plain invoke."""
-    if "human" in args:
-        return promote_signed(runner, app, args, _HUMAN_KEY, _TMP_PATH)
-    return runner.invoke(app, args)
 
 _SNAP = "snap1"
 
@@ -71,9 +55,6 @@ def test_resolve_wall_clock_window_respects_explicit_values():
 def _isolated(monkeypatch, tmp_path):
     monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "p.db"))
     monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path))
-    global _HUMAN_KEY, _TMP_PATH
-    _HUMAN_KEY = install_human_actor_anchor(monkeypatch, tmp_path)
-    _TMP_PATH = tmp_path
 
 
 def _to_paper(name="cross_sectional_momentum"):
@@ -1604,17 +1585,20 @@ def test_paper_promote_at_forward_tested_refreshes_certificate(monkeypatch):
     assert _stage_of() == "forward_tested"
 
 
-def test_paper_promote_agent_relaxation_refused(monkeypatch):
+@pytest.mark.parametrize("actor", ["agent", "human"])
+def test_paper_promote_relaxation_refused(monkeypatch, actor):
     # Deliberately NO broker stub and NO creds: preflight must refuse a relaxation attempt
-    # BEFORE the broker is even constructed (no credentials needed to be told no).
+    # BEFORE the broker is even constructed (no credentials needed to be told no). No actor may
+    # relax (spec 2026-11-13).
     monkeypatch.setenv("ALGUA_ALPACA_API_KEY", "")
     monkeypatch.setenv("ALGUA_ALPACA_API_SECRET", "")
     _to_paper()
-    result = runner.invoke(app, ["paper", "promote", _NAME, "--sharpe-floor", "0.2"])
+    result = runner.invoke(app, ["paper", "promote", _NAME, "--actor", actor,
+                                 "--sharpe-floor", "0.2"])
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
     assert payload["ok"] is False
-    assert "sharpe_floor" in payload["error"] and "human" in payload["error"]
+    assert "sharpe_floor" in payload["error"] and "relax" in payload["error"]
     from contextlib import closing
     with closing(_promote_conn()) as conn:  # refused BEFORE any evaluation row is minted
         assert conn.execute("SELECT COUNT(*) FROM forward_gate_evaluations").fetchone()[0] == 0
@@ -2055,6 +2039,42 @@ def test_trade_tick_missing_allocation_surfaces_invalid_input(monkeypatch, tmp_p
     assert payload["ok"] is False
     assert payload["code"] == "invalid_input"
     assert payload["error"] == f"{name} has no paper allocation"
+
+
+@pytest.mark.parametrize("values,quantities,error", [
+    ({"AAA": float("nan")}, {"AAA": 1.0}, "market_values['AAA'] must be a finite number"),
+    ({1: 100.0}, {1: 1.0}, "quantities keys must be non-empty strings"),
+])
+def test_trade_tick_malformed_current_holdings_fail_closed(
+    monkeypatch, tmp_path, values, quantities, error,
+):
+    from algua.execution.live_sizing import SizingSnapshot
+
+    monkeypatch.setenv("ALGUA_ALPACA_API_KEY", "k")
+    monkeypatch.setenv("ALGUA_ALPACA_API_SECRET", "s")
+    name = _paper_strategy_with_allocation(
+        monkeypatch, tmp_path, capital=10_000.0, account_equity=100_000.0,
+    )
+    broker = _FakePaperBroker(account_equity=100_000.0, positions={}, marks={})
+    monkeypatch.setattr("algua.cli.paper_cmd._alpaca_broker_from_settings", lambda: broker)
+    # Keep run_tick and both planner phases real; corrupt only the current sizing holdings.
+    monkeypatch.setattr(
+        "algua.cli.paper_cmd.build_paper_sizing_snapshot",
+        lambda *a, **k: (SizingSnapshot(10_000.0, values, quantities), 10_000.0),
+    )
+    end = datetime.now(UTC).date()
+    result = runner.invoke(app, [
+        "paper", "trade-tick", name, "--snapshot", _SNAP,
+        "--start", (end - timedelta(days=90)).isoformat(), "--end", end.isoformat(),
+    ])
+    assert result.exit_code != 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert payload["code"] == "invalid_input"
+    assert payload["error"] == error
+    assert broker.submitted == []
+    assert broker.account_wide_cancels == 0
+    assert _latest_tick(name) is None
 
 
 def test_trade_tick_halts_after_grace_expiry(monkeypatch, tmp_path):

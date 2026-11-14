@@ -29,3 +29,36 @@ def attempt(conn, idea, outcome=None, *, reason="SYNTHETIC_FIXTURE", evidence_re
         repo.record_outcome(idea.id, token=claimed.claim_token, outcome=outcome,
                             reason=reason, evidence_ref=evidence_ref)
     return claimed
+
+
+def invoke_menu(budget: int):
+    """Run the old `campaign-menu` body against ALGUA_DB_PATH; returns the typer Result.
+
+    Test-only stand-in for the removed CLI command. Imports are local so importing this
+    fixture module stays cheap.
+    """
+    from dataclasses import asdict
+
+    import typer
+    from typer.testing import CliRunner
+
+    from algua.cli._common import ok
+    from algua.cli.app import emit
+    from algua.cli.errors import json_errors
+    from algua.config.settings import get_settings
+    from algua.registry.campaign_read import read_campaign_scorecard
+    from algua.research.campaign_policy import campaign_exclusions, campaign_menu
+
+    menu_app = typer.Typer()
+
+    @menu_app.command()
+    @json_errors
+    def _menu(budget: int = typer.Option(..., "--budget")) -> None:
+        history = read_campaign_scorecard(get_settings().db_path)
+        choices = campaign_menu(history, budget=budget, novelty_min=1, novelty_max=None)
+        emit(ok({"choices": [asdict(c) for c in choices], "scorecard": history,
+                 "exclusions": campaign_exclusions(history),
+                 "budget": budget,
+                 "unallocated_budget": budget - sum(c.budget for c in choices)}))
+
+    return CliRunner().invoke(menu_app, ["--budget", str(budget)])

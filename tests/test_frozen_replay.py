@@ -85,6 +85,8 @@ from tests._frozen_paper_world import (
 )
 from tests._frozen_replay import ReplayMismatch, prepare_replay, replay_attempt
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 TENANT = "frozen_replay_tenant"  # its own name: the 1.3c e2e world owns frozen_paper_tenant
 FAMILY = "frozen_replay_family"
 GATE_NAME = "frozen-replay-gate"

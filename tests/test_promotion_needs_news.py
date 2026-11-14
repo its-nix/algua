@@ -21,6 +21,8 @@ from algua.registry.promotion import promotion_preflight
 from algua.registry.store import SqliteStrategyRepository
 from algua.registry.transitions import transition_strategy
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 _FAM_PATH = Path(_momentum_fam.__path__[0])
 
 
@@ -71,9 +73,6 @@ def test_promotion_preflight_passes_news_pit_check(tmp_path):
                 repo,
                 name,
                 actor=Actor.AGENT,
-                declared_combos=None,
-                allow_holdout_reuse=False,
-                allow_non_pit=False,
                 provider=SyntheticProvider(seed=0),
                 start=datetime(2024, 1, 1, tzinfo=UTC),
                 end=datetime(2024, 6, 1, tzinfo=UTC),

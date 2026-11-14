@@ -70,9 +70,16 @@ uv run algua research promote cross_sectional_momentum \
   --start "$START" --end "$END"
 ```
 
-- Agents use measured sweep breadth; `--n-combos` is an authenticated human-only declaration.
-- PIT coverage, minimum holdout observations and positive raw holdout Sharpe are binding alongside
-  preflight integrity checks. The statistical stack is advisory; FDR has no veto or throttle.
+- Breadth is the number of combinations you searched in step 2, **measured** from the recorded
+  `backtest sweep` trials. It cannot be declared; with no recorded sweep the promote is refused.
+- `--universe` must name a point-in-time universe covering the window; non-PIT fails closed.
+- The holdout is single-use: a promote burns it, and a burned window cannot be re-evaluated.
+- Binding: PIT, >= 63 holdout bars, raw holdout Sharpe > 0. Advisory (recorded, never a veto):
+  `holdout_sharpe`, `holdout_return`, and deflated Sharpe (`dsr_evidence` + `dsr_bootstrap`), the
+  one trial-aware quality signal, whose trial count is max(own lifetime sweep combos, funnel-wide
+  combos in the 90-day window).
+- These gates are the same for every actor; `--actor human` unlocks nothing.
+- The default thresholds are the gate criteria in `algua/research/gates.py`.
 - Raw `registry transition --to candidate` is refused for every actor. Use `research promote`.
 
 Output carries `passed`, `promoted`, the per-check breakdown, the config hash, and the snapshot
@@ -106,10 +113,12 @@ uv run algua paper promote cross_sectional_momentum
 
 The gate requires ≥63 broker-clocked daily return observations, ≥90% session coverage, realized
 Sharpe ≥ max(0.5 × holdout_sharpe, 0.3), vol/drawdown bounds, clean integrity, and account
-hygiene. Evidence must be ≤5 trading sessions stale. Relaxation flags are human-only.
+hygiene. Evidence must be ≤5 trading sessions stale. The threshold flags may only tighten a
+threshold, for every actor; loosening one is refused.
 
-The adopted short-paper experimental-delivery target in PRD §16 awaits protected implementation;
-it does not replace these executable requirements yet. Frozen live activation remains unsupported.
+The separate [capped route](capped-live.md) qualifies five actual scheduled paper sessions and
+requires exact human-signed live activation. It does not replace the strict `paper promote` gate
+or manufacture a strict forward certificate. Research workers still stop at `candidate`.
 
 Re-running `paper promote` on a strategy already at `forward_tested` refreshes the live-wall
 certificate without a stage change (exit 0 on pass).

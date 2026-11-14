@@ -69,7 +69,8 @@ if case == 'internal_state':
     with state.open('wb') as stream:
         for _ in range(9):
             stream.write(b'x' * 1024 * 1024)
-prompt = Path(sys.argv[sys.argv.index('-f')+1]).read_text()
+prompt = (Path(sys.argv[sys.argv.index('-f')+1]).read_text()
+          if '-f' in sys.argv else sys.argv[-1])
 menu = json.loads(prompt.split('MENU_JSON\\n',1)[1])
 choice = {**menu['choices'][-1], 'reason':'SYNTHETIC_FIXTURE uses the captured evidence'}
 reply = {'menu_id': menu['menu_id'], 'choices':[choice]}
@@ -124,6 +125,141 @@ def cli(*args):
                           capture_output=True, text=True, timeout=30)
 
 
+def test_daily_budget_refuses_second_chooser_before_runtime(fixture_pool, fake_runtime,
+                                                           tmp_path, monkeypatch):
+    monkeypatch.setenv('ALGUA_RESEARCH_DAILY_CYCLE_LIMIT', '1')
+    first = cli('cycle-start', '--run', 'budget-first', '--limit', '1', '--choose',
+                '--choice-dir', str(tmp_path / 'first'))
+    assert first.returncode == 0, first.stdout
+    calls = fake_runtime.read_text()
+    second = cli('cycle-start', '--run', 'budget-second', '--limit', '1', '--choose',
+                 '--choice-dir', str(tmp_path / 'second'))
+    assert second.returncode == 1, second.stdout
+    assert 'daily research budget exhausted' in second.stdout
+    assert fake_runtime.read_text() == calls
+    conn = connect(fixture_pool)
+    assert conn.execute('SELECT COUNT(*) FROM idea_attempts').fetchone()[0] == 1
+    conn.close()
+
+
+def test_chooser_receives_full_prompt_as_literal_text(fixture_pool, fake_runtime, tmp_path):
+    directory = tmp_path / 'literal'
+    marker = tmp_path / 'MUST_NOT_EXECUTE'
+    conn = connect(fixture_pool)
+    conn.execute('UPDATE ideas SET hypothesis=? WHERE id=1',
+                 (f'UNTRUSTED $(touch {marker}) `touch {marker}` $HOME',))
+    conn.commit()
+    conn.close()
+    result = cli('cycle-start', '--run', 'literal', '--limit', '3', '--choose',
+                 '--choice-dir', str(directory))
+    assert result.returncode == 0, result.stdout
+    commands = [json.loads(line) for line in fake_runtime.read_text().splitlines()]
+    run = next(c for c in commands if c[0] == 'run')
+    prompt = (directory / 'prompt.txt').read_text()
+    assert len(prompt) > 2000
+    assert '-f' not in run and '--file' not in run
+    assert run[-1] == prompt
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize('has_unseen_family', [False, True])
+def test_single_slot_can_explore_familiar_work_but_prefers_unseen_family(
+        fixture_pool, fake_runtime, tmp_path, has_unseen_family):
+    from algua.contracts.idea import AttemptOutcome
+    from algua.registry.ideas import IdeaRepository
+    from tests.campaign_fixtures import attempt
+
+    conn = connect(fixture_pool)
+    conn.execute("UPDATE ideas SET status='discarded' WHERE id IN (2,3)")
+    conn.commit()
+    attempt(conn, IdeaRepository(conn).get(1), AttemptOutcome.RUN_ERROR)
+    familiar = add_idea(conn, 'trailing range asymmetry', family='a')
+    expected = (add_idea(conn, 'calendar volume drift', family='unseen')
+                if has_unseen_family else familiar)
+    conn.close()
+    result = cli('cycle-start', '--run', 'single-slot', '--limit', '1', '--choose',
+                 '--choice-dir', str(tmp_path / 'single-slot'))
+    assert result.returncode == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert [i['id'] for i in payload['claimed']] == [expected.id]
+    choice = payload['campaign']['menu']['choices'][0]
+    expected_reason = 'novelty reserve' if has_unseen_family else 'unused novelty reserve'
+    assert expected_reason in choice['reason']
+    if has_unseen_family:
+        assert 'unused novelty reserve' not in choice['reason']
+    assert sum(c['budget'] for c in payload['campaign']['selection']['choices']) == 1
+
+
+@pytest.mark.parametrize('blocked_by', ['refuted', 'duplicate', 'monthly'])
+def test_idle_single_slot_does_not_bypass_exclusions(
+        fixture_pool, fake_runtime, tmp_path, blocked_by):
+    from algua.contracts.idea import AttemptOutcome
+    from algua.registry.ideas import IdeaRepository
+    from tests.campaign_fixtures import attempt
+
+    conn = connect(fixture_pool)
+    conn.execute("UPDATE ideas SET status='discarded' WHERE id IN (2,3)")
+    conn.commit()
+    old = IdeaRepository(conn).get(1)
+    attempt(conn, old, AttemptOutcome.RUN_ERROR)
+    candidate = add_idea(conn, old.title if blocked_by == 'duplicate' else 'range asymmetry',
+                         family='a')
+    if blocked_by == 'refuted':
+        conn.execute("UPDATE ideas SET status='refuted' WHERE id=?", (candidate.id,))
+    elif blocked_by == 'monthly':
+        conn.execute("UPDATE ideas SET horizon='monthly' WHERE id=?", (candidate.id,))
+    conn.commit()
+    result = cli('cycle-start', '--run', 'excluded', '--limit', '1', '--choose',
+                 '--choice-dir', str(tmp_path / 'excluded'))
+    assert result.returncode == 0, result.stdout
+    assert json.loads(result.stdout)['claimed'] == []
+    assert conn.execute('SELECT COUNT(*) FROM idea_attempts').fetchone()[0] == 1
+    assert not fake_runtime.exists()
+    conn.close()
+
+
+def test_multi_slot_cycle_preserves_unspent_novelty_reserve(fixture_pool, tmp_path):
+    from algua.contracts.idea import AttemptOutcome
+    from algua.registry.ideas import IdeaRepository
+    from tests.campaign_fixtures import attempt
+
+    conn = connect(fixture_pool)
+    conn.execute("UPDATE ideas SET status='discarded' WHERE id IN (2,3)")
+    conn.commit()
+    attempt(conn, IdeaRepository(conn).get(1), AttemptOutcome.RUN_ERROR)
+    for title in ['range asymmetry', 'calendar volume drift']:
+        add_idea(conn, title, family='a')
+    conn.close()
+    result = cli('cycle-start', '--run', 'multi', '--limit', '2', '--menu-only')
+    assert result.returncode == 0, result.stdout
+    choices = json.loads(result.stdout)['menu']['choices']
+    assert len(choices) == 1
+    assert 'unused novelty reserve' not in choices[0]['reason']
+
+
+def test_menu_only_excludes_unsupported_rows_and_can_be_adopted(fixture_pool, tmp_path):
+    conn = connect(fixture_pool)
+    conn.execute("UPDATE ideas SET horizon='monthly' WHERE id=1")
+    conn.commit()
+    before = list(conn.iterdump())
+    menu_result = cli('cycle-start', '--run', 'manual-daily', '--limit', '3', '--menu-only')
+    assert menu_result.returncode == 0, menu_result.stdout
+    menu = json.loads(menu_result.stdout)['menu']
+    assert 1 not in [c['hypothesis_id'] for c in menu['choices']]
+    assert 'horizon:monthly' in menu['exclusions']['1']['reason']
+    assert list(conn.iterdump()) == before
+    selected = menu['choices'][0]
+    campaign = tmp_path / 'selection.json'
+    campaign.write_text(json.dumps({'menu': menu, 'selection': {
+        'menu_id': menu['menu_id'], 'choices': [{**selected, 'reason': 'compatible daily test'}]}}))
+    result = cli('cycle-start', '--run', 'manual-daily', '--limit', '3',
+                 '--campaign', str(campaign))
+    assert result.returncode == 0, result.stdout
+    assert [i['id'] for i in json.loads(result.stdout)['claimed']] == [selected['hypothesis_id']]
+    assert conn.execute('SELECT COUNT(*) FROM idea_attempts WHERE idea_id=1').fetchone()[0] == 0
+    conn.close()
+
+
 def test_executable_opt_in_chooses_only_runtime_selection(fixture_pool, fake_runtime, tmp_path):
     evidence = tmp_path / 'choice'
     result = cli('cycle-start', '--run', 'producer', '--limit', '3',
@@ -151,6 +287,29 @@ def test_executable_opt_in_chooses_only_runtime_selection(fixture_pool, fake_run
         conn.close()
 
 
+def test_cycle_start_parks_old_unsupported_rows_before_any_chooser_call(
+        fixture_pool, fake_runtime, tmp_path):
+    from algua.contracts.idea import Horizon
+    from algua.registry.ideas import IdeaRepository
+
+    conn = connect(fixture_pool)
+    monthly = add_idea(conn, 'monthly fixed share holding', family='monthly',
+                       horizon=Horizon.MONTHLY)
+    conn.close()
+    result = cli('cycle-start', '--run', 'unsupported-monthly', '--limit', '1',
+                 '--category', 'monthly', '--choose', '--choice-dir', str(tmp_path / 'choice'))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)['claimed'] == []
+    assert not fake_runtime.exists()
+    conn = connect(fixture_pool)
+    try:
+        saved = IdeaRepository(conn).get(monthly.id)
+        assert saved.status.value == 'needs_data' and saved.parked_reason == 'horizon:monthly'
+        assert conn.execute('SELECT COUNT(*) FROM idea_attempts').fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
 def prepared(database, tmp_path, **changes):
     from algua.operator.research_cycle import CycleLimits, ResearchCycle
 
@@ -159,6 +318,99 @@ def prepared(database, tmp_path, **changes):
     args = {'limits': CycleLimits(max_hypotheses=3), 'context': {'tier':'synthetic_fixture'},
             'ttl_minutes':180, **changes}
     return conn, cycle, args, cycle.campaign_menu(**args)
+
+
+def test_large_history_has_bounded_prompt_but_complete_admission_menu(
+        fixture_pool, fake_runtime, tmp_path):
+    from algua.operator.campaign_choice import MAX_PROMPT_BYTES, choose_campaign
+    from algua.registry.negative_results import record_negative_result
+
+    conn = connect(fixture_pool)
+    for i in range(40):
+        add_idea(conn, f'archived alternative {i}', family=f'archive-{i}',
+                 hypothesis='SYNTHETIC_FIXTURE research description ' * 80)
+        record_negative_result(conn, kind='discard', verdict='CRITIC:fixture', actor='agent',
+            reason='SYNTHETIC_FIXTURE conceptual concern ' * 100,
+            hypothesis='SYNTHETIC_FIXTURE earlier proposed test ' * 100, source='manual',
+            params={'not_needed_for_ranking': 'SYNTHETIC_FIXTURE parameter ' * 100})
+    conn.close()
+    conn, cycle, args, menu = prepared(fixture_pool, tmp_path)
+    assert len(json.dumps(menu).encode()) > MAX_PROMPT_BYTES
+    before = list(conn.iterdump())
+    try:
+        directory = tmp_path / 'bounded-history'
+        campaign = choose_campaign(cycle, menu=menu, directory=directory, **args)
+        prompt = (directory / 'prompt.txt').read_text()
+        view = json.loads(prompt.split('MENU_JSON\n', 1)[1])
+        assert len(prompt.encode()) <= MAX_PROMPT_BYTES
+        assert view['menu_id'] == menu['menu_id']
+        assert view['choices'] == menu['choices'] and view['request'] == menu['request']
+        offered = {c['hypothesis_id'] for c in menu['choices']}
+        assert view['scorecard']['hypotheses'] == [
+            h for h in menu['scorecard']['hypotheses'] if h['id'] in offered]
+        assert view['scorecard']['totals'] == menu['scorecard']['totals']
+        assert view['scorecard']['by_family'] == menu['scorecard']['by_family']
+        assert view['prompt_coverage']['hypotheses']['omitted'] > 0
+        assert view['prompt_coverage']['negative_results']['omitted'] > 0
+        assert view['prompt_coverage']['negative_results']['truncated_fields'] > 0
+        assert json.loads((directory / 'menu.json').read_text()) == menu
+        assert campaign['menu'] == menu and list(conn.iterdump()) == before
+        claimed, result = cycle.start(**args, campaign=campaign)
+        assert result['ok'] and [i.id for i in claimed] == [menu['choices'][-1]['hypothesis_id']]
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize('recent_history_limit', [8, 0])
+def test_prompt_view_keeps_old_evidence_referenced_by_offered_choices(
+        fixture_pool, tmp_path, recent_history_limit):
+    from algua.operator.campaign_choice import _prompt_menu
+
+    conn, _, _, menu = prepared(fixture_pool, tmp_path)
+    try:
+        menu['choices'][0]['prior_evidence_ids'] += ['idea_attempts:1', 'negative_results:1']
+        for key, prefix in [('attempts', 'idea_attempts'),
+                            ('negative_results', 'negative_results')]:
+            menu['scorecard'][key] = [
+                {'id': i, 'evidence_id': f'{prefix}:{i}', 'reason': 'SYNTHETIC_FIXTURE ' * 80,
+                 'idea_id': 999, 'idea_ids': []} for i in reversed(range(1, 20))]
+            related = next(row for row in menu['scorecard'][key] if row['id'] == 2)
+            offered = menu['choices'][0]['hypothesis_id']
+            related.update(idea_id=offered if key == 'attempts' else 999,
+                           idea_ids=[offered] if key == 'negative_results' else [])
+        view = _prompt_menu(menu, recent_history_limit=recent_history_limit)
+        for key in ('attempts', 'negative_results'):
+            ids = [row['id'] for row in view['scorecard'][key]]
+            assert 1 in ids and 2 in ids and ids == sorted(ids)
+            assert (19 in ids) is bool(recent_history_limit)
+            assert view['prompt_coverage'][key]['required_rows'] == 2
+            assert view['prompt_coverage'][key]['omitted'] == 19 - len(ids)
+            assert view['prompt_coverage'][key]['referenced_rows'] == 1
+            assert view['prompt_coverage'][key]['referenced_rows_omitted'] == 0
+            assert view['prompt_coverage'][key]['truncated_fields'] > 0
+    finally:
+        conn.close()
+
+
+def test_oversized_essential_hypothesis_still_refuses_before_runtime(
+        fixture_pool, fake_runtime, tmp_path):
+    from algua.operator.campaign_choice import choose_campaign
+
+    conn = connect(fixture_pool)
+    add_idea(conn, 'large required specification', family='large',
+             hypothesis='SYNTHETIC_FIXTURE essential specification ' * 4000)
+    conn.close()
+    conn, cycle, args, menu = prepared(fixture_pool, tmp_path, category='large')
+    assert len(menu['choices']) == 1
+    before = list(conn.iterdump())
+    try:
+        directory = tmp_path / 'essential-too-large'
+        with pytest.raises(ValueError, match='chooser prompt exceeds byte bound'):
+            choose_campaign(cycle, menu=menu, directory=directory, **args)
+        assert list(conn.iterdump()) == before
+        assert not fake_runtime.exists() and not directory.exists() and not cycle.path.exists()
+    finally:
+        conn.close()
 
 
 @pytest.mark.parametrize('file_mb', [16, 4])
@@ -363,6 +615,7 @@ def test_invalid_export_refuses_cli_json_before_admission(
         conn.close()
 
 
+@pytest.mark.slow
 def test_legacy_ignores_unrelated_sibling_stderr(tmp_path):
     from tests.test_agent_runtime_seam import _REJECTED, _run_seam
 
@@ -454,5 +707,60 @@ def test_fast_exit_cannot_bypass_export_size_bound(
         with pytest.raises(ValueError, match='byte bound'):
             campaign_choice.choose_campaign(cycle,menu=menu,directory=tmp_path/'large',**args)
         assert cycle.rows() == [] and not cycle.path.exists()
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize('ascii_locale', [False, True])
+def test_large_context_trims_only_optional_history_before_claiming(
+        fixture_pool, fake_runtime, tmp_path, monkeypatch, ascii_locale):
+    from algua.operator.campaign_choice import MAX_PROMPT_BYTES, choose_campaign
+    from algua.registry.negative_results import record_negative_result
+
+    conn = connect(fixture_pool)
+    for i in range(12):
+        record_negative_result(conn, kind='discard', verdict='CRITIC:fixture', actor='agent',
+            reason=f'SYNTHETIC_FIXTURE optional criticism {i} ' * 60,
+            hypothesis=f'SYNTHETIC_FIXTURE unrelated source {i} ' * 60, source='manual')
+    conn.close()
+    if ascii_locale:
+        write_text = Path.write_text
+
+        def locale_write(path, data, **kwargs):
+            if path.name == 'prompt.txt':
+                kwargs.setdefault('encoding', 'ascii')
+            return write_text(path, data, **kwargs)
+
+        monkeypatch.setattr(Path, 'write_text', locale_write)
+    # Exercise the complete immutable request budget, not just a large history in isolation.
+    context = {'fixture_retained_comparison': 'x' * (84 * 1024),
+               'fixture_unicode': '反' * 100}
+    conn, cycle, args, menu = prepared(fixture_pool, tmp_path, context=context)
+    before = list(conn.iterdump())
+    directory = tmp_path / 'large-context'
+    try:
+        campaign = choose_campaign(cycle, menu=menu, directory=directory, **args)
+        prompt = (directory / 'prompt.txt').read_text(encoding='utf-8')
+        view = json.loads(prompt.split('MENU_JSON\n', 1)[1])
+        assert len(prompt.encode()) <= MAX_PROMPT_BYTES
+        assert view['request'] == menu['request']
+        assert view['choices'] == menu['choices'] and view['menu_id'] == menu['menu_id']
+        assert view['scorecard']['totals'] == menu['scorecard']['totals']
+        coverage = view['prompt_coverage']['negative_results']
+        assert coverage['included'] < 8 and coverage['omitted'] > 4
+        assert coverage['referenced_rows_omitted'] == 0
+        from algua.operator.campaign_choice import _prompt_menu
+        from algua.operator.research_memory_checkpoint import canonical
+
+        recent = int(view['prompt_coverage']['selection'].split('highest ')[1].split()[0])
+        assert coverage['included'] == recent
+        next_view = _prompt_menu(menu, recent_history_limit=recent + 1)
+        next_prompt = prompt.split('MENU_JSON\n', 1)[0] + 'MENU_JSON\n'
+        assert len(next_prompt.encode() + canonical(next_view)) > MAX_PROMPT_BYTES
+        assert (directory / 'prompt.txt').read_bytes() == prompt.encode()
+        assert json.loads((directory / 'menu.json').read_text()) == menu
+        assert campaign['menu'] == menu and list(conn.iterdump()) == before
+        claimed, result = cycle.start(**args, campaign=campaign)
+        assert result['ok'] and [i.id for i in claimed] == [menu['choices'][-1]['hypothesis_id']]
     finally:
         conn.close()

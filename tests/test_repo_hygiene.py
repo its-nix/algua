@@ -40,6 +40,7 @@ ROOT_WHITELIST = frozenset(
         ".gitleaks.toml",
         ".pip-audit-ignore.txt",
         ".python-version",  # uv's toolchain selector: pins CPython for ast.unparse stability
+        "PRIVACY.md",  # the public privacy URL registered on the Algua Google OAuth app
         "pyproject.toml",
         "README.md",
         "uv.lock",
@@ -60,7 +61,8 @@ JUNK_PATTERNS = [
 STRAT_PREFIX = "algua/strategies/"
 # Modules allowed directly at the strategies top level: infrastructure, not strategies.
 INFRA_TOP_LEVEL = frozenset(
-    {"__init__.py", "base.py", "context_loader.py", "loader.py", "tradable.py"}
+    {"__init__.py", "base.py", "context_loader.py", "context_inputs.py", "frozen_model.py",
+     "loader.py", "tradable.py"}
 )
 
 
@@ -244,6 +246,54 @@ def test_strategies_placement_and_provenance() -> None:
 # fails loudly at the moment of the move instead of silently disarming a wall.
 INTEGRITY_CRITICAL_MODULES = frozenset(
     {
+        "algua/contracts/frozen_model.py",
+        "algua/contracts/capped_live.py",
+        "algua/registry/allocations.py",
+        "algua/registry/db/capped_live.py",
+        "algua/registry/capped_auth.py",
+        "algua/registry/capped_context.py",
+        "algua/registry/capped_policy.py",
+        "algua/registry/capped_active.py",
+        "algua/registry/capped_qualification.py",
+        "algua/registry/capped_state.py",
+        "algua/registry/capped_allocation.py",
+        "algua/cli/capped_live_cmd.py",
+        "algua/cli/handoff_cmd.py",
+        "algua/cli/experimental_handoff.py",
+        "algua/cli/frozen_live.py",
+        "algua/cli/frozen_planner.py",
+        "algua/cli/capped_runtime.py",
+        "algua/risk/layered.py",
+        "algua/registry/db/drawdown.py",
+        "algua/registry/drawdown_store.py",
+        "algua/registry/drawdown_auth.py",
+        "algua/execution/alpaca_reductions.py",
+        "algua/execution/drawdown_flows.py",
+        "algua/execution/drawdown_actions.py",
+        "algua/execution/drawdown_cycle.py",
+        "algua/execution/drawdown_guard.py",
+        "algua/execution/drawdown_watch.py",
+        "algua/cli/layered_runtime.py",
+        "algua/cli/risk_cmd.py",
+        "algua/cli/live_cmd.py",
+        "algua/execution/book_breaker_halt.py",
+        "algua/execution/alpaca_broker.py",
+        "algua/execution/fleet_health.py",
+        "algua/registry/db/experimental.py",
+        "algua/registry/experimental_sessions.py",
+        "algua/registry/experimental_qualification.py",
+        "algua/operator/paper_observations.py",
+        "algua/cli/paper_experimental.py",
+        "algua/backtest/model_policy.py",
+        "algua/registry/frozen_model_assets.py",
+        "algua/primitives/bounded_file.py",
+        "algua/strategies/context_inputs.py",
+        "algua/strategies/frozen_model.py",
+        "algua/live/frozen_model_loading.py",
+        "algua/live/frozen_model_wire.py",
+        "algua/live/model_context.py",
+        "algua/cli/frozen_paper.py",
+        "algua/live/planner_context.py",
         "algua/contracts/lifecycle.py",
         "algua/contracts/strategy_context.py",
         "algua/backtest/engine.py",
@@ -260,10 +310,8 @@ INTEGRITY_CRITICAL_MODULES = frozenset(
         "algua/research/gates.py",
         "algua/research/gate_serialization.py",
         "algua/research/forward_gates.py",
-        "algua/research/clustering.py",
         "algua/registry/live_gate.py",
         "algua/registry/challenges.py",
-        "algua/registry/human_actor.py",
         "algua/registry/transitions.py",
         "algua/registry/approvals.py",
         "algua/strategies/base.py",
@@ -275,7 +323,6 @@ INTEGRITY_CRITICAL_MODULES = frozenset(
         "algua/strategies/tradable.py",
         "algua/provenance/lockfile.py",
         "algua/registry/promotion.py",
-        "algua/registry/family_assignment.py",
         "algua/registry/promote_run.py",
         "algua/registry/forward_promotion.py",
         "algua/registry/forward_evidence.py",

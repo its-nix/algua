@@ -14,7 +14,7 @@ from algua.registry.store import SqliteStrategyRepository
 
 
 def test_schema_version_is_44():
-    assert SCHEMA_VERSION == 49
+    assert SCHEMA_VERSION == 53
 
 
 def test_holdout_returns_table_and_indexes_exist(tmp_path):
@@ -45,10 +45,10 @@ def _repo(tmp_path):
 
 
 def _reserve(repo, sid, *, hs, he, frac=0.2, ps="2020-01-01", pe="2020-12-31",
-             ds="demo", snap=None, allow_reuse=False):
+             ds="demo", snap=None):
     return repo.reserve_holdout(
         sid, data_source=ds, snapshot_id=snap, period_start=ps, period_end=pe,
-        holdout_frac=frac, holdout_start=hs, holdout_end=he, allow_reuse=allow_reuse)
+        holdout_frac=frac, holdout_start=hs, holdout_end=he)
 
 
 @pytest.fixture()
@@ -56,7 +56,7 @@ def repo_with_burn(_repo):
     """A committed holdout burn: (repo, strategy_id, holdout_evaluation_id, (h_start, h_end))."""
     sid = _repo.add("alpha").id
     h_start, h_end = "2020-12-29", "2020-12-31"
-    rid, _ = _reserve(_repo, sid, hs=h_start, he=h_end)
+    rid = _reserve(_repo, sid, hs=h_start, he=h_end)
     _repo.finalize_holdout_reservation(rid, config_hash="testhash", strategy_id=sid)
     return _repo, sid, rid, (h_start, h_end)
 
@@ -65,7 +65,7 @@ def repo_with_burn(_repo):
 def repo_pending_reservation(_repo):
     """A pending (committed_at IS NULL) reservation: (repo, strategy_id, reservation_id)."""
     sid = _repo.add("beta").id
-    rid, _ = _reserve(_repo, sid, hs="2020-12-29", he="2020-12-31")
+    rid = _reserve(_repo, sid, hs="2020-12-29", he="2020-12-31")
     return _repo, sid, rid
 
 
@@ -168,7 +168,7 @@ def test_finalize_requires_matching_strategy_id(repo_pending_reservation, other_
 def _make_burn_and_returns(repo, name, *, h_start, h_end, returns, dates):
     """Helper: register strategy, create committed burn, write return vector. Returns (sid, hid)."""
     sid = repo.add(name).id
-    rid, _ = _reserve(repo, sid, hs=h_start, he=h_end)
+    rid = _reserve(repo, sid, hs=h_start, he=h_end)
     repo.finalize_holdout_reservation(rid, config_hash="h", strategy_id=sid)
     repo.record_holdout_returns(rid, sid, holdout_start=h_start, holdout_end=h_end,
                                 returns=returns, bar_dates=dates)

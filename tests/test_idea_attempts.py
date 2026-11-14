@@ -61,6 +61,42 @@ def test_claim_skips_claimed_and_non_open(tmp_path):
     assert len(first) == 1 and len(second) == 1 and first[0].id != second[0].id
 
 
+def test_data_blocked_parks_without_refuting_and_capability_refresh_keeps_it_parked(tmp_path):
+    from algua.registry.idea_import import reclassify
+
+    conn, repo, attempts = _setup(tmp_path)
+    (idea,) = _seed(repo, n=1, category='momentum')
+    (claimed,) = attempts.claim(run_stamp='pilot', limit=1, ttl_minutes=180)
+    attempts.record_outcome(idea.id, token=claimed.claim_token,
+                            outcome=AttemptOutcome('data_blocked'), reason='non-PIT proxy')
+    parked = repo.get(idea.id)
+    assert parked.status is IdeaStatus.NEEDS_DATA
+    assert parked.parked_reason == 'qualification:data_blocked'
+    assert parked.claimed_by is None
+    assert reclassify(conn) == {'reopened': [], 'parked': []}
+    assert repo.get(idea.id) == parked
+    assert attempts.attempts_of(idea.id)[0]['outcome'] == 'data_blocked'
+
+
+def test_claim_rechecks_legacy_open_cadence_before_creating_any_attempt(tmp_path):
+    conn, repo, att = _setup(tmp_path)
+    (idea,) = _seed(repo, n=1, category='monthly')
+    conn.execute('UPDATE ideas SET horizon=? WHERE id=?', (Horizon.MONTHLY.value, idea.id))
+    conn.commit()  # Fixture simulates an OPEN row admitted under the old capability list.
+    before = list(conn.iterdump())
+    assert att.claim(run_stamp='unsupported', limit=1, ttl_minutes=180) == []
+    assert list(conn.iterdump()) == before
+
+
+def test_unsupported_oldest_row_does_not_consume_a_claim_slot(tmp_path):
+    conn, repo, att = _setup(tmp_path)
+    bad, good = _seed(repo, n=2, category='same')
+    conn.execute('UPDATE ideas SET horizon=? WHERE id=?', ('monthly', bad.id))
+    conn.commit()
+    assert [i.id for i in att.claim(run_stamp='daily', limit=1, ttl_minutes=180)] == [good.id]
+    assert att.attempts_of(bad.id) == []
+
+
 def test_claim_reaps_expired_claims_as_abandoned(tmp_path):
     _, repo, att = _setup(tmp_path)
     (idea,) = _seed(repo, n=1, category="momentum")

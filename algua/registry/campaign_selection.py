@@ -4,8 +4,10 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
+from algua.contracts.idea import DataCapability, Horizon, Market
+from algua.registry.idea_eligibility import platform_eligibility
 from algua.registry.idea_scorecard import campaign_scorecard
 from algua.research.campaign_policy import campaign_exclusions, campaign_menu
 
@@ -13,16 +15,35 @@ from algua.research.campaign_policy import campaign_exclusions, campaign_menu
 def menu_from_history(history: dict, request: dict) -> dict:
     """Capture complete feedback and resources; attempt slots are not statistical trials."""
     category = request["category"]
+    gaps = {h['id']: platform_eligibility(
+        [DataCapability(c) for c in h['required_data']],
+        market=None if h['market'] is None else Market(h['market']),
+        horizon=None if h['horizon'] is None else Horizon(h['horizon']))[1]
+        for h in history['hypotheses']}
     # Keep every hypothesis in collision history, but admit only the requested category.
     eligible_history = {**history, "hypotheses": [
-        h if category is None or h["category"] == category else {**h, "claimed_by": "filtered"}
+        h if not gaps[h['id']] and (category is None or h["category"] == category)
+        else {**h, "claimed_by": "filtered"}
         for h in history["hypotheses"]]}
-    choices = campaign_menu(eligible_history, budget=request["limits"]["max_hypotheses"])
+    budget = request['limits']['max_hypotheses']
+    choices = campaign_menu(eligible_history, budget=budget)
+    # A one-slot operational cycle must not starve eligible replications forever. Keep unseen
+    # families first; borrow only an otherwise idle slot, retaining every normal exclusion.
+    if budget == 1 and not choices:
+        choices = tuple(replace(c, reason=c.reason + '; unused novelty reserve reallocated')
+                        for c in campaign_menu(eligible_history, budget=1, novelty_min=0))
     history = {**history, "hypotheses": [
         {k: v for k, v in h.items() if k != "claim_token"} for h in history["hypotheses"]]}
-    body = {"request": request, "scorecard": history,
+    body: dict = {"request": request, "scorecard": history,
             "choices": [asdict(c) for c in choices if category is None or c.category == category],
             "exclusions": campaign_exclusions(history)}
+    for idea_id, reason in gaps.items():
+        if reason is not None:
+            refs = body['exclusions'].get(idea_id, {}).get(
+                'prior_evidence_ids', (f'ideas:{idea_id}',))
+            body['exclusions'][idea_id] = {
+                'reason': f'unsupported capabilities: {reason}',
+                'prior_evidence_ids': refs}
     # JSON normalizes enums, tuples and integer keys and detaches all caller-owned objects.
     body = json.loads(json.dumps(body, allow_nan=False, sort_keys=True))
     identity = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()

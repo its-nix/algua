@@ -1,9 +1,6 @@
 """Bounded review regressions; registry fixtures never evaluate or promote a gate."""
 from __future__ import annotations
 
-import re
-from pathlib import Path
-
 import pytest
 
 from algua.registry.db import registry_conn
@@ -95,15 +92,3 @@ def test_legacy_missing_recorded_context_never_falls_back(tmp_path, monkeypatch,
     assert row["evidence"]["snapshot_provenance"] == {
         "status": "UNAVAILABLE", "reason": "provenance_absent", "value": None,
     }
-
-
-def test_snapshot_failure_reasons_match_the_actual_frontend_vocabulary(tmp_path, monkeypatch):
-    row = board_pair(tmp_path, monkeypatch, malformed_cost=True)
-    snapshot_error = row["evidence"]["snapshot_provenance"]
-    frontend = (Path(__file__).resolve().parents[2] /
-                "web/frontend/src/components/StrategyBoard.tsx").read_text()
-    block = frontend.split("const INVALID_REASONS = new Set([", 1)[1].split("])", 1)[0]
-    reasons = set(re.findall(r"'([^']+)'", block))
-    assert snapshot_error["status"] == "INVALID"
-    assert snapshot_error["value"] is None
-    assert snapshot_error["reason"] in reasons

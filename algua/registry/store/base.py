@@ -1,6 +1,6 @@
 """Shared base mixin for algua/registry/store/ — holds the one private helper genuinely called
 from more than one Protocol's domain (crud.py's apply_transition + intake_candidate_to_paper,
-gate.py's record_gate_with_fdr_and_maybe_promote, forward_gate.py's
+gate.py's record_gate_and_maybe_promote, forward_gate.py's
 record_forward_pass_and_promote). Each of those mixins inherits this one, so the real
 implementation here is the one that runs at composition time via the facade's MRO."""
 from __future__ import annotations
@@ -129,6 +129,9 @@ class TransitionMixin:
             raise TransitionError(
                 f"concurrent transition detected for {rec.name!r}: stage is no longer"
                 f" {from_stage.value!r} (another session moved it); re-read and retry")
+        if from_stage is Stage.LIVE and to is not Stage.LIVE:
+            from algua.registry.capped_state import revoke
+            revoke(self._conn,rec.id,'left live',at=now)
         # Deployment retirement matrix (Story 1.2): a return from paper to candidate abandons
         # the evidence-bearing epoch, as does every terminal retirement. Pauses and lane movement
         # retain it. The update shares the stage CAS transaction and is one-way by schema trigger.

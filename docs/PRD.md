@@ -16,7 +16,9 @@ and tests establish the implementation status stated here. This document grants 
 Owner alignment, 2026-11-14: this PRD governs product intent; the operating guides govern present
 permissions, and architecture records evidenced implementation status. The November 7
 [strategy-delivery design](superpowers/specs/2026-11-07-strategy-cicd-design.md) supplies the adopted
-experimental-delivery target in §16. Its 20% drawdown proposal remains unadopted, as clarified in §21.
+experimental-delivery direction in §16. Current opt-in qualification and risk implementation is
+documented in [capped live](agent/capped-live.md) and [layered risk](agent/layered-risk.md);
+their owner amendments supersede the earlier proposal status.
 
 ---
 
@@ -454,12 +456,13 @@ Mandatory robustness should include, where applicable:
 Repeatedly searching the same historical data must never masquerade as independent confirmation.
 
 The implemented PIT masks, `t → t+1` lag, canonical/fast decision parity, burn-on-peek holdout
-accounting and measured search/family breadth remain binding. A replay cannot supply elapsed
+accounting and measured search breadth remain binding. A replay cannot supply elapsed
 broker-clocked forward observations. Do not lower enforced gates to make two-year evidence qualify;
 no qualifying strategy is a valid research outcome.
 
-Current research promotion retains a binding integrity floor while much of the statistical stack
-is recorded as advisory; frozen FDR accounting is not an active veto. The target's stronger
+Current research promotion has a binding integrity floor. Deflated Sharpe (DSR) with its
+bootstrap interval is the one trial-aware quality signal; it is recorded as advisory and does not
+veto. The target's stronger
 robustness requirements do not imply that all statistical checks currently block promotion. Agent
 advancement uses the actual promotion gates, never a board rank or a raw lifecycle flag.
 
@@ -468,6 +471,14 @@ single-use SSH challenge bound to the command, strategy, recomputed identity and
 including relaxations. Live activation separately requires the authenticated human signature,
 matching code/config/dependency identity and a fresh forward certificate. Protect signer trust
 anchors independently of the runtime. None of these walls is relaxed by this PRD.
+
+**Owner amendment, 2026-11-09 — autonomous paper:** routine paper account-policy configuration,
+explicit reconciled paper restoration, candidate intake, allocation, execution, default forward
+promotion and recording the historical-plus-five-session qualification require no human signature.
+Record actual agent/system provenance; qualification is numerical evidence, never live authority.
+Live activation independently rechecks its original source evidence and still requires the exact
+human signature. Live risk-policy changes/restoration and capital increases remain authenticated.
+This amendment does not enable unsigned integrity overrides or lower historical/forward criteria.
 
 ---
 
@@ -550,10 +561,20 @@ Likewise, lower timeframes are justified by specific opportunities—not by the 
 
 High-frequency/tick-level trading is outside the current thesis.
 
-The primary research focus is liquid U.S.-listed small/mid-cap common equities: historical
-market cap **USD $0.5–10B**, price **>= $5**, trailing median **60-session dollar volume >= $5M**,
-and **90-session listing history**, all subject to PIT evidence. The pilot cannot certify these
-screens. Existing stock/ETF scope remains; this focus is not a historical-universe claim.
+**Owner-approved starting universe, 2026-11-08:** liquid U.S. mid-cap common equities, initially
+screened from the current S&P MidCap 400. Start with price **>= $10**, trailing median
+**60-session dollar volume >= $20M**, **252 sessions of observed history**, and a sector-spanning
+sample of **150–300** eligible names. Rank liquidity within sectors and select sectors round-robin;
+never select the sample by historical strategy returns. These initial rules supersede the earlier
+$0.5–10B/$5/$5M/90-session pilot focus, without claiming empirically optimal thresholds.
+
+Begin with daily signals and target multi-day positions of roughly **2–20 trading sessions**.
+Weekly re-ranking is the initial machinery example; it may retain a winning name across multiple
+weeks and does not enforce a hard holding-age exit. Broker active/tradable status must be verified
+before operational admission. Current membership, observed-history counts and present-day liquidity
+are proxy screens, not historical PIT eligibility or proof of listing date. Preserve the proxy's
+limitations; do not register/backdate today's selection as a historical universe. Existing
+stock/ETF scope remains. See [the midcap machinery sample](agent/midcap-machinery.md).
 
 Begin with end-of-day signals and next-eligible-session execution. Evaluate daily but rebalance
 only when marginal benefit justifies costs, using declared holding periods, signal decay, ranking
@@ -694,9 +715,9 @@ human experimental live activation.
 This target replaces the older planned requirement that experimental delivery always use the
 long paper economic gate. It does not amend that gate in executable code: current `paper promote`
 still requires at least 63 broker-clocked return observations and its other enforced criteria.
-Versioned economic and operational qualification profiles require separate protected implementation
-and verification before use. No agent may lower thresholds or substitute replay for elapsed
-broker observations. See the [November 7 design](superpowers/specs/2026-11-07-strategy-cicd-design.md).
+The separate [capped frozen live route](agent/capped-live.md) implements the five-session profile
+without manufacturing a strict forward certificate. No agent may lower thresholds or substitute
+replay for elapsed broker observations. Activation still requires exact human-signed authority.
 
 ---
 
@@ -858,7 +879,17 @@ Initial personal-capital trading should remain conservative:
 - no borrowing,
 - no derivatives.
 
-A **10% drawdown of the live experimental account** triggers an automatic trading pause and human review.
+**Owner amendment, 2026-11-08:** the initial account policy is layered: an inclusive **10%**
+drawdown reduces the normal approved exposure budget to **50%**; an inclusive **20%** drawdown
+halts new risk, cancels orders and requires reconciliation before controlled risk-reducing exits.
+Thresholds and the reduction fraction are configurable through authenticated human policy changes.
+Restoration requires a signed human review; recovering prices or depositing cash never resets it.
+
+The November 9 autonomous-paper amendment scopes those human signature requirements to **live**
+accounts. Paper configuration and explicit restoration use the same deterministic account,
+settlement, reconciliation and durable-history checks without signing. Paper restoration records
+its reason and prior episode; configuration preserves severity. Adding a paper strategy does not
+reset the account or erase failed trials. Paper actions grant no real-money authority.
 
 This threshold is an intervention rule, not a guarantee that losses cannot exceed it.
 
@@ -869,19 +900,22 @@ No automatic increase in approved capital.
 Capital rises because evidence improves, not because the system is confident.
 
 The approved envelope includes no shorting or leverage and no premium-data purchase in this
-initial work. The 10% pause remains a policy requirement: runtime defaults still include a 15%
-book drawdown breaker and generic gross exposure of 2.0. These do not enforce the ₪2,000,
-long-only/unleveraged experimental envelope. The owner-defined cash-flow-adjusted peak, inclusive
-10% boundary, cancel/block-orders-without-forced-liquidation response and signed resumption are
-recorded in Story 2.6; implementation and deployment verification remain necessary. Do not silently
-substitute the existing flattening breaker for this policy. No funding, replenishment, activation
-or risk-default change follows from this document.
+initial work. The earlier 10% pause-without-liquidation specification in Story 2.6 is superseded by
+the owner's November 8 layered policy. Its opt-in implementation is described in
+[layered account risk](agent/layered-risk.md). Unconfigured accounts retain the legacy 15%
+raw-equity breaker; this amendment does not silently change global defaults. Cash-flow-aware
+risk measurement, durable severity, signed live configuration/restoration, audited unsigned paper
+configuration/restoration and bounded reconciled exits
+are required. The opt-in [capped frozen-live connector](agent/capped-live.md) now binds an exact
+USD allocation and explicit approved instruments to a human signature. It does not choose the USD
+equivalent of the initial ₪2,000 ceiling. Deployment verification, qualifying strategy evidence and
+human activation remain necessary. No funding, replenishment, activation or
+increase in approved capital follows from this document.
 
-Owner clarification, 2026-11-14: **10% remains established experimental-account policy**;
-**15% is the current generic runtime default**; **20% is a proposed amendment**, not an adopted
-policy or applied setting. Approval of the short-paper delivery target does not approve a new
-drawdown threshold. Any amendment needs its own explicit risk-policy decision and reviewed
-implementation before activation.
+The alignment discussion initially distinguished the earlier 10% pause target, generic 15%
+default and proposed 20% amendment. Current main includes the separate owner-approved opt-in
+10%-reduction/20%-halt controller described above; preserve that implemented policy and its signed
+live configuration. Unconfigured legacy behavior is distinct from an opted-in account.
 
 ---
 

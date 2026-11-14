@@ -156,9 +156,10 @@ def _live_authorizations_detail() -> str:
     ``doctor`` is deliberately stricter than ``live run-all`` (which skips a revoked strategy and
     trades the rest): the pre-flight's job is to make the operator notice the bad one before a
     cycle starts. Authorization ONLY — not allocation/kill-switch/candidate presence (#400)."""
+    from algua.cli.capped_runtime import verify_live_authorization
     from algua.contracts.lifecycle import Stage
     from algua.registry.db import registry_conn
-    from algua.registry.live_gate import ALLOWED_SIGNERS_PATH, verify_live_authorization
+    from algua.registry.live_gate import ALLOWED_SIGNERS_PATH
     from algua.registry.store import SqliteStrategyRepository
 
     with registry_conn() as conn:

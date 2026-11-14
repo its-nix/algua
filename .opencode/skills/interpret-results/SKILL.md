@@ -31,10 +31,11 @@ checks hold (those without `"advisory": true` in `checks`):
 - `holdout_sharpe_floor > 0.0` — the RAW holdout Sharpe (a losing book never passes)
 
 Everything statistical is computed and recorded as **advisory** (`"advisory": true` on the
-check; it never vetoes): the breadth-deflated `holdout_sharpe` bar (base 0.5), `holdout_return`,
-`pct_positive_windows >= 0.6`, `min_window_sharpe`, `dsr_evidence`/`dsr_bootstrap`,
-`regime_robustness`, `idiosyncratic_alpha`. READ the failed advisory flags anyway — they are the
-quality telemetry for your promote/discard judgement, and the recorded holdout Sharpe sets the
+check; it never vetoes): `holdout_sharpe >= 0.5`, `holdout_return > 0`, and the one trial-aware
+quality signal, `dsr_evidence`/`dsr_bootstrap` (deflated Sharpe; its trial count `dsr_n_trials` is
+max(your strategy's lifetime sweep combos, every strategy's sweep combos in the last 90 days)).
+READ the failed advisory flags anyway — DSR is the best quality evidence you have for your
+promote/discard judgement, and the recorded holdout Sharpe sets the
 FORWARD gate's bar (realized Sharpe >= 0.5×holdout): an overfit-inflated holdout self-punishes
 in paper. The forward gate, not this one, is the harsh threshold.
 **Never relax the floor to force a pass.** A floor fail means discard (or a better hypothesis).
@@ -49,9 +50,10 @@ in paper. The forward gate, not this one, is the harsh threshold.
 ## Pitfalls to watch
 
 - **Search breadth / overfitting.** The more parameter combos you sweep, the more likely one looks
-  good by chance. Research workers use measured breadth from `backtest sweep`; `--n-combos` is
-  an authenticated human-only declaration. Treat a thin holdout margin after a wide search as
-  weak. Breadth-deflated statistics are advisory, not an enforced multiple-testing guarantee.
+  good by chance. The gate counts every combo you searched from the recorded `backtest sweep`
+  trials (breadth is measured, never declared) and feeds it to the DSR as its trial count; a failed
+  `dsr_evidence` after a wide search is the signal that the holdout Sharpe may be selection luck.
+  The holdout is your defense against search-induced overfitting.
 - **Look-ahead.** The engine enforces the `t→t+1` execution lag, which does not detect leakage
   inside a feature or signal. Re-read `signal`/`signal_panel`, or `score(context)` for context
   strategies, for future-data access and full-sample fitting. Fast/canonical parity proves

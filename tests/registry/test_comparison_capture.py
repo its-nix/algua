@@ -16,6 +16,31 @@ from tests.test_run_provenance import END, NAME, START, snapshot
 INPUTS = {"delisting_snapshot": None, "assume_terminal_last_close": False}
 
 
+def test_sweep_preserves_public_trial_windows_in_ledger_and_memory(tmp_path, monkeypatch):
+    from algua.backtest.sweep import sweep
+    from algua.operator.research_memory_inputs import public_memory_inputs
+    from algua.registry.runs import record_sweep_run
+
+    store, rec = snapshot(tmp_path, monkeypatch)
+    result = sweep(load_strategy(NAME), StoreBackedProvider(store, rec.snapshot_id),
+                   utc(START), utc(END), grid={'lookback': [20]}, windows=2)
+    with registry_conn() as conn:
+        repo = SqliteStrategyRepository(conn)
+        recorded = record_sweep_run(repo, NAME, result, research_inputs=INPUTS)
+        row = conn.execute("SELECT * FROM runs WHERE kind='sweep_trial'").fetchone()
+        config = json.loads(repo.get_run(row['id'])['config_json'])
+    captured = config['public_window_record']
+    assert len(captured['windows']) == 2
+    assert all('total_return' in w for w in captured['windows'])
+    assert captured['provenance']['config_hash'] == result.ranked[0]['config_hash']
+    assert captured['context']['public_interval']['end'] < END
+    assert public_memory_inputs('sweep_trial', config)['public_window_record'] == captured
+    assert 'holdout_returns' not in json.dumps(config)
+    assert recorded['trials_written'] == 1
+    assert result.to_dict()['ranked'][0]['window_metrics'][0]['total_return'] == (
+        captured['windows'][0]['total_return'])
+
+
 def test_actual_execution_and_protocol_are_recorded_from_the_used_inputs(tmp_path, monkeypatch):
     store, rec = snapshot(tmp_path, monkeypatch)
     result = walk_forward(load_strategy(NAME), StoreBackedProvider(store, rec.snapshot_id),

@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from algua.contracts.canonical import FROZEN_WIRE, canonical_json
+from algua.contracts.frozen_model import FrozenModelAsset
+from algua.contracts.model_types import ModelRef
 from algua.contracts.planner import PLANNER_PROTOCOL_VERSION
 from algua.registry.approvals import compute_artifact_hashes
 from algua.registry.artifact_contract import (
@@ -31,6 +33,7 @@ from algua.registry.deployment import DeploymentError
 from algua.registry.environment_contract import EnvironmentDescriptor
 from algua.registry.environment_store import EnvironmentStoreError, publish_environment
 from algua.registry.frozen_manifest_contract import FrozenManifest
+from algua.registry.frozen_model_assets import pack_model
 from algua.registry.frozen_source import (
     FrozenAssetsUnsupported as SourceAssetsUnsupported,
 )
@@ -51,7 +54,8 @@ from algua.registry.planner_environment import (
 )
 from algua.registry.repository import ArtifactIdentity
 from algua.registry.store import SqliteStrategyRepository
-from algua.strategies.loader import load_strategy_config, load_tradable_strategy
+from algua.strategies.frozen_model import load_frozen_model_strategy
+from algua.strategies.loader import load_strategy, load_strategy_config, load_tradable_strategy
 
 
 @dataclass(frozen=True)
@@ -68,6 +72,7 @@ def _generated(path: str, value: object) -> FrozenFile:
 
 def _bundle_files(
     source: tuple[FrozenFile, ...], resolved_config: dict,
+    *, model_asset: FrozenModelAsset | None = None,
 ) -> tuple[FrozenFile, ...]:
     protocol = {
         "descriptor_version": DESCRIPTOR_VERSION,
@@ -75,6 +80,11 @@ def _bundle_files(
         "planner_protocol_version": PLANNER_PROTOCOL_VERSION,
         "frozen_wire": FROZEN_WIRE,
     }
+    if model_asset is not None:
+        protocol.update(descriptor_version=2, planner_boundary_version=2,
+                        planner_protocol_version=2,
+                        frozen_wire={'name': 'frozen-planner', 'version': 2},
+                        strategy_interface='context_v1', model_asset=model_asset.to_dict())
     files = source + (
         _generated("_algua/resolved-config.json", resolved_config),
         _generated("_algua/protocol.json", protocol),
@@ -96,17 +106,27 @@ def prepare_frozen_artifact(
 ) -> FrozenPreparationResult:
     """Publish and record one exact qualified artifact, without activating it."""
     root = repo_root.resolve()
+    model_asset = None
+    model_files: tuple[FrozenFile, ...] = ()
     try:
         source_ref = assert_clean_head(root)
         declared_config = load_strategy_config(name)
-        if declared_config.needs_model or declared_config.model_ref is not None:
+        has_model = declared_config.needs_model or declared_config.model_ref is not None
+        if has_model and not isinstance(declared_config.model_ref, ModelRef):
             raise SourceAssetsUnsupported(
                 "frozen planner assets are unsupported in this cycle")
         identity = compute_artifact_hashes(name)
         if identity.dependency_hash is None:
             raise FrozenSourceDrift()
-        strategy = load_tradable_strategy(name)
-        require_source_only(strategy.model_handle)
+        if has_model:
+            captured = load_strategy(name)
+            if captured.model_handle is None:
+                raise SourceAssetsUnsupported('missing pinned model')
+            strategy = load_frozen_model_strategy(name, model=captured.model_handle)
+            model_asset, model_files = pack_model(captured.model_handle)
+        else:
+            strategy = load_tradable_strategy(name)
+            require_source_only(strategy.model_handle)
         qualification = repo.qualify_frozen_candidate(
             name, code_hash=identity.code_hash, config_hash=identity.config_hash,
             dependency_hash=identity.dependency_hash,
@@ -133,7 +153,7 @@ def prepare_frozen_artifact(
     except (FrozenSourceError, OSError, ValueError) as exc:
         raise FrozenSourceInvalid() from exc
     try:
-        bundle_files = _bundle_files(source, resolved_config)
+        bundle_files = _bundle_files(source + model_files, resolved_config, model_asset=model_asset)
         bundle = BundleDescriptor.from_files(
             tuple(item.contract_entry for item in bundle_files))
         publish_bundle(store_root, bundle_files, bundle)
@@ -173,12 +193,18 @@ def prepare_frozen_artifact(
         source_ref=source_ref, code_hash=identity.code_hash, config_hash=identity.config_hash,
         dependency_hash=identity.dependency_hash, resolved_config=resolved_config,
         universe_name=qualification.universe_name, bundle=bundle, environment=environment,
+        strategy_interface=getattr(strategy, 'strategy_interface', 'legacy'),
+        model_asset=model_asset,
     )
     try:
         def final_revalidation() -> None:
             _require_same_identity(compute_artifact_hashes(name), identity)
             if assert_clean_head(root) != source_ref:
                 raise FrozenSourceDrift()
+            if model_asset is not None:
+                fresh = load_strategy(name).model_handle
+                if fresh is None or pack_model(fresh) != (model_asset, model_files):
+                    raise FrozenSourceDrift()
 
         artifact_id = repo.record_frozen_artifact(
             name, frozen_deployment_manifest(frozen),

@@ -1,6 +1,5 @@
 from algua.config.settings import Settings
 from algua.knowledge.inspirations import (
-    SourcesRegistry,
     accept_new_notes,
     canonical_url,
     list_notes,
@@ -9,6 +8,7 @@ from algua.knowledge.inspirations import (
     mark_used,
     validate_note,
 )
+from algua.knowledge.sources_registry import SourcesRegistry
 
 CATS = {"momentum", "mean_reversion"}
 GOOD = """---
@@ -225,3 +225,41 @@ def test_sources_registry_write_yields_does_one_load_and_one_save(tmp_path, monk
     assert calls == {"load": 1, "save": 1}
     loaded = {v["key"]: v.get("yield") for v in SourcesRegistry(s).load()}
     assert loaded == {"a/one": {"n": 6}, "b/two": {"n": 7}}
+
+
+# --- Drive step 1 (spec 2026-11-12): snapshot-aware reads and the human vocabulary ---------------
+
+def _human(note_id: str, category: str = "uncategorized_human") -> str:
+    return (GOOD.replace("2026-09-08-quiet-turnover-drift", note_id)
+                .replace("source_kind: blog", "source_kind: human")
+                .replace("venue: blog/example", "venue: inbox")
+                .replace("obscurity: niche", "obscurity: human")
+                .replace("category: momentum", f"category: {category}"))
+
+
+def test_inspirations_dir_uses_steering_dir_when_set(tmp_path):
+    from algua.knowledge.inspirations import inspirations_dir
+    s = Settings(_env_file=None, knowledge_dir=tmp_path / "kb", steering_dir=tmp_path / "snap")
+    assert inspirations_dir(s) == tmp_path / "snap" / "inspirations"
+    assert SourcesRegistry(s).path == tmp_path / "snap" / "inspirations" / "_sources.yaml"
+
+
+def test_validate_note_accepts_human_kind_and_reserved_category_only_for_human():
+    from algua.knowledge.frontmatter import parse_doc
+    fm, _ = parse_doc(_human("2026-11-12-inbox-buy-dips-abc123"))
+    assert validate_note(fm, stem="2026-11-12-inbox-buy-dips-abc123", categories=CATS) == []
+    fm["source_kind"] = "paper"
+    assert "category: uncategorized_human" in validate_note(
+        fm, stem="2026-11-12-inbox-buy-dips-abc123", categories=CATS)
+
+
+def test_list_notes_puts_human_first_and_filters_source_kind(tmp_path):
+    s = _settings(tmp_path)
+    d = s.knowledge_dir / "inspirations"
+    d.mkdir(parents=True)
+    (d / "2026-11-10-a-paper-note.md").write_text(
+        GOOD.replace("2026-09-08-quiet-turnover-drift", "2026-11-10-a-paper-note"))
+    (d / "2026-11-01-inbox-b-idea.md").write_text(_human("2026-11-01-inbox-b-idea"))
+    assert [n["id"] for n in list_notes(s)] == [
+        "2026-11-01-inbox-b-idea", "2026-11-10-a-paper-note"]
+    assert [n["id"] for n in list_notes(s, source_kind="human")] == ["2026-11-01-inbox-b-idea"]

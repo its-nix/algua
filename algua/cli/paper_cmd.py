@@ -4,6 +4,7 @@ import importlib
 import json
 import sqlite3
 import subprocess
+from dataclasses import replace
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -21,8 +22,12 @@ from algua.cli._common import (
     resolve_operator_cycle_window,
 )
 from algua.cli.app import app, emit
+from algua.cli.capped_runtime import live_resume_view
 from algua.cli.errors import json_errors
+from algua.cli.frozen_paper import build_frozen_planner
 from algua.cli.lane_refresh import build_cycle_plan, lane_symbols, refresh_lane_snapshot
+from algua.cli.layered_runtime import paper_cycle
+from algua.cli.paper_experimental import register_experimental
 from algua.cli.paper_venue import live_strategy_flat, paper_broker_net, paper_scoped_cancel
 from algua.config.settings import get_settings
 from algua.contracts.lifecycle import Actor, Stage
@@ -30,7 +35,7 @@ from algua.contracts.types import OrderIntent
 from algua.evaluation.backtest_run import run_backtest_task
 from algua.evaluation.inputs import select_provider as _select_provider
 from algua.evaluation.sweep_run import sweep_task
-from algua.execution import paper_reconcile
+from algua.execution import drawdown_guard, paper_reconcile
 from algua.execution.alpaca_broker import (
     AlpacaLiveReadOnlyBroker,
     AlpacaPaperBroker,
@@ -65,8 +70,7 @@ from algua.execution.peaks import rebase_all_peaks, rebase_strategy_peak
 from algua.execution.sim_broker import SimBroker
 from algua.execution.tick_clock import tick_clock
 from algua.execution.venue_sync import ingest_paper_venue, recover_stranded
-from algua.live.frozen_dispatch import FrozenPlanner, FrozenTarget, FrozenTenantFailure
-from algua.live.frozen_wire import WireIdentity
+from algua.live.frozen_dispatch import FrozenPlanner, FrozenTenantFailure
 from algua.live.live_loop import (
     SubmittedOrder,
     TickHalted,
@@ -84,7 +88,7 @@ from algua.observability import (
 from algua.operator.journal import JsonlJournal
 from algua.operator.mergeback import RealGitOps, merge_back_lock, run_merge_back
 from algua.primitives.timeparse import utc
-from algua.registry import allocations, approvals
+from algua.registry import allocations
 from algua.registry.allocations import active_allocation
 from algua.registry.approvals import compute_artifact_hashes
 from algua.registry.db import registry_conn
@@ -96,7 +100,6 @@ from algua.registry.forward_promotion import (
 )
 from algua.registry.frozen_runtime import (
     FrozenContentVerifier,
-    FrozenTenant,
     PaperTenant,
     prepare_paper_book,
     recheck_paper_gates,
@@ -104,7 +107,6 @@ from algua.registry.frozen_runtime import (
     resolve_paper_tenant,
 )
 from algua.registry.gating import load_gated_strategy
-from algua.registry.human_actor import authenticate_actor, canonical_run_context
 from algua.registry.intake import run_intake
 from algua.registry.kb_sync import sync_admitted, sync_kb_doc
 from algua.registry.paper_runtime import still_paper_allocated as _still_paper_allocated
@@ -130,6 +132,7 @@ from algua.strategies.loader import load_strategy
 
 paper_app = typer.Typer(help="Paper trading: run a paper-stage strategy", no_args_is_help=True)
 app.add_typer(paper_app, name="paper")
+register_experimental(paper_app)
 
 log = get_logger(__name__)
 
@@ -252,7 +255,7 @@ def resume(name: str) -> None:
     with registry_conn() as conn:
         rec = SqliteStrategyRepository(conn).get(name)
         if rec.stage is Stage.LIVE:
-            strategy = load_strategy(name)
+            strategy = live_resume_view(conn, name, load_strategy)
             broker = _alpaca_live_readonly_from_settings()
             is_flat, residual = live_strategy_flat(conn, name, strategy.universe, broker)
             if not is_flat:
@@ -540,11 +543,10 @@ def merge_back(
             # via a legal static `from algua.registry.promote_run import promote_task` at module
             # scope — the cli-independence import-linter contract (#165) forbids a
             # paper_cmd<->research_cmd sibling edge, but neither command module imports the other
-            # here; both import the same shared registry module. Strict-agent inputs ONLY — no
-            # relaxation flags reach the seam, so a human-only relaxation is impossible by
-            # construction. The per-attempt ``attempt_token`` is stamped on the gate row so the
-            # driver reads the outcome authoritatively (finding #5). promote_task opens+closes its
-            # OWN registry_conn (per its contract).
+            # here; both import the same shared registry module. Strict-agent inputs ONLY (and no
+            # relaxation exists for any actor any more). The per-attempt ``attempt_token`` is
+            # stamped on the gate row so the driver reads the outcome authoritatively (finding #5).
+            # promote_task opens+closes its OWN registry_conn (per its contract).
             return promote_task(
                 name=strategy, universe=universe, start=start, end=end,
                 demo=demo, snapshot=snapshot, fundamentals_snapshot=fundamentals_snapshot,
@@ -610,24 +612,8 @@ def _frozen_planner(
     conn: sqlite3.Connection, tenant: PaperTenant, snapshot_id: str | None,
     bounds: tuple[datetime, datetime],
 ) -> FrozenPlanner | None:
-    """A FRESH frozen port for ONE tick of a frozen tenant, built from plain values (the port
-    never reaches the registry; its ``record`` is bound here to this tick's connection, Story 1.3d
-    §3); ``None`` keeps a working-tree tenant on the in-process planner. ``bounds`` are the exact
-    ones ``run_tick`` passes to ``get_bars``; the evidence names them and the snapshot."""
-    if not isinstance(tenant, FrozenTenant):
-        return None
-    if not snapshot_id:  # frozen_invocations.snapshot_id is NOT NULL: refuse before any dispatch
-        raise ValueError(f"{tenant.name}: a frozen tick needs a bars snapshot id")
-    manifest, view = tenant.manifest, tenant.view
-    identity = WireIdentity(tenant.name, tenant.deployment_id, tenant.artifact_id,
-                            tenant.deployment.manifest_digest, manifest.bundle.digest,
-                            manifest.environment.digest)
-    target = FrozenTarget(identity, tenant.bundle_root, tenant.environment_root,
-                          tenant.interpreter, view.execution, tuple(view.universe))
-    return FrozenPlanner(
-        target, invocations_root=get_settings().data_dir / "frozen/invocations",
-        record=partial(record_frozen_invocation, conn), snapshot_id=snapshot_id,
-        bars_start=bounds[0].isoformat(), bars_end=bounds[1].isoformat())
+    return build_frozen_planner(tenant, snapshot_id, bounds, data_dir=get_settings().data_dir,
+                                record=partial(record_frozen_invocation, conn))
 
 
 def _run_paper_strategy_tick(  # noqa: PLR0913
@@ -654,6 +640,7 @@ def _run_paper_strategy_tick(  # noqa: PLR0913
         if alloc is None:
             raise ValueError(f"{name} has no paper allocation")
         allocation = float(alloc["capital"])
+        drawdown_guard.require_cycle(conn, broker, "paper")
 
         # Only coids freshly inserted by this tick are safe to retract on noop (#311).
         freshly_recorded: set[str] = set()
@@ -677,6 +664,9 @@ def _run_paper_strategy_tick(  # noqa: PLR0913
                 freshly_recorded.discard(coid)
 
         port = _frozen_planner(conn, tenant, snapshot_id, bounds)
+        context = planner_context_for_deployment(deployment, get_settings().exchange)
+        if context is not None and context.protocol_version == 2:
+            context = replace(context, bars_snapshot_id=snapshot_id)
         hooks = TickHooks(
             client_order_id_for=client_order_id,
             before_submit=_before_submit,
@@ -684,14 +674,15 @@ def _run_paper_strategy_tick(  # noqa: PLR0913
             on_noop=_on_noop,
             should_halt=lambda: (kill_switch.is_tripped(conn, name)
                                  or global_halt.is_engaged(conn)
+                                 or not drawdown_guard.cycle_active(conn, broker, "paper")
                                  or not _still_paper_allocated(conn, name)),
             cancel=cancel,
-            reserve_buy=reserve_buy,
+            reserve_buy=drawdown_guard.reserve(conn, broker, "paper", reserve_buy),
             peak_equity=get_peak_equity(conn, name),
-            live_snapshot=lambda bars: build_paper_sizing_snapshot(
-                conn, name, allocation, bars, strategy.universe),
+            live_snapshot=lambda bars: drawdown_guard.sizing_snapshot(conn, broker, "paper",
+                build_paper_sizing_snapshot(conn, name, allocation, bars, strategy.universe)),
             live_positions=lambda: paper_believed_positions(conn, name),
-            planner_context=planner_context_for_deployment(deployment, get_settings().exchange),
+            planner_context=context,
             planner=port,
         )
     except (KeyboardInterrupt, SystemExit):
@@ -934,6 +925,7 @@ def run_all(
                                  reason="paper run-all invoked with --disable-drawdown-breaker",
                                  strategy=None)
                 repo = SqliteStrategyRepository(conn)
+                managed_broker = paper_cycle(conn, _alpaca_broker_from_settings)
                 paper = repo.list_strategies(Stage.PAPER) + repo.list_strategies(
                     Stage.FORWARD_TESTED)
                 skipped_unallocated = [prec.name for prec in paper
@@ -966,7 +958,7 @@ def run_all(
                           "error": "every tickable strategy failed pre-effect setup",
                           "strategies": results, "skipped_unallocated": skipped_unallocated})
                     raise typer.Exit(1)
-                broker = _alpaca_broker_from_settings()
+                broker = managed_broker or _alpaca_broker_from_settings()
                 acct = broker.account()
                 tick_ts, clock_source = tick_clock(broker.clock)
                 # ingest fills + recover crash-stranded rows BEFORE reconcile; fail closed on any
@@ -1150,50 +1142,46 @@ def run_all(
 @json_errors
 def promote(
     name: str,
-    actor: str = typer.Option("agent", "--actor", help="human | agent"),
-    actor_signature: str = typer.Option(
-        None, "--actor-signature",
-        help="path to the SSH signature over the printed human-actor challenge (#329). Required to "
-             "authenticate --actor human: a bare --actor human unlocks NO threshold relaxation — "
-             "run once without this to print a challenge, sign it with your enrolled "
-             "algua-human-actor key (ssh-keygen -Y sign -n algua-human-actor), then re-run with "
-             "--actor-signature."),
+    actor: str = typer.Option(
+        "agent", "--actor",
+        help="human | agent: an audit label only; it unlocks nothing (every gate is the same)"),
     degradation_factor: float = typer.Option(
         DEGRADATION_FACTOR, "--degradation-factor",
         help="realized Sharpe must beat this fraction of the qualified holdout Sharpe "
-             "(raising it is stricter; lowering is human-only)"),
+             "(raising it is stricter; lowering is refused)"),
     sharpe_floor: float = typer.Option(
         SHARPE_FLOOR, "--sharpe-floor",
-        help="absolute realized-Sharpe floor (raising is stricter; lowering is human-only)"),
+        help="absolute realized-Sharpe floor (raising is stricter; lowering is refused)"),
     min_observations: int = typer.Option(
         MIN_FORWARD_OBSERVATIONS, "--min-observations",
         help="minimum daily return observations in the forward window "
-             "(raising is stricter; lowering is human-only)"),
+             "(raising is stricter; lowering is refused)"),
     min_coverage: float = typer.Option(
         MIN_SESSION_COVERAGE, "--min-coverage",
         help="minimum decided-sessions / trading-sessions coverage "
-             "(raising is stricter; lowering is human-only)"),
+             "(raising is stricter; lowering is refused)"),
     min_vol: float = typer.Option(
         MIN_FORWARD_VOL, "--min-vol",
         help="annualized volatility floor — a do-nothing strategy must not pass "
-             "(raising is stricter; lowering is human-only)"),
+             "(raising is stricter; lowering is refused)"),
     max_drawdown: float = typer.Option(
         MAX_FORWARD_DRAWDOWN, "--max-drawdown",
         help="max drawdown over the evidence series "
-             "(lowering is stricter; raising is human-only)"),
+             "(lowering is stricter; raising is refused)"),
     max_staleness: int = typer.Option(
         MAX_STALENESS_SESSIONS, "--max-staleness",
         help="newest admissible tick may be at most this many sessions old "
-             "(lowering is stricter; raising is human-only)"),
+             "(lowering is stricter; raising is refused)"),
     forward_sharpe_confidence: float = typer.Option(
         FORWARD_SHARPE_CONFIDENCE, "--forward-sharpe-confidence",
         help="one-sided confidence at which the realized-Sharpe lower bound must clear the "
-             "performance bar (raising is stricter; lowering is human-only)"),
+             "performance bar (raising is stricter; lowering is refused)"),
 ) -> None:
     """Forward-test evidence gate (#124): evaluate this strategy's wall-clock paper evidence
     and promote paper -> forward_tested on pass. At forward_tested: re-evaluate, refreshing
-    the live-wall certificate, no stage change. The paper-side analog of `research promote`;
-    relaxing any threshold below its protected default is human-only."""
+    the live-wall certificate, no stage change. The paper-side analog of `research promote`.
+    Every threshold may only be tightened, by any actor: relaxing one below its protected default
+    is refused (spec 2026-11-13 — the signed go-live is the only approval)."""
     actor_enum = Actor(actor)  # fail fast on a bad actor before touching the DB
     criteria = ForwardGateCriteria(
         min_forward_observations=min_observations,
@@ -1209,33 +1197,13 @@ def promote(
         repo = SqliteStrategyRepository(conn)
         rec = repo.get(name)  # StrategyNotFound -> JSON error before any work
         # Story 1.3d §5: this ledger read is the ONE slot. A FROZEN deployment's identity is its
-        # recorded descriptor, whose content is verified fresh HERE, before authentication (a human
-        # signs it) and before any row, look, token or stage change. Working-tree and legacy
-        # strategies only record the epoch read and keep today's order and identity sites.
+        # recorded descriptor, whose content is verified fresh HERE, before any row, look, token or
+        # stage change. Working-tree and legacy strategies only record the epoch read and keep
+        # today's order and identity sites.
         slot = promotion_slot(conn, rec, data_dir=get_settings().data_dir)
-        # AUTHENTICATE the human actor (#329) BEFORE the relaxation guard is even consulted. A bare
-        # `--actor human` is forgeable, so asserting a human actor here requires an SSH signature
-        # (namespace algua-human-actor) over a fresh single-use challenge binding this command +
-        # strategy + artifact identity + the FULL ForwardGateCriteria (all 8 thresholds), and for a
-        # frozen epoch its deployment id and manifest digest. No signature => a challenge is
-        # issued+printed and NOTHING runs. A declared agent is returned unchanged, never hashed
-        # (its relaxations are refused exactly as before).
-        actor_enum = authenticate_actor(
-            conn, command="paper promote", name=name, rec=rec,
-            stage_to=Stage.FORWARD_TESTED.value, declared_actor=actor_enum,
-            actor_signature=actor_signature,
-            identity=lambda: (approvals.compute_artifact_hashes(name) if slot.frozen is None
-                              else slot.frozen.identity),
-            run_context=canonical_run_context({
-                "min_observations": min_observations, "min_coverage": min_coverage,
-                "degradation_factor": degradation_factor, "sharpe_floor": sharpe_floor,
-                "min_vol": min_vol, "max_drawdown": max_drawdown, "max_staleness": max_staleness,
-                "forward_sharpe_confidence": forward_sharpe_confidence,
-                **slot.challenge_binding(),
-            }),
-        )
-        # PREFLIGHT: actor legality + relaxations-need-human + stage legality. Refuses here,
-        # before the broker is even constructed (TransitionError is a ValueError -> JSON error).
+        # PREFLIGHT: actor legality + tighten-only thresholds (every actor) + stage legality.
+        # Refuses here, before the broker is even constructed (TransitionError is a ValueError ->
+        # JSON error).
         forward_promotion_preflight(repo, name, actor=actor_enum, criteria=criteria)
         broker = _alpaca_broker_from_settings()
         outcome = run_forward_gate(

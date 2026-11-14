@@ -2,6 +2,7 @@ import json
 import os
 import socket
 import sqlite3
+from contextlib import closing
 
 import pytest
 from typer.testing import CliRunner
@@ -9,10 +10,10 @@ from typer.testing import CliRunner
 from algua.cli.main import app
 from algua.config.settings import get_settings
 from algua.operator.schedule import operator_run_lock
-from algua.registry.db import connect, migrate
+from algua.registry.db import SCHEMA_VERSION, connect, migrate
 from algua.registry.store import SqliteStrategyRepository
 from tests._deployment_helpers import force_legacy_strategy
-from tests._human_actor_helpers import scaffold_transition
+from tests._scaffold_helpers import scaffold_transition
 
 runner = CliRunner()
 
@@ -35,6 +36,30 @@ def test_add_and_list():
     assert isinstance(listed, list)
     assert [s["name"] for s in listed] == ["alpha"]
     assert listed[0]["stage"] == "idea"
+
+
+def test_future_registry_schema_is_a_json_error_and_remains_untouched():
+    path = get_settings().db_path
+    with closing(sqlite3.connect(path)) as conn:
+        conn.execute("CREATE TABLE future_data (value TEXT NOT NULL)")
+        conn.execute("INSERT INTO future_data VALUES ('preserve')")
+        conn.execute(f"PRAGMA user_version={SCHEMA_VERSION + 1}")
+        conn.commit()
+        before = tuple(conn.iterdump())
+        assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+    contents = path.read_bytes()
+    result = runner.invoke(app, ["registry", "list"])
+    assert result.exit_code != 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert payload["code"] == "invalid_input"
+    assert payload["retryable"] is False
+    assert "newer than supported" in payload["error"]
+    assert path.read_bytes() == contents
+    with closing(sqlite3.connect(path)) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION + 1
+        assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+        assert tuple(conn.iterdump()) == before
 
 
 def test_transition_legal():
@@ -290,16 +315,17 @@ def test_enroll_approver_namespace_choice(tmp_path, monkeypatch):
     signers = tmp_path / "allowed_signers"
     signers.write_text("# header\n")
     monkeypatch.setattr("algua.cli.registry_cmd.ALLOWED_SIGNERS_PATH", signers)
+    # go-live is the only namespace left (spec 2026-11-13): human-actor and both are refused.
     r = runner.invoke(app, ["registry", "enroll-approver", "--name", "lior", "--namespace",
-                            "human-actor", "--pubkey", "ssh-ed25519 AAAAhumanactor lior@dev"])
+                            "go-live", "--pubkey", "ssh-ed25519 AAAAgolive lior@dev"])
     assert r.exit_code == 0, r.stdout
-    assert _json.loads(r.stdout)["namespaces"] == "algua-human-actor"
-    assert 'namespaces="algua-human-actor" ssh-ed25519 AAAAhumanactor' in signers.read_text()
-    r2 = runner.invoke(app, ["registry", "enroll-approver", "--name", "lior", "--namespace",
-                             "both", "--pubkey", "ssh-ed25519 AAAAboth lior@dev"])
-    assert r2.exit_code == 0
-    _body = signers.read_text()
-    assert 'namespaces="algua-go-live,algua-human-actor" ssh-ed25519 AAAAboth' in _body
+    assert _json.loads(r.stdout)["namespaces"] == "algua-go-live"
+    assert 'namespaces="algua-go-live" ssh-ed25519 AAAAgolive' in signers.read_text()
+    for gone in ("human-actor", "both"):
+        r2 = runner.invoke(app, ["registry", "enroll-approver", "--name", "lior", "--namespace",
+                                 gone, "--pubkey", f"ssh-ed25519 AAAA{gone} lior@dev"])
+        assert r2.exit_code == 1, r2.stdout
+    assert "algua-human-actor" not in signers.read_text()
     r3 = runner.invoke(app, ["registry", "enroll-approver", "--name", "x", "--namespace",
                              "bogus", "--pubkey", "ssh-ed25519 AAAAbogus x"])
     assert r3.exit_code == 1  # unknown namespace rejected

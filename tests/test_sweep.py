@@ -93,7 +93,8 @@ def test_evaluate_combo_returns_record_without_holdout():
     )
     # The rankable fields are present; the holdout never leaves the worker.
     assert set(rec) == {
-        "config_hash", "n_windows", "stability", "score", "meta"
+        "config_hash", "n_windows", "stability", "score", "meta", "window_metrics",
+        "window_context",
     }
     assert "holdout_metrics" not in rec and "holdout" not in rec
     assert rec["score"] == rec["stability"]["mean_sharpe"]
@@ -105,6 +106,9 @@ def test_evaluate_combo_returns_record_without_holdout():
     }
     assert rec["meta"]["bars_provenance"] is None  # unlabeled provider remains unknown
     assert rec["meta"]["execution_costs"]["fees"] == ov.execution.fees
+    assert len(rec['window_metrics']) == 4
+    assert all('total_return' in w and 'start' in w and 'end' in w
+               for w in rec['window_metrics'])
 
 
 def _run_kwargs():

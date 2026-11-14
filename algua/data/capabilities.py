@@ -14,9 +14,9 @@ _DATASET_CAPABILITY: dict[Dataset, DataCapability] = {
 # Markets a backtest can run against today. PRD phase 8 makes additional markets conditional;
 # flipping a member here re-opens every idea parked on it (research idea reclassify).
 _SUPPORTED_MARKETS: frozenset[Market] = frozenset({Market.US_EQUITIES, Market.ANY})
-# Horizons the daily execution contract serves. PRD phase 3 targets hourly operation.
-_SUPPORTED_HORIZONS: frozenset[Horizon] = frozenset(
-    {Horizon.DAILY, Horizon.WEEKLY, Horizon.MONTHLY, Horizon.EVENT})
+# Horizon is the required decision cadence, not a feature lookback. The engine currently
+# retargets weights on every daily bar; weekly/monthly fixed-share holding is not implemented.
+_SUPPORTED_HORIZONS: frozenset[Horizon] = frozenset({Horizon.DAILY})
 
 
 def supported_capabilities() -> frozenset[DataCapability]:

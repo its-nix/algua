@@ -27,6 +27,7 @@ from algua.evaluation.inputs import (
     resolve_eval_inputs,
     resolve_universe_inputs,
 )
+from algua.evaluation.research_scope import development_scope
 from algua.evaluation.series import emit_series_file
 from algua.registry.db import registry_conn
 from algua.registry.kb_sync import sync_kb_doc
@@ -43,7 +44,7 @@ def run_backtest_task(  # noqa: PLR0913
     fundamentals_snapshot: str | None = None, news_snapshot: str | None = None,
     delistings: str | None = None, assume_terminal_last_close: bool = False,
     register: bool = False, emit_series: str | None = None, track: bool = False,
-    reload: bool = False,
+    reload: bool = False, research_only: bool = False, holdout_frac: float = 0.2,
 ) -> dict:
     """Backtest a strategy and return the result payload dict (the body of ``backtest run``).
 
@@ -57,6 +58,9 @@ def run_backtest_task(  # noqa: PLR0913
     strategy, provider, start_dt, end_dt = resolve_eval_inputs(
         name, demo, snapshot, start, end, reload=reload)
     universe_by_date, universe_prov = resolve_universe_inputs(universe, start_dt, end_dt)
+    end_dt, scope = development_scope(
+        strategy, provider, start_dt, end_dt, snapshot=snapshot, research_only=research_only,
+        holdout_frac=holdout_frac, universe_by_date=universe_by_date)
     delisting_records, delisting_snapshot_id = resolve_delisting_inputs(delistings, end_dt)
     if fundamentals_snapshot and not strategy.config.needs_fundamentals:
         raise ValueError(
@@ -106,7 +110,8 @@ def run_backtest_task(  # noqa: PLR0913
         # Re-sync the kb doc to the new `backtested` stage (#331): best-effort, out-of-transaction.
         sync_kb_doc(name)
 
-    # Persist return series for the return-correlation clustering axis (#222, Task 7).
+    # Persist the backtest return series (run views' series_backtest_id; the merge-back intake's
+    # evidence precondition). Originally added for #222 family clustering, since removed.
     # Only persists for registered strategies (pre-existing or just-registered above); silently
     # skips otherwise. Persisted BEFORE the run row so the run row can point at it
     # (series_backtest_id, v44) — a not-yet-registered strategy still gets series_id=None.
@@ -144,6 +149,8 @@ def run_backtest_task(  # noqa: PLR0913
             series_backtest_id=series_id)
 
     payload = result.to_dict()
+    if scope is not None:
+        payload['research_scope'] = scope
     if emit_series:
         payload["series"] = emit_series_file(result, Path(emit_series))
     if track:

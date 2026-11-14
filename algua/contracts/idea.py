@@ -64,16 +64,19 @@ class Obscurity(StrEnum):
     COMMON = "common"
     NICHE = "niche"
     RARE = "rare"
+    HUMAN = "human"  # the owner's own inbox idea (spec 2026-11-12 §6.4); sorts first
 
 
 OBSCURITY_RANK: dict[Obscurity, int] = {
-    Obscurity.RARE: 0, Obscurity.NICHE: 1, Obscurity.COMMON: 2, Obscurity.CANON: 3,
+    Obscurity.HUMAN: -1, Obscurity.RARE: 0, Obscurity.NICHE: 1, Obscurity.COMMON: 2,
+    Obscurity.CANON: 3,
 }
 
 
 class AttemptOutcome(StrEnum):
     """Written once per claim by a trusted driver (never by an agent)."""
     INTEGRITY_FAIL = "integrity_fail"
+    DATA_BLOCKED = "data_blocked"
     HOLDOUT_NEGATIVE = "holdout_negative"
     WALKFORWARD_REFUTED = "walkforward_refuted"
     SWEEP_UNSTABLE = "sweep_unstable"

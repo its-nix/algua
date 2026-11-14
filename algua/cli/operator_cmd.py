@@ -39,6 +39,7 @@ from algua.config.settings import get_settings
 from algua.observability import configure_logging, correlation_context
 from algua.operator.alerts import emit_alert
 from algua.operator.jobs import OPERATOR_JOBS, CommandMismatch, OperatorJob
+from algua.operator.paper_observations import completed_session_observer
 from algua.operator.schedule import OperatorLockHeld, operator_run_lock
 from algua.operator.session_runner import run_session
 
@@ -166,16 +167,11 @@ def run(
         try:
             with operator_run_lock(lock_path, job=job, host=host, pid=pid):
                 session_ok = run_session(
-                    job,
-                    op_job,
-                    command,
-                    now_dt,
-                    alert_cmd,
-                    host,
-                    pid,
+                    job, op_job, command, now_dt, alert_cmd, host, pid,
                     emit=emit,
                     ok=ok,
                     run_driver=_run_driver,
+                    on_completed=completed_session_observer(job, clock_overridden=now is not None),
                 )
         except OperatorLockHeld as held:
             _emit_lock_held(job, op_job, held.holder, now_dt, alert_cmd)

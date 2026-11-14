@@ -15,7 +15,7 @@
 # branch-protection settings for the default branch (a one-time repo setting).
 
 /algua/registry/store/        @Lior-Nis   # the paper->live wall + approvals
-/algua/registry/db/           @Lior-Nis   # schema + migrate(): single-use gate-token DDL, #524 append-only triggers, AGENT_NOVEL_MINT_CAP, SCHEMA_VERSION
+/algua/registry/db/           @Lior-Nis   # schema + migrate(): single-use gate-token DDL, #524 append-only triggers, SCHEMA_VERSION
 /algua/contracts/lifecycle.py   @Lior-Nis   # lifecycle stages + allowed transitions
 /algua/backtest/engine.py       @Lior-Nis   # anti-look-ahead t->t+1 enforcement
 /algua/backtest/context.py      @Lior-Nis   # Task 2 pinned context inputs + canonical dispatch
@@ -24,7 +24,6 @@
 /algua/contracts/strategy_context.py @Lior-Nis   # Task 2 immutable context + score validation
 /algua/research/gates.py        @Lior-Nis   # promotion-gate criteria
 /algua/research/gate_serialization.py @Lior-Nis   # GateDecision.to_dict(): what reaches the persisted decision_json (stage 7 task 4)
-/algua/research/clustering.py   @Lior-Nis   # clustering thresholds + family similarity (#222)
 /approvers/                     @Lior-Nis   # go-live approver public keys (the signature trust anchor)
 /algua/registry/live_gate.py    @Lior-Nis   # the signed paper->live gate
 /algua/registry/transitions.py  @Lior-Nis   # live-gate enforcement
@@ -33,6 +32,38 @@
 /algua/contracts/strategy_interface.py @Lior-Nis   # Task 2 closed decision-interface vocabulary
 /algua/contracts/strategy_identity.py @Lior-Nis   # Task 2 interface-aware config identity
 /algua/contracts/strategy_scoring.py @Lior-Nis   # Task 2 context scoring and model-pin checks
+/algua/contracts/frozen_model.py @Lior-Nis   # portable pinned model identity and byte verification
+/algua/risk/layered.py @Lior-Nis   # signed layered exposure policy and exact boundary arithmetic
+/algua/registry/db/drawdown.py @Lior-Nis   # durable independent account risk state and evidence
+/algua/registry/drawdown_store.py @Lior-Nis   # account risk state CAS and independent latches
+/algua/registry/drawdown_auth.py @Lior-Nis   # account policy signatures and restoration baseline
+/algua/execution/alpaca_reductions.py @Lior-Nis   # quote health and exact-identity bounded reductions
+/algua/execution/drawdown_flows.py @Lior-Nis   # cash-flow identity, timing and sign accounting
+/algua/execution/drawdown_actions.py @Lior-Nis   # attributed reduction intents and guarded submissions
+/algua/execution/drawdown_cycle.py @Lior-Nis   # shared account risk intervention ordering
+/algua/execution/drawdown_guard.py @Lior-Nis   # per-order state rechecks and aggregate reservation
+/algua/execution/drawdown_watch.py @Lior-Nis   # risk watcher live-authority reuse
+/algua/cli/layered_runtime.py @Lior-Nis   # account controller integration before strategy effects
+/algua/cli/risk_cmd.py @Lior-Nis   # signed policy and restoration command surface
+/algua/cli/live_cmd.py @Lior-Nis   # live enforcement call sites
+/algua/execution/book_breaker_halt.py @Lior-Nis   # selected profile versus legacy breaker routing
+/algua/execution/alpaca_broker.py @Lior-Nis   # venue selection and guarded reduction transport
+/algua/execution/fleet_health.py @Lior-Nis   # independent account risk halt visibility
+/algua/registry/db/experimental.py @Lior-Nis   # append-only experimental observations and qualifications
+/algua/registry/experimental_sessions.py @Lior-Nis   # real-session eligibility and exact epoch evidence
+/algua/registry/experimental_qualification.py @Lior-Nis   # historical lineage and signed qualification persistence
+/algua/operator/paper_observations.py @Lior-Nis   # non-overridden scheduled observation capture
+/algua/cli/paper_experimental.py @Lior-Nis   # authenticated experimental qualification command
+/algua/backtest/model_policy.py @Lior-Nis   # fixed pre-period model eligibility before holdout use
+/algua/registry/frozen_model_assets.py @Lior-Nis   # bounded immutable model asset packaging and reads
+/algua/primitives/bounded_file.py @Lior-Nis   # no-symlink bounded model file reads
+/algua/strategies/context_inputs.py @Lior-Nis   # shared immutable decision context composition
+/algua/strategies/frozen_model.py @Lior-Nis   # model-only frozen strategy admission
+/algua/live/frozen_model_loading.py @Lior-Nis   # bundle-only model recovery in the child
+/algua/live/frozen_model_wire.py @Lior-Nis   # bundle-only model recovery in the child
+/algua/live/model_context.py @Lior-Nis   # bundle-only model recovery in the child
+/algua/cli/frozen_paper.py @Lior-Nis   # bundle-only model recovery in the child
+/algua/live/planner_context.py @Lior-Nis   # bundle-only model recovery in the child
 /algua/strategies/context_loader.py @Lior-Nis   # Task 2 authored context binding
 /algua/strategies/loader.py     @Lior-Nis   # Task 2 interface selection and model resolution
 /algua/strategies/tradable.py   @Lior-Nis   # Task 2 paper/live/frozen context refusal
@@ -41,7 +72,6 @@
 /algua/registry/promotion.py    @Lior-Nis   # promotion policy (breadth/PIT/floor + shortlist gate)
 /algua/research/forward_gates.py      @Lior-Nis   # forward-test gate criteria (#124)
 /algua/registry/forward_promotion.py  @Lior-Nis   # forward-gate scaffolding: guard + preflight + run_gate (evidence -> forward_evidence.py, certificate -> live_certificate.py)
-/algua/registry/human_actor.py        @Lior-Nis   # authenticated --actor human gate (#329)
 
 # Frozen planner artifact integrity (Story 1.3b): identities, exact Git export, immutable
 # publication, environment verification, descriptor recording, offline recovery and bounded CLI
@@ -105,14 +135,13 @@
 # silently removed the guard, which is exactly the "quietly weaken the wall" case this file exists
 # to prevent. Added on discovery during stage 6c.
 /algua/registry/promote_run.py        @Lior-Nis   # backtested->candidate gate body (was research_cmd.py, #6a)
-/algua/registry/family_assignment.py  @Lior-Nis   # #222/#524 family classification + deferred agent mint (was promotion.py)
 /algua/registry/forward_evidence.py   @Lior-Nis   # forward-test tick admissibility + evidence assembly (was forward_promotion.py)
 /algua/registry/live_certificate.py   @Lior-Nis   # forward-certificate verification, the go-live freshness bound (was forward_promotion.py)
 /algua/registry/intake.py             @Lior-Nis   # candidate->paper book admission: capital slice, FIFO order, the atomic intake loop
-/algua/registry/challenges.py         @Lior-Nis   # single-use signed-challenge lifecycle: nonce issuance + consumption for BOTH the algua-go-live and algua-human-actor namespaces (was live_gate.py + human_actor.py, spec §4.4)
-/algua/cli/_common.py                  @Lior-Nis   # shared CLI JSON-envelope + flag-resolution surface (authenticate_actor moved to registry/human_actor.py in 6a)
-/algua/cli/research_cmd.py             @Lior-Nis   # research-promote command surface (the #329 enforcement call moved to registry/promote_run.py in 6a)
-/algua/cli/paper_cmd.py                @Lior-Nis   # paper-promote enforcement call site (#329)
+/algua/registry/challenges.py         @Lior-Nis   # single-use signed-challenge lifecycle: nonce issuance + consumption for the algua-go-live namespace (was live_gate.py, spec §4.4; the algua-human-actor namespace was removed)
+/algua/cli/_common.py                  @Lior-Nis   # shared CLI JSON-envelope + flag-resolution surface
+/algua/cli/research_cmd.py             @Lior-Nis   # research-promote command surface (gates fixed for every actor; the gate body lives in registry/promote_run.py)
+/algua/cli/paper_cmd.py                @Lior-Nis   # paper-promote command surface (tighten-only forward-gate thresholds for every actor)
 /algua/backtest/pit_view.py            @Lior-Nis   # as-of masking IS the anti-look-ahead enforcement (was engine.py, stage 7)
 /algua/backtest/decision_path.py       @Lior-Nis   # canonical/fast dual path + parity guard licensing the fast path (was engine.py, stage 7)
 /algua/backtest/grid.py                @Lior-Nis   # adj_grid: the sim date-index, single source of truth for build_portfolio AND holdout_window (#192 holdout identity)
@@ -127,3 +156,25 @@
 /algua/portfolio/overlay_policies.py   @Lior-Nis   # bundled overlay policies (trailing_stop, regime_gate), carved out of overlays.py; hashed into strategy identity
 /algua/portfolio/overlay_validation.py @Lior-Nis   # shared OverlayError + param-domain helpers, carved out of overlays.py; hashed into strategy identity
 /algua/portfolio/construction.py       @Lior-Nis   # construction policies hashed into strategy identity (#141); was unprotected until the overlays PR
+
+# Capped experimental live authority and frozen supervisor integration
+/algua/contracts/capped_live.py @Lior-Nis
+/algua/registry/db/capped_live.py @Lior-Nis
+/algua/registry/capped_auth.py @Lior-Nis
+/algua/registry/capped_context.py @Lior-Nis
+/algua/registry/capped_policy.py @Lior-Nis
+/algua/registry/capped_active.py @Lior-Nis
+/algua/registry/capped_qualification.py @Lior-Nis
+/algua/registry/capped_state.py @Lior-Nis
+/algua/registry/capped_allocation.py @Lior-Nis
+/algua/cli/capped_live_cmd.py @Lior-Nis
+/algua/cli/handoff_cmd.py @Lior-Nis
+/algua/cli/experimental_handoff.py @Lior-Nis
+/algua/cli/frozen_live.py @Lior-Nis
+/algua/cli/frozen_planner.py @Lior-Nis
+/algua/cli/capped_runtime.py @Lior-Nis
+/algua/registry/allocations.py @Lior-Nis
+
+/algua/primitives/midcap_universe.py @Lior-Nis # approved midcap universe parser
+/algua/strategies/momentum/midcap_weekly_momentum_smoke.py @Lior-Nis # approved symbol authority
+/algua/operator/paper_account_lock.py @Lior-Nis

@@ -67,6 +67,7 @@ class EarlyPlannerInput:
     early_positions: Mapping[str, float]
     gate_universe: tuple[str, ...]
     max_drawdown: float | None
+    bars_snapshot_id: str | None = None
 
 
 @dataclass(frozen=True)

@@ -3,8 +3,8 @@
 The factory research loop explores on a per-run SCRATCH registry inside a sandboxed worktree; the
 producer is forbidden from writing the authoritative DB. A survivor therefore reaches the trusted
 drainer's ``paper merge-back`` saga with (1) NO authoritative registry row and (2) NO authoritative
-promote evidence (search breadth from ``backtest sweep``; a persisted ``backtest_returns`` series
-for the family classifier). This module is the saga's post-merge chokepoint that closes both gaps
+promote evidence (search breadth from ``backtest sweep``; a persisted ``backtest_returns``
+series). This module is the saga's post-merge chokepoint that closes both gaps
 AUTHORITATIVELY — scratch evidence is NEVER imported (a sandboxed agent could under-report breadth);
 the queue transports a validated *recipe* (data-context ids + the exact sweep grid) and the trusted
 drainer re-runs it here against the just-merged module on ``main``.

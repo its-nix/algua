@@ -10,11 +10,12 @@ from datetime import UTC, datetime, timedelta
 from algua.contracts.idea import AttemptOutcome
 from algua.registry.ideas import IdeaRepository
 from algua.registry.negative_results import list_negative_results
+from algua.registry.reported_empirical import empirical_counts, reported_assessments
 
 _MIN_N = 5
 _PAST_INTEGRITY = frozenset(a.value for a in AttemptOutcome) - {
     AttemptOutcome.INTEGRITY_FAIL.value, AttemptOutcome.ABANDONED.value,
-    AttemptOutcome.RUN_ERROR.value}
+    AttemptOutcome.RUN_ERROR.value, AttemptOutcome.DATA_BLOCKED.value}
 _PAST_WALKFORWARD = _PAST_INTEGRITY - {AttemptOutcome.HOLDOUT_NEGATIVE.value,
                                        AttemptOutcome.WALKFORWARD_REFUTED.value,
                                        AttemptOutcome.SWEEP_UNSTABLE.value}
@@ -105,7 +106,9 @@ def campaign_scorecard(conn: sqlite3.Connection) -> dict:
     attempts = [dict(r) for r in conn.execute(
         "SELECT id, idea_id, run_stamp, claimed_at, outcome, reason, evidence_ref,"
         " strategy_name, outcome_at FROM idea_attempts ORDER BY id")]
+    assessments, report_status = reported_assessments(attempts)
     for a in attempts:
+        a["reported_falsification_assessment"] = assessments.get(a["id"], "unknown")
         a["evidence_id"] = f"idea_attempts:{a['id']}"
         if a["idea_id"] not in by_id:
             raise ValueError("campaign history contains an orphan attempt")
@@ -123,7 +126,8 @@ def campaign_scorecard(conn: sqlite3.Connection) -> dict:
 
     def aggregate(rows: list[dict]) -> dict:
         counts = _campaign_counts(rows)
-        return {**counts, "evidence_ids": sorted(a["evidence_id"] for a in rows)}
+        return {**counts, "reported_empirical": empirical_counts(rows),
+                "evidence_ids": sorted(a["evidence_id"] for a in rows)}
 
     family_rows: dict[str, list[dict]] = defaultdict(list)
     category_rows: dict[str, list[dict]] = defaultdict(list)
@@ -133,6 +137,9 @@ def campaign_scorecard(conn: sqlite3.Connection) -> dict:
         category_rows[idea["category"] or "legacy"].append(a)
     return {"scope": "lifetime", "hypotheses": ideas, "attempts": attempts,
             "totals": _campaign_counts(attempts),
+            "reported_empirical": {"source": "research-runs.jsonl", "status": report_status,
+                "authority": "none", "evidence_mode": "UNVERIFIED_WORKER",
+                "counts": empirical_counts(attempts)},
             "by_family": {k: aggregate(v) for k, v in sorted(family_rows.items())},
             "by_category": {k: aggregate(v) for k, v in sorted(category_rows.items())},
             "negative_results": sorted(negatives, key=lambda n: n["id"]),
@@ -152,6 +159,7 @@ def _campaign_counts(rows: list[dict]) -> dict[str, int]:
             "unfinished": unfinished,
             "invalid": outcomes.count(AttemptOutcome.INTEGRITY_FAIL.value),
             "run_error": outcomes.count(AttemptOutcome.RUN_ERROR.value),
+            "data_blocked": outcomes.count(AttemptOutcome.DATA_BLOCKED.value),
             "abandoned": outcomes.count(AttemptOutcome.ABANDONED.value),
             "economic_rejected": rejected, "economic_evaluated": rejected + preview + promoted,
             "preview_pass": preview, "promoted_candidate": promoted}

@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     # Root of the Obsidian-mountable knowledge base (vault). Strategy docs live under
     # `<knowledge_dir>/strategies/`; other domains (research, news, …) are added as they arrive.
     knowledge_dir: Path = Path("kb")
+    # Drive as the ideation backend (spec 2026-11-12). Enabled iff the folder id is set; unset
+    # keeps every ideation path on the files above. `steering_dir` is the run-start snapshot a
+    # driver exports from Drive; when set, steering/inspiration READS come from it.
+    drive_folder_id: str | None = None
+    drive_credentials: Path | None = None
+    steering_dir: Path | None = None
     exchange: str = "XNYS"
     alpaca_api_key: str | None = None
     alpaca_api_secret: str | None = None
@@ -102,12 +108,20 @@ class Settings(BaseSettings):
     # A claim older than this is reaped as `abandoned` by the next `research idea claim`.
     # Must exceed the research run's TIMEOUT (45m) + prewarm (5m) with margin.
     idea_claim_ttl_minutes: int = 180
+    research_daily_cycle_limit: int | None = None
     # The reaper's SECOND clock, for a claim held open by a `candidate_preview_pass` outcome so
     # the merge-back drainer's `link` can still spend its fencing token. The drainer drains ONE
     # queue item per 30-minute fire, so this must cover a DEEP backlog, not just one run — reaping
     # such a claim early strands an idea whose strategy really did reach authority. Mirrors
     # `algua.registry.idea_attempts.DEFAULT_PREVIEW_HOLD_HOURS`.
     idea_preview_hold_hours: int = 72
+
+    @field_validator('research_daily_cycle_limit')
+    @classmethod
+    def _daily_cycle_limit(cls, value: int | None) -> int | None:
+        if value is not None and not 1 <= value <= 100:
+            raise ValueError('research_daily_cycle_limit must be between 1 and 100')
+        return value
 
     @field_validator("db_path", "data_dir")
     @classmethod

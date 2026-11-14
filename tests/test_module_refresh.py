@@ -19,6 +19,8 @@ from algua.primitives import module_commit_check, module_refresh, module_source_
 from algua.primitives.module_refresh import ModuleRefreshError, refresh_package_closure
 from algua.primitives.module_source_scan import require_acyclic, static_closure
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 
 @pytest.fixture
 def family(tmp_path, monkeypatch):
@@ -1651,6 +1653,7 @@ os._exit(0 if finished else 45)
 _FORK_CONTENDER = """
 import os, threading
 from algua.primitives import module_refresh
+
 pid, seen, contenders = None, {}, []
 def probe():
     acquired = module_refresh._REFRESH_LOCK.acquire(blocking=False)

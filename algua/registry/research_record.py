@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from types import SimpleNamespace
 from typing import Any
 
 from algua.registry.store.public_windows import DEFINITION, public_record
@@ -45,3 +46,24 @@ def capture_public_record(
         return None if record.get("invalid_fields") else copy.deepcopy(record)
     except (KeyError, TypeError, ValueError, IndexError, OverflowError):
         return None
+
+
+def capture_sweep_record(
+    result: Any, record: dict[str, Any], provenance: dict[str, Any], inputs: dict[str, Any],
+    research_inputs: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Reuse the existing closed public-window protocol for each measured sweep trial."""
+    context = record.get('window_context')
+    if not isinstance(context, dict):
+        return None  # Legacy aggregate-only trials have no reconstructible window evidence.
+    public_result = SimpleNamespace(
+        timeframe=result.timeframe, period=result.period, holdout_frac=result.holdout_frac,
+        embargo=context['embargo'], execution_semantics=context['execution'],
+        window_metrics=record['window_metrics'], windows=record['n_windows'])
+    return capture_public_record(
+        public_result, None, provenance | {'config_hash': record['config_hash']},
+        {'mean_window_sharpe': record['stability']['mean_sharpe'],
+         'std_window_sharpe': record['stability']['std_sharpe'],
+         'min_window_sharpe': record['stability']['min_sharpe'],
+         'pct_positive_windows': record['stability']['pct_positive_windows']}, inputs,
+        research_inputs, record['params'])

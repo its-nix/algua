@@ -108,10 +108,21 @@ def error_code(exc: BaseException) -> str:
     frozen = _frozen_tenant_fault(exc)
     if frozen is not None:
         return frozen[0]
+    drive_code = _drive_fault(exc)
+    if drive_code is not None:
+        return drive_code
     for typ, code in _registry():
         if isinstance(exc, typ):
             return code
     return "internal"
+
+
+def _drive_fault(exc: BaseException) -> str | None:
+    """A Drive ideation-backend fault's own code (spec 2026-11-12 §7): drive_auth |
+    drive_unavailable | drive_schema | drive_http."""
+    from algua.knowledge.drive.client import DriveError
+
+    return exc.code if isinstance(exc, DriveError) else None
 
 
 def _frozen_tenant_fault(exc: BaseException) -> tuple[str, int | None] | None:
@@ -147,7 +158,7 @@ def error_envelope(exc: BaseException) -> dict[str, object]:
 # code is opt-in here. Single shared definition — every envelope surface derives `retryable` from
 # this set (see ``docs/contracts/cli-error-envelope.md``), never duplicating the policy per command.
 RETRYABLE_CODES: frozenset[str] = frozenset({
-    "db_unavailable", "frozen_environment_unavailable",
+    "db_unavailable", "frozen_environment_unavailable", "drive_unavailable",
 })
 
 

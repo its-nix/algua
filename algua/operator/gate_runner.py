@@ -47,7 +47,10 @@ from pathlib import Path
 # must run the LOCKED dependency set (the root uv.lock is dependency_hash identity) — a gate that
 # silently resolved fresh deps would test a different world than the one that ships.
 _GATE_COMMANDS: tuple[tuple[str, ...], ...] = (
-    ("uv", "run", "--frozen", "pytest", "-q"),
+    # pytest runs the FULL set serially: ``-o addopts=""`` clears pyproject's addopts (``-n auto``,
+    # ``-m 'not slow'``) — the pre-fast-subset invocation. (``-p no:xdist`` would instead make
+    # pytest reject the ``-n`` in addopts and exit red.)
+    ("uv", "run", "--frozen", "pytest", "-q", "-o", "addopts="),
     ("uv", "run", "--frozen", "ruff", "check", "."),
     ("uv", "run", "--frozen", "mypy", "algua"),
     ("uv", "run", "--frozen", "lint-imports"),

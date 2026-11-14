@@ -7,7 +7,8 @@ smeared across three scripts plus an untracked file, and the test suite pinned a
 spelling as if it were an invariant.
 
 What is actually invariant is asserted here: one entry point, a hard timeout, a kernel write wall,
-no prompt that can block an unattended run, and a prompt delivered as a FILE rather than as argv.
+no prompt that can block an unattended run, and bounded chooser text / file delivery for
+larger loops.
 """
 
 from __future__ import annotations
@@ -41,6 +42,17 @@ def _dry(mode: str, **env: str) -> str:
 def test_seam_exists_and_is_executable():
     assert SEAM.is_file()
     assert SEAM.stat().st_mode & 0o111, "the drivers invoke the seam directly; it must be +x"
+
+
+def test_oversized_chooser_prompt_stops_before_invoking_runtime(tmp_path):
+    prompt = tmp_path / 'oversized.txt'
+    prompt.write_text('x' * (96 * 1024 + 1))
+    proc = subprocess.run([str(SEAM), '--mode', 'chooser', '--workdir', str(tmp_path),
+                           '--prompt-file', str(prompt), '--dry-run'],
+                          capture_output=True, text=True)
+    assert proc.returncode == 2
+    assert 'chooser prompt exceeds 96 KiB' in proc.stderr
+    assert 'would run:' not in proc.stdout
 
 
 @pytest.mark.parametrize("mode", MODES)
@@ -258,16 +270,37 @@ def _run_seam(
     )
 
 
+@pytest.mark.slow
 def test_a_rejected_primary_stream_fails_the_run_even_when_the_runtime_exits_zero(tmp_path: Path):
     proc = _run_seam(tmp_path, _REJECTED, runtime_rc=0)
     assert proc.returncode == 3, proc.stdout + proc.stderr
 
 
+@pytest.mark.slow
 def test_a_clean_run_still_exits_zero(tmp_path: Path):
     proc = _run_seam(tmp_path, "did the work\n", runtime_rc=0)
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
+@pytest.mark.slow
 def test_a_title_agent_error_alone_does_not_fail_the_run(tmp_path: Path):
     proc = _run_seam(tmp_path, _TITLE_ONLY, runtime_rc=0)
     assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_drive_credentials_never_reach_the_agent(tmp_path):
+    """Spec 2026-11-12 §5 / review C1: agents never call Drive. The seam strips the Drive env and
+    masks the credential file inside the sandbox, so a prompt-injected agent can neither read the
+    refresh token nor make the CLI write the owner's Sheets."""
+    cred = tmp_path / "drive.json"
+    cred.write_text("{}")
+    for mode in MODES:
+        out = _dry(mode, ALGUA_AGENT_SANDBOX="bwrap", ALGUA_DRIVE_FOLDER_ID="F",
+                   ALGUA_DRIVE_CREDENTIALS=str(cred))
+        assert "-u ALGUA_DRIVE_FOLDER_ID -u ALGUA_DRIVE_CREDENTIALS" in out, mode
+        assert f"--ro-bind /dev/null {cred}" in out, mode
+
+
+def test_drive_env_is_stripped_even_without_a_sandbox():
+    out = _dry("leap", ALGUA_AGENT_SANDBOX="none", ALGUA_DRIVE_FOLDER_ID="F")
+    assert "-u ALGUA_DRIVE_FOLDER_ID -u ALGUA_DRIVE_CREDENTIALS" in out

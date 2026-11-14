@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Algua account risk every minute (%i)
+
+[Timer]
+OnBootSec=45
+OnUnitInactiveSec=60
+AccuracySec=5
+Unit=algua-risk@%i.service
+
+[Install]
+WantedBy=timers.target

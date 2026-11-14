@@ -14,15 +14,19 @@ from algua.cli._common import (
     resolve_operator_cycle_window,
 )
 from algua.cli.app import app, emit
+from algua.cli.capped_runtime import verify_live_authorization
 from algua.cli.errors import json_errors
+from algua.cli.frozen_live import frozen_views, run_frozen_live
 from algua.cli.lane_refresh import build_cycle_plan, lane_symbols, refresh_lane_snapshot
+from algua.cli.layered_runtime import checked_cycle, live_health, observe_live
 from algua.config.settings import get_settings
+from algua.contracts.capped_live import CappedLiveAuthorization
 from algua.contracts.lifecycle import Actor, Stage
-from algua.contracts.types import LiveAuthorization, ScopedCancelBroker
+from algua.contracts.types import LiveAuthorization
 from algua.evaluation.inputs import (
     select_provider as _select_provider,
 )
-from algua.execution import live_reconcile
+from algua.execution import drawdown_guard, live_reconcile
 from algua.execution.alpaca_broker import AlpacaLiveBroker
 from algua.execution.book_breaker_halt import enforce_book_loss_breaker
 from algua.execution.broker_factory import BrokerKind, build_broker
@@ -34,9 +38,7 @@ from algua.execution.live_ledger import (
     believed_positions,
     fill_cursor,
     ingest_activities,
-    owned_open_order_ids,
     record_live_order,
-    recover_stranded_broker_order_ids,
 )
 from algua.execution.live_reservations import record_reservation
 from algua.execution.live_sizing import LiveSizingError, build_live_sizing_snapshot
@@ -48,6 +50,21 @@ from algua.execution.order_state import (
 )
 from algua.execution.sizing import MIN_NOTIONAL
 from algua.execution.tick_clock import tick_clock
+from algua.execution.venue_sync import (
+    broker_account_activities as _broker_account_activities,
+)
+from algua.execution.venue_sync import (
+    broker_buying_power as _broker_buying_power,
+)
+from algua.execution.venue_sync import (
+    broker_net_positions as _broker_net_positions,
+)
+from algua.execution.venue_sync import (
+    recover_live_stranded as _recover_live_stranded,
+)
+from algua.execution.venue_sync import (
+    scoped_live_cancel as _scoped_cancel,
+)
 from algua.live.book_exposure import build_book_exposure as _build_book_exposure
 from algua.live.live_loop import (
     SubmittedOrder,
@@ -67,12 +84,12 @@ from algua.registry import allocations
 from algua.registry import deployment_runtime as deploy
 from algua.registry.allocations import active_allocation
 from algua.registry.approvals import compute_artifact_hashes
+from algua.registry.capped_allocation import still_live_allocated as _still_live_allocated
 from algua.registry.db import registry_conn
 from algua.registry.live_gate import (
     ALLOWED_SIGNERS_PATH,
     LiveAuthorizationError,
     authorization_active,
-    verify_live_authorization,
 )
 from algua.registry.store import SqliteStrategyRepository
 from algua.registry.universe_binding import SOURCE_CONFIG_LEGACY, resolve_operational_universe
@@ -112,6 +129,8 @@ def allocate(
                 f"cannot allocate live capital to {name!r} at stage {rec.stage.value}; live "
                 "allocate requires stage 'live' (a dormant/recovered/forward-tested strategy "
                 "re-allocates only after reaching live)")
+        from algua.registry.capped_allocation import require_ordinary_allocation
+        require_ordinary_allocation(conn,rec.id,capital)
         allocations.allocate_in_lane(
             conn, rec.id, capital=capital, actor="human",
             account_equity=_live_account_equity(),
@@ -123,14 +142,6 @@ def _alpaca_live_broker(authorization: LiveAuthorization) -> AlpacaLiveBroker:
     # Single-sourced with the book-exit drain (#497) so the two never drift on how the real-money
     # broker is built from the settings credentials.
     return build_live_broker(authorization)
-
-
-def _still_live_allocated(conn, name: str) -> bool:
-    """True iff `name` is still Stage.LIVE with an active allocation. Re-read at submit time so a
-    mid-cycle `live -> dormant` bench (#247) halts further orders instead of orphaning a position
-    run-all would never flatten (#281); broader than dormant (any non-LIVE transition halts)."""
-    rec = SqliteStrategyRepository(conn).get(name)
-    return rec.stage is Stage.LIVE and active_allocation(conn, rec.id) is not None
 
 
 def _run_strategy_tick(  # noqa: PLR0913
@@ -147,6 +158,10 @@ def _run_strategy_tick(  # noqa: PLR0913
     isolated as ``StrategySetupError`` UNLESS it's a :data:`SYSTEMIC_SETUP_EXCEPTIONS` member (a
     shared-infra fault), which propagates raw to abort the whole cycle. Everything from
     ``run_tick`` onward is unwrapped: any exception there is book-integrity-critical and aborts."""
+    frozen = run_frozen_live(conn,name,authorization,broker,provider,max_drawdown,
+        start=start,end=end,reserve_buy=reserve_buy,cancel=cancel,snapshot_id=snapshot_id)
+    if frozen is not None:
+        return frozen
     try:
         strategy = load_tradable_strategy(name)
 
@@ -155,6 +170,7 @@ def _run_strategy_tick(  # noqa: PLR0913
         if alloc is None:
             raise ValueError(f"{name} has no live allocation")
         allocation = float(alloc["capital"])
+        drawdown_guard.require_cycle(conn, broker, "live")
         deployment, identity = deploy.resolve_tick(conn, rec.id, name, compute_artifact_hashes)
         # #559/#601: bind this tick to the GATED universe, never CONFIG — the same wall paper
         # enforces. Missing raises LookupError; a legacy row (universe_name NULL) falls
@@ -175,7 +191,8 @@ def _run_strategy_tick(  # noqa: PLR0913
         # No coarse buying-power preflight: min(allocation, NAV) already de-risks sizing.
 
         def _live_snap(bars):
-            return build_live_sizing_snapshot(conn, name, allocation, bars, strategy.universe)
+            return drawdown_guard.sizing_snapshot(conn, broker, "live",
+                build_live_sizing_snapshot(conn, name, allocation, bars, strategy.universe))
 
         def _persist(record: SubmittedOrder) -> None:
             # Record immediately so fills attribute and scoped cancel finds the order (#18).
@@ -189,10 +206,11 @@ def _run_strategy_tick(  # noqa: PLR0913
             live_snapshot=_live_snap,
             live_positions=lambda: believed_positions(conn, name, LedgerKind.LIVE),
             should_halt=lambda: (kill_switch.is_tripped(conn, name) or global_halt.is_engaged(conn)
+                                 or not drawdown_guard.cycle_active(conn, broker, "live")
                                  or not authorization_active(conn, authorization)
                                  or not _still_live_allocated(conn, name)),
             peak_equity=get_nav_peak(conn, name),
-            reserve_buy=reserve_buy,
+            reserve_buy=drawdown_guard.reserve(conn, broker, "live", reserve_buy),
             planner_context=planner_context_for_deployment(deployment, get_settings().exchange),
         )
     except (KeyboardInterrupt, SystemExit):
@@ -280,32 +298,6 @@ def _run_strategy_tick(  # noqa: PLR0913
 
 
 
-def _broker_account_activities(broker, after):
-    return broker.account_activities(after=after)
-
-
-def _recover_live_stranded(conn, broker) -> None:
-    """#312: backfill broker_order_id onto any crash-stranded NULL live_orders row (asks the venue
-    by client_order_id; never submits). Audit-only; a broker error propagates via json_errors."""
-    outcome = recover_stranded_broker_order_ids(conn, broker, kind=LedgerKind.LIVE)
-    if outcome.recovered:
-        audit_append(conn, actor="system", action="stranded_order_recovered",
-                     reason=f"{len(outcome.recovered)} backfilled: {outcome.recovered}",
-                     strategy=None)
-    if outcome.mismatched:
-        audit_append(conn, actor="system", action="stranded_recovery_mismatch",
-                     reason=f"{len(outcome.mismatched)} broker mismatch: {outcome.mismatched}",
-                     strategy=None)
-
-
-def _broker_net_positions(broker) -> dict:
-    pos = broker.get_positions()  # pandas Series symbol->qty
-    return {sym: float(q) for sym, q in pos.items() if float(q) != 0.0}
-
-
-def _broker_buying_power(broker) -> float:
-    return float(broker.account().buying_power)
-
 
 @live_app.command("run-all")
 @json_errors
@@ -364,8 +356,10 @@ def run_all(
                                  reason="live run-all invoked with --disable-drawdown-breaker",
                                  strategy=None)
                 repo = SqliteStrategyRepository(conn)
+                live_risk = observe_live(conn)
                 live = repo.list_strategies(Stage.LIVE)
                 if not live:
+                    live_health(live_risk)
                     emit(ok({"strategies": [], "note": "no live strategies"}))
                     return
                 if global_halt.is_engaged(conn):
@@ -383,6 +377,7 @@ def run_all(
                     except LiveAuthorizationError as exc:
                         skipped.append({"strategy": rec.name, "reason": str(exc)})
                 if not verified:
+                    live_health(live_risk)
                     emit(ok({
                         "strategies": [],
                         "skipped": skipped,
@@ -400,6 +395,7 @@ def run_all(
                 verified = [(name, auth) for name, auth in verified
                             if name not in _unallocated]
                 if not verified:
+                    live_health(live_risk)
                     # Every authorized strategy is unallocated: skip cleanly WITHOUT building the
                     # broker or touching live credentials (mirrors the no-authorized early return
                     # above) — a no-op cycle must not require the real-money broker.
@@ -414,7 +410,7 @@ def run_all(
                 # still-allocated strategy's authorization) so the whole-account reconcile + book
                 # breakers run over orphan/residual holdings before any strategy orders.
                 account_authorization = verified[0][1]
-                broker = _alpaca_live_broker(account_authorization)
+                broker = checked_cycle(conn, _alpaca_live_broker(account_authorization), "live")
                 # ingest fills, then reconcile the account before trading
                 cursor = fill_cursor(conn, LedgerKind.LIVE)
                 ingest_activities(conn, _broker_account_activities(broker, cursor), LedgerKind.LIVE)
@@ -433,7 +429,11 @@ def run_all(
                 if refresh:
                     plan = build_cycle_plan(
                         conn, names=[n for n, _a in verified], kind=LedgerKind.LIVE,
-                        data_dir=get_settings().data_dir)
+                        data_dir=get_settings().data_dir,
+                        **({"views": frozen_views(conn, verified)} if any(
+                            isinstance(a, CappedLiveAuthorization) for _, a in verified
+                        ) else {}),
+                    )
                     results.extend(plan.skipped)
                     if verified and not plan.universes:
                         audit_append(conn, actor="system", action="cycle_plan_failed",
@@ -722,9 +722,3 @@ def halt_all(
                  "interim account-wide break-glass is the raw broker "
                  "(DELETE /v2/positions?cancel_orders=true with the live keys)."),
     }))
-
-
-def _scoped_cancel(conn, broker: ScopedCancelBroker, strategy: str) -> None:
-    """Cancel only THIS strategy's open orders (never a sibling's)."""
-    for oid in owned_open_order_ids(conn, broker, strategy):
-        broker.cancel_order(oid)

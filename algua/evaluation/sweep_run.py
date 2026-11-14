@@ -22,6 +22,7 @@ from algua.evaluation.inputs import (
     resolve_eval_inputs,
     resolve_universe_inputs,
 )
+from algua.evaluation.research_roles import retain_benchmark_grid
 from algua.registry.db import registry_conn
 from algua.registry.runs import record_sweep_run
 from algua.registry.search_breadth import record_search_breadth
@@ -37,6 +38,7 @@ def sweep_task(  # noqa: PLR0913
     top: int = 20, fundamentals_snapshot: str | None = None, news_snapshot: str | None = None,
     delistings: str | None = None, assume_terminal_last_close: bool = False, track: bool = False,
     reload: bool = False,
+    evaluation_role: str = 'strategy', benchmark_for: str | None = None,
 ) -> dict:
     """Sweep a strategy across a parameter grid and return the (untruncated-summary) payload dict —
     the body of ``backtest sweep``, shared with the ``research run-all`` batch worker (#326).
@@ -47,7 +49,8 @@ def sweep_task(  # noqa: PLR0913
     if top < 1:
         raise ValueError("--top must be >= 1")
     strategy, provider, start_dt, end_dt = resolve_eval_inputs(
-        name, demo, snapshot, start, end, reload=reload)
+        name, demo, snapshot, start, end, reload=reload,
+        evaluation_role=evaluation_role, benchmark_for=benchmark_for)
     universe_by_date, universe_prov = resolve_universe_inputs(universe, start_dt, end_dt)
     if fundamentals_snapshot and not strategy.config.needs_fundamentals:
         raise ValueError(
@@ -68,7 +71,7 @@ def sweep_task(  # noqa: PLR0913
         else None
     )
     delisting_records, _delisting_prov = resolve_delisting_inputs(delistings, end_dt)
-    grid = parse_grid(param or [])
+    grid = retain_benchmark_grid(parse_grid(param or []), evaluation_role, benchmark_for)
     result = sweep(strategy, provider, start_dt, end_dt,
                    grid=grid, windows=windows, holdout_frac=holdout_frac, rank_by=rank_by,
                    universe_by_date=universe_by_date,
@@ -83,7 +86,9 @@ def sweep_task(  # noqa: PLR0913
         # The per-combo rows behind `recorded["n_combos"]`. Written in ONE batched transaction at
         # the END of the sweep — sweep() fans combos out across processes, so concurrent
         # per-combo writers against the governance DB would be the wrong shape.
-        recorded_runs = record_sweep_run(repo, name, result)
+        recorded_runs = record_sweep_run(repo, name, result, research_inputs={
+            'delisting_snapshot': _delisting_prov,
+            'assume_terminal_last_close': assume_terminal_last_close})
     payload = result.to_dict()
     payload["ranked"] = payload["ranked"][:top]
     # Surface the MEASURED breadth this sweep contributed (this sweep's n_combos) and the

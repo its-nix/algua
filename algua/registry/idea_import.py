@@ -3,7 +3,7 @@
 
 `import_ideas`: scratch rows (id > seeded max) -> authority under a fresh dedup + eligibility
 check, one BEGIN IMMEDIATE per row. `import_critic_rejections`: DB-only negative-result rows.
-`refuted_with_reasons`: what leap reads. `reclassify`: re-open parked rows after a capability flip.
+`refuted_with_reasons`: what leap reads. `reclassify`: park/reopen after a capability flip.
 
 EVERY field crossing this seam is MODEL OUTPUT written into a scratch DB the agent owns, so this
 module is where it stops being trusted: the category must be in the human's
@@ -14,18 +14,14 @@ vocabulary, each inspiration link's `venue`/`obscurity` is re-derived from the v
 from __future__ import annotations
 
 import sqlite3
+from datetime import UTC, datetime
 
 from algua.config.settings import Settings
 from algua.contracts.idea import Idea, IdeaStatus, Obscurity
-from algua.data.capabilities import (
-    supported_capabilities,
-    supported_horizons,
-    supported_markets,
-)
 from algua.knowledge.inspirations import load_note
+from algua.registry.idea_eligibility import idea_eligibility
 from algua.registry.ideas import IdeaRepository, InspirationLink
 from algua.registry.negative_results import record_negative_result
-from algua.research.ideas import classify_idea
 
 #: Per-field character budgets for imported free text. A field over its limit is TRUNCATED with a
 #: `…` marker (an over-long title is still a usable idea); a field over `ABSURD_FACTOR` x its limit
@@ -37,12 +33,6 @@ MAX_SOURCE_NOTE = 2000
 MAX_TAG = 60
 MAX_TAGS = 20
 ABSURD_FACTOR = 4
-
-
-def _eligibility(idea: Idea) -> tuple[IdeaStatus, str | None]:
-    return classify_idea(idea.required_data, supported_capabilities(), market=idea.market,
-                         supported_markets=supported_markets(), horizon=idea.horizon,
-                         supported_horizons=supported_horizons())
 
 
 def _truncate(value: str, limit: int) -> str:
@@ -125,7 +115,7 @@ def import_ideas(auth: sqlite3.Connection, scratch: sqlite3.Connection, *, setti
                 auth.rollback()
                 skipped.append({"scratch_id": idea.id, "reason": "dedup_collision"})
                 continue
-            status, parked = _eligibility(idea)
+            status, parked = idea_eligibility(idea)
             new_id = dst.insert_locked(
                 title=_truncate(idea.title, MAX_TITLE),
                 hypothesis=_truncate(idea.hypothesis, MAX_HYPOTHESIS),
@@ -192,15 +182,32 @@ def refuted_with_reasons(conn: sqlite3.Connection, *, limit: int) -> list[dict]:
 
 
 def reclassify(conn: sqlite3.Connection) -> dict:
+    """Recheck unclaimed mutable ideas atomically after capabilities expand or contract."""
+    if conn.in_transaction:
+        raise RuntimeError('reclassify must run at top level, not inside an open transaction')
     repo = IdeaRepository(conn)
     reopened: list[int] = []
-    for idea in repo.list(status=IdeaStatus.NEEDS_DATA):
-        status, parked = _eligibility(idea)
-        if status is IdeaStatus.OPEN:
-            repo.set_status(idea.id, to=IdeaStatus.OPEN)
-            conn.execute("UPDATE ideas SET parked_reason=NULL WHERE id=?", (idea.id,))
-            reopened.append(idea.id)
-        elif parked != idea.parked_reason:
-            conn.execute("UPDATE ideas SET parked_reason=? WHERE id=?", (parked, idea.id))
-    conn.commit()
-    return {"reopened": reopened}
+    parked_ids: list[int] = []
+    with conn:
+        conn.execute('BEGIN IMMEDIATE')
+        for idea in repo.list():
+            if idea.claimed_by is not None or idea.status not in {
+                    IdeaStatus.OPEN, IdeaStatus.NEEDS_DATA}:
+                continue
+            # A manual park has no machine-classified capability gap. Do not infer that its
+            # provenance or experimental-design blocker disappeared from metadata alone.
+            if idea.status is IdeaStatus.NEEDS_DATA and (
+                    not idea.parked_reason or not all(
+                        gap.startswith(('data:', 'market:', 'horizon:'))
+                        for gap in idea.parked_reason.split(';'))):
+                continue
+            status, parked = idea_eligibility(idea)
+            if status is idea.status and parked == idea.parked_reason:
+                continue
+            changed = conn.execute(
+                'UPDATE ideas SET status=?, parked_reason=?, updated_at=? '
+                'WHERE id=? AND status=? AND claimed_by IS NULL',
+                (status.value, parked, datetime.now(UTC).isoformat(), idea.id, idea.status.value))
+            if changed.rowcount == 1 and status is not idea.status:
+                (reopened if status is IdeaStatus.OPEN else parked_ids).append(idea.id)
+    return {"reopened": reopened, "parked": parked_ids}

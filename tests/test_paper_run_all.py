@@ -33,7 +33,9 @@ from algua.risk import global_halt
 from algua.risk.limits import RiskBreach
 from tests._deployment_helpers import force_legacy_strategy
 from tests._gate_row_helpers import seed_passing_gate
-from tests._human_actor_helpers import scaffold_transition
+from tests._scaffold_helpers import scaffold_transition
+
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
 
 runner = CliRunner()
 

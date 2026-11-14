@@ -8,16 +8,15 @@ define present operating permissions. The [September reconciliation](../vision-r
 is a dated assessment, not a current gap register. Product targets do not change runtime controls
 or grant merge/deployment permission.
 
-The established experimental-account pause policy is 10%, pending implementation; the current
-generic book breaker defaults to 15%. The November proposal of 20% remains an undecided amendment.
-The target experimental route uses historical economic qualification plus approximately five
-completed scheduled paper sessions for operational qualification (PRD §16). Current `paper promote`
-still requires its existing forward gate; no new qualification route is implemented by this prose.
+The opt-in capped route implements historical qualification plus five actual scheduled paper
+sessions; see [capped live](capped-live.md). The owner-approved opt-in account policy reduces
+exposure at 10% drawdown and halts at 20%; see [layered risk](layered-risk.md). Unconfigured
+accounts retain their legacy default. The strict forward route retains its existing gate.
 
 ## The live gate
 Lifecycle stage lives in the SQLite registry (`algua/registry`). State is a *record*,
 not a wall: because agents can write the registry, a bare `stage='live'` flag is not a
-security boundary. Going live is a two-step signed ceremony requiring a human actor AND a
+security boundary. The legacy strict route is a signed ceremony requiring a human actor AND a
 valid forward-test certificate:
 
 1. Run `registry transition <name> --to live --actor human` (no `--signature`) — the CLI verifies
@@ -30,7 +29,22 @@ valid forward-test certificate:
    verifies the signature, consumes the single-use challenge, and advances the stage to `live`.
 
 The challenge is single-use and expires after 10 minutes. Trust the signature, never the flag.
-The forward certificate is not waivable in-band.
+The strict forward certificate is not waivable in-band. The separate owner-approved
+[capped frozen-live route](capped-live.md) uses current historical criteria plus five paper sessions,
+its own qualification and an exact-capital human signature. It does not change strict evidence.
+
+## Autonomous paper
+
+The owner removed routine paper signatures on 2026-11-09. Paper account-policy configuration and
+explicit restored episodes, ordinary intake/allocation/ticks/promotion, and recording a passing
+five-session qualification run without a human ceremony. Actor fields record actual provenance,
+not authority. Paper controls still enforce account isolation, settlement, risk, reproducibility
+and evidence integrity. Restoring a halted paper account needs a reason and a reconciled flat
+baseline; a restart or new strategy cannot silently rebase it.
+
+Live qualification consumers independently verify original evidence; an unsigned paper record or
+paper risk policy never substitutes for the final live signature. Signed live policy/restoration
+and capital controls remain unchanged. See the [design](../superpowers/specs/2026-11-09-autonomous-paper-design.md).
 
 ## Module boundaries
 

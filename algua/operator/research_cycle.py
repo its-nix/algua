@@ -234,6 +234,7 @@ class ResearchCycle:
         rows = self.rows()
         errors = sum(row["outcome"] in {"run_error", "abandoned", "integrity_fail"}
                      for row in rows)
+        blocked = sum(row['outcome'] == 'data_blocked' for row in rows)
         unfinished = sum(row["outcome"] is None for row in rows)
         invalid = sum(row["outcome"] == "run_error" and row["reason"] in {
                           "duplicate_report_entry", "invalid_report_outcome",
@@ -246,8 +247,10 @@ class ResearchCycle:
         good = not cost_blocked and (
             phase == "running" or (terminal_phase and not errors and not unfinished))
         return {"ok": good and not write_errors, "research_cycle_id": self.cycle_id,
+                "blocked_count": blocked,
+                "qualification_status": 'blocked' if blocked else 'not_established',
                 "phase": phase, "attempts_total": len(rows), "error_count": errors,
-                "invalid_count": invalid, "ok_count": len(rows) - unfinished - errors,
+                "invalid_count": invalid, "ok_count": len(rows) - unfinished - errors - blocked,
                 "unfinished_count": unfinished, "terminal_count": len(rows) - unfinished,
                 "monetary_cost": None, "cost_status": "unknown", "cost_gate_passed": False,
                 "write_errors": write_errors or [],

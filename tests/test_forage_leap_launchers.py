@@ -16,12 +16,34 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parent.parent
 FORAGE = REPO / ".opencode" / "scripts" / "forage.sh"
 LEAP = REPO / ".opencode" / "scripts" / "leap.sh"
 
 
-def _run_leap_memory_context(tmp_path, response, *, memory_exit=0, dry_run=False):
+@pytest.mark.parametrize("driver", [LEAP, FORAGE])
+@pytest.mark.parametrize("agent_exit", [0, 1, 3, 124])
+def test_agent_exit_survives_the_logging_pipeline(tmp_path, driver, agent_exit):
+    source = driver.read_text()
+    start = source.index('run_start="$(date +%s)"')
+    end = source.index('wall_s=', start)
+    script = (
+        'set -euo pipefail\nGOAL=fixture\n'
+        f'PROMPT_FILE={shlex.quote(str(tmp_path / "prompt"))}\n'
+        f'RUN_LOG={shlex.quote(str(tmp_path / "log"))}\n'
+        f'AGENT_CMD=(bash -c "exit {agent_exit}")\n'
+        + source[start:end] + '\nprintf "%s" "$rc"\n'
+    )
+    result = subprocess.run(['bash', '-c', script], capture_output=True, text=True,
+                            timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == str(agent_exit)
+
+
+def _run_leap_memory_context(tmp_path, response, *, memory_exit=0, dry_run=False,
+                             source_values=None):
     """Execute the actual context/GOAL and digest adapters; never enter the agent seam."""
     tmp_path.mkdir(parents=True, exist_ok=True)
     response_path = tmp_path / "memory-response.json"
@@ -56,6 +78,7 @@ print(json.dumps({{'by_category':{{}}}}) if 'scorecard' in args else '[]')
               'rate_limited': '0', 'IMPORT_PARSE_ERROR': '0',
               'INSPIRATIONS_JSON': '[]', 'REFUTED_JSON': '[]', 'NEGATIVE_JSON': '[]',
               'SCORECARD_BY_CATEGORY': '{}'}
+    values.update(source_values or {})
     command = 'set -euo pipefail\n' + '\n'.join(
         f'{key}={shlex.quote(value)}' for key, value in values.items()) + '\n'
     goal_path = tmp_path / 'goal.txt'
@@ -261,7 +284,7 @@ def _extract_import_capture_block() -> str:
 _IMPORT_CAPTURE_SRC = _extract_import_capture_block()
 
 
-def _fake_uv_bin(tmp_path: Path, *, stdout: str, stderr: str = "") -> Path:
+def _fake_uv_bin(tmp_path: Path, *, stdout: str, stderr: str = "", exit_code: int = 0) -> Path:
     bindir = tmp_path / "fakebin-uv"
     bindir.mkdir(exist_ok=True)
     fake_uv = bindir / "uv"
@@ -269,7 +292,7 @@ def _fake_uv_bin(tmp_path: Path, *, stdout: str, stderr: str = "") -> Path:
     if stderr:
         script += f"cat >&2 <<'ERR'\n{stderr}\nERR\n"
     script += f"cat <<'OUT'\n{stdout}\nOUT\n"
-    script += "exit 0\n"
+    script += f"exit {exit_code}\n"
     fake_uv.write_text(script, encoding="utf-8")
     fake_uv.chmod(fake_uv.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
     return bindir
@@ -282,6 +305,7 @@ def _run_import_capture(tmp_path: Path, fake_uv_bindir: Path) -> dict:
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         f'REPO_ROOT={tmp_path!s}\n'
+        f'AUTH_DATA_DIR={tmp_path!s}\n'
         f'RUN_LOG={run_log!s}\n'
         "IMPORT_CMD=(uv run algua research idea import --from x --run y --max 1"
         " --seeded-max-id 0 --critic-file z)\n"
@@ -315,6 +339,7 @@ def test_leap_import_stderr_noise_never_corrupts_the_parsed_imported_list(tmp_pa
     assert json.loads(result["RESULT_IMPORTED"]) == [123, 456]
     assert json.loads(result["RESULT_CRITIC"]) == 1
     assert result["RESULT_PARSE_ERROR"] == "0"
+    assert (tmp_path / 'research-ready').is_file()
     # The noise must still be visible somewhere (the run log or the terminal), not swallowed.
     assert "fake noise" in result["run_log"].read_text(encoding="utf-8")
 
@@ -327,6 +352,16 @@ def test_leap_import_output_not_json_fails_loudly_and_flags_the_digest(tmp_path)
     assert "WARNING: import output was not JSON" in result["stderr"]
     # Printed exactly once, not once per field (imported/skipped/critic_rows).
     assert result["stderr"].count("WARNING: import output was not JSON") == 1
+    assert not (tmp_path / 'research-ready').exists()
+
+
+def test_empty_or_failed_import_does_not_wake_research(tmp_path):
+    for case, payload, code in [('empty', '{"ok": true, "imported": []}', 0),
+                                ('failed', '{"ok": false, "imported": [1]}', 1)]:
+        directory = tmp_path / case
+        directory.mkdir()
+        _run_import_capture(directory, _fake_uv_bin(directory, stdout=payload, exit_code=code))
+        assert not (directory / 'research-ready').exists()
 
 
 def test_leap_seeded_max_id_read_and_backup_share_one_python_invocation():
@@ -387,14 +422,15 @@ def _fake_algua_bin(tmp_path: Path) -> Path:
     return bindir
 
 
-def _run_exhausted_block(tmp_path: Path, report_text: str | None) -> subprocess.CompletedProcess:
+def _run_exhausted_block(tmp_path: Path, report_text: str | None,
+                         source_plan: str = "") -> subprocess.CompletedProcess:
     report_path = tmp_path / "leap-report.md"
     if report_text is not None:
         report_path.write_text(report_text, encoding="utf-8")
     bindir = _fake_algua_bin(tmp_path)
     env = {**os.environ, "PATH": f"{bindir}{os.pathsep}{os.environ.get('PATH', '')}"}
     return subprocess.run(
-        [sys.executable, "-", "[]", str(report_path), str(tmp_path)],
+        [sys.executable, "-", "[]", str(report_path), str(tmp_path), source_plan],
         input=_EXHAUSTED_SRC, capture_output=True, text=True, env=env, timeout=30)
 
 
@@ -595,7 +631,11 @@ def test_leap_reads_every_non_exhausted_note_not_only_fresh():
     # holds more than one leap. Reading `--status fresh` starved leap of material after one pass.
     src = LEAP.read_text(encoding="utf-8")
     assert "--exclude-status exhausted --limit 20 --rare-first" in src
-    assert "--status fresh" not in src
+    # The only `--status fresh` read is the owner-idea depth-gate bypass (spec 2026-11-12 §6.4):
+    # an owner idea already leapt once must not keep bypassing the gate every firing.
+    fresh_lines = [ln for ln in src.splitlines() if "--status fresh" in ln]
+    assert len(fresh_lines) == 1 and "inspirations list --status fresh" in fresh_lines[0]
+    assert "--source-kind human" in src.split("--status fresh", 1)[1].splitlines()[1]
 
 
 def test_leap_dry_run_prints_the_material_gate():
@@ -648,3 +688,142 @@ def test_env_example_documents_the_driver_timeouts():
     env = (REPO / "deploy/systemd/algua.env.example").read_text()
     for line in ("# LEAP_TIMEOUT=25m", "# FORAGE_TIMEOUT=20m", "# SYNC_TIMEOUT=5m"):
         assert line in env
+
+
+# --- Drive ideation backend (spec 2026-11-12 §4, §6.4): intake -> snapshot -> leap -> publish ---
+
+def _dry_drive(script, *args):
+    env = {**os.environ, "ALGUA_DRIVE_FOLDER_ID": "x"}
+    return subprocess.run(["bash", str(script), "--dry-run", *args], cwd=REPO,
+                          capture_output=True, text=True, check=True, env=env).stdout
+
+
+def test_leap_dry_run_drive_mode_prints_intake_export_publish_in_order():
+    out = _dry_drive(LEAP, "--max-ideas", "5")
+    assert out.index("would intake owner inbox via: uv run algua research inbox intake") \
+        < out.index("would export steering snapshot via: uv run algua research steering export") \
+        < out.index("would check depth: ") \
+        < out.index("would publish via: uv run algua research idea publish")
+
+
+def test_leap_dry_run_without_drive_is_unchanged():
+    env = {k: v for k, v in os.environ.items() if k != "ALGUA_DRIVE_FOLDER_ID"}
+    out = subprocess.run(["bash", str(LEAP), "--dry-run", "--max-ideas", "5"], cwd=REPO,
+                         capture_output=True, text=True, check=True, env=env).stdout
+    assert "inbox intake" not in out and "steering export" not in out
+    assert "idea publish" not in out
+
+
+def test_forage_dry_run_drive_mode_uses_snapshot_paths():
+    out = _dry_drive(FORAGE, "--categories", "momentum")
+    line = [ln for ln in out.splitlines() if ln.startswith("would read steering from: ")][0]
+    assert "/.runs/steering-forage/categories.txt" in line
+    assert "/.runs/steering-forage/inspirations/_sources.yaml" in line
+    assert "would seed sources registry" not in out
+
+
+def test_snapshot_dir_is_outside_agent_workdir():
+    out = _dry_drive(LEAP, "--max-ideas", "5")
+    snap = out.split("steering export --to ")[1].split()[0]
+    workdir = out.split("would create worktree: ")[1].split()[0]
+    assert not snap.startswith(workdir.rstrip("/") + "/")
+    assert "/.runs/" in snap
+
+
+def test_leap_human_ideas_bypass_the_depth_gate_in_source():
+    src = LEAP.read_text()
+    assert "--source-kind human" in src and "depth gate bypassed: fresh owner ideas" in src
+    assert "--found-since" in src  # review I7: the bypass is age-bounded
+
+
+def test_research_loop_publishes_after_its_digest():
+    src = (REPO / ".opencode/scripts/run-research-loop.sh").read_text()
+    tail = src.split("append_digest completed", 1)[1]
+    assert "research idea publish" in tail
+
+
+def test_configured_source_backlog_ignores_permanent_exhaustion(tmp_path):
+    plan = tmp_path / 'plan.json'
+    plan.write_text('{"sources":[]}')
+    proc = _run_exhausted_block(tmp_path,
+        '## Exhausted inspirations\n- 2026-09-07-index-add-crowding\n', str(plan))
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout) == []
+    assert 'source backlog' in proc.stderr
+
+
+def test_source_plan_failure_has_digest_and_never_calls_model(tmp_path):
+    source = LEAP.read_text()
+    block = source[source.index('# Configured pilots'):source.index('CATEGORY_LINES=')]
+    binary = tmp_path / 'bin'
+    binary.mkdir()
+    uv = binary / 'uv'
+    uv.write_text('#!/bin/sh\nexit 1\n')
+    uv.chmod(0o700)
+    values = dict(DRY_RUN='0', FORCE='0', REPO_ROOT=str(REPO), STAMP='fixture',
+                  DIGEST=str(tmp_path / 'digest.jsonl'))
+    command = 'set -euo pipefail\n' + '\n'.join(
+        f'{key}={shlex.quote(value)}' for key, value in values.items()) + '\n' + block
+    env = {**os.environ, 'PATH': str(binary) + os.pathsep + os.environ['PATH'],
+           'ALGUA_RESEARCH_PROFILE': 'fixture'}
+    result = subprocess.run(['bash', '-c', command], cwd=REPO, env=env,
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == 1
+    row = json.loads((tmp_path / 'digest.jsonl').read_text())
+    assert row['outcome'] == 'source_plan_error' and row['model_called'] is False
+
+
+def test_failed_source_review_digest_retains_all_missing_source_ids(tmp_path):
+    plan = tmp_path / 'plan.json'
+    plan.write_text(json.dumps({'sources': [{'source_id': 'offered-source'}]}))
+    receipt = tmp_path / 'review.json'
+    receipt.write_text('{"ok":false,"error":"invalid review"}')
+    result = _run_leap_memory_context(tmp_path, 'unused', dry_run=True, source_values={
+        'SOURCE_PLAN_FILE': str(plan), 'SOURCE_RESULT_FILE': str(receipt),
+        'SOURCE_REVIEW_COMPLETE': '0'})
+    assert result['digest']['outcome'] == 'source_review_incomplete'
+    assert result['digest']['source_selection']['missing_sources'] == ['offered-source']
+
+
+def test_scheduled_forage_idle_check_precedes_network_and_model(tmp_path):
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    uv = bindir / "uv"
+    uv.write_text('#!/bin/sh\nprintf \'{"ok":true,"ready":false,'
+                  '"reason":"eligible_queue_available"}\\n\'\n')
+    uv.chmod(0o700)
+    env = {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}",
+           "ALGUA_DATA_DIR": str(tmp_path / "data")}
+    result = subprocess.run(["bash", str(FORAGE), "--scheduled"], cwd=REPO,
+                            env=env, capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert "forage idle:" in result.stdout
+    assert not (tmp_path / "data").exists()
+    service = (REPO / "deploy/systemd/algua-forage.service").read_text()
+    assert "forage.sh --scheduled" in service
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_forage_search_receives_review_feedback_or_visible_read_error(tmp_path, failed):
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    uv = bindir / "uv"
+    uv.write_text('#!/bin/sh\n' + ('exit 1\n' if failed else
+                  'printf \'{"reviews":[{"reason":"missing estimator FIXTURE"}],'
+                  '"authority":"none"}\\n\'\n'))
+    uv.chmod(0o700)
+    source = FORAGE.read_text()
+    block = source[source.index("# Feed prior specification"):
+                   source.index("# --- Optional verified")]
+    values = dict(REPO_ROOT=str(REPO), DRY_RUN="0", CATEGORIES="momentum",
+                  CATEGORY_LINES="momentum", SOURCES_SLICE_YAML="venues: []", SEEN_COUNT="0",
+                  SEEN_HASHES_JSON="[]", FORAGE_MAX_NOTES="3")
+    command = 'set -euo pipefail\n' + '\n'.join(
+        f'{key}={shlex.quote(value)}' for key, value in values.items()) + '\n'
+    command += block + '\nprintf "%s" "$GOAL"\n'
+    result = subprocess.run(["bash", "-c", command], cwd=REPO, capture_output=True, text=True,
+                            env={**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}"},
+                            timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert "conceptual feedback, not empirical refutations" in result.stdout
+    assert ("read_error" if failed else "missing estimator FIXTURE") in result.stdout

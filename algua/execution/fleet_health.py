@@ -36,6 +36,7 @@ from algua.execution.order_state import (
     get_peak_equity,
     latest_tick_snapshot,
 )
+from algua.registry.drawdown_store import is_blocked
 from algua.registry.repository import StrategyRecord
 from algua.risk import global_halt, kill_switch
 
@@ -237,7 +238,8 @@ def strategy_health(
                     stale_detail = "decision_ts is after now"
                 else:
                     stale_detail = f"decision bars {decision_stale_sessions} sessions behind"
-    if tripped or halted_globally:
+    if tripped or halted_globally or is_blocked(
+            conn, "live" if rec.stage is Stage.LIVE else "paper"):
         health = "halted"
     elif last is not None and not last["reconcile_ok"]:
         health = "drift"

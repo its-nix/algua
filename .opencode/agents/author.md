@@ -43,9 +43,19 @@ Follow the `author-a-strategy` skill precisely:
 - Include `GENERATED_BY = "agent"` after imports, preserving any `__future__` import ordering.
 
 After writing, verify it loads and runs with the caller's exact snapshot, interval and required
-sidecars: `uv run algua backtest run <name> <data-options>` must emit metrics JSON. Use `--demo`
+sidecars: `uv run algua backtest run <name> <data-options> --research-only` must emit metrics JSON
+for a real snapshot. This smoke excludes the reserved final holdout; use the caller's holdout
+fraction if supplied. Use `--demo` without `--research-only`
 only for an explicitly synthetic run. If required data or a pinned model is unavailable, report
 that limitation; do not substitute demo data, a different signal or a fabricated pin.
+
+For an explicitly assigned diagnostic benchmark, keep `evaluation_role="benchmark"` and
+`benchmark_for="<primary name>"` in CONFIG.params. A broad equal-weight control uses
+equal_weight_positive with positive scores on the stated eligible universe. Match the primary's
+execution contract and conservative feature_lookback so paired windows align. Ordinary backtest,
+registration and promotion commands refuse this marker: return the control module to the primary
+agent for its declared paired sweep batch instead of running a separate backtest smoke. The normal
+scaffold creates only an IDEA in scratch; do not advance it or treat it as a new economic hypothesis.
 
 `strategy new` itself registers the initial idea in the scratch registry. Do not register it a
 second time, use `backtest --register`, promote it, or make additional lifecycle changes — those

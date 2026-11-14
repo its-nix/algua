@@ -22,6 +22,7 @@ from algua.backtest.engine import (
 from algua.backtest.errors import BacktestError
 from algua.backtest.execution_evidence import recorded_execution
 from algua.backtest.metrics import metrics_from_returns
+from algua.backtest.model_policy import require_fixed_model_period
 from algua.backtest.result import config_hash, provenance
 from algua.backtest.run_inputs import RunInputBundle, capture_run_inputs
 from algua.backtest.stamps import runtime_stamps
@@ -104,6 +105,7 @@ def holdout_window(
     Degenerate inputs (no bars, or holdout rounds to <1 bar) return the conservative full
     grid/period: the subsequent `walk_forward` raises and the reservation is released, so the value
     is immaterial but stays fail-closed (a superset of any real tail)."""
+    require_fixed_model_period(strategy, start)
     if not 0.0 < holdout_frac < 1.0:
         raise BacktestError(f"holdout_frac must be in (0, 1), got {holdout_frac}")
     try:
@@ -161,6 +163,7 @@ class WalkForwardResult:
     bars_provenance: dict[str, Any] | None = None
     execution_costs: dict[str, Any] | None = None
     execution_semantics: dict[str, Any] | None = None
+    model_ref: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         # Public by construction. Promotion consumes private attributes directly after its burn.
@@ -231,15 +234,7 @@ def walk_forward(
     BEFORE the holdout window is evaluated. It is the burn point for a single-use holdout: a caller
     that commits a durable "burn" here can rely on nothing fallible-and-releasing running after it.
     """
-    # Model lane (#376) is NOT supported in walk-forward/sweep this slice: a single fixed-per-run
-    # model is not point-in-time safe across rolling OOS windows (each window would need the model
-    # that predates ITS train end). Fail closed until per-window model binding is built (follow-up).
-    if strategy.config.needs_model:
-        raise BacktestError(
-            f"strategy {strategy.name!r} declares needs_model; the model lane is only wired into "
-            f"`backtest run` (single fixed period). Walk-forward needs per-window model binding — "
-            f"not built yet (#376 follow-up); refusing to run (fail closed)"
-        )
+    require_fixed_model_period(strategy, start)
     embargo = _resolve_embargo(strategy, embargo)
     # PIT sidecar providers (#132) are threaded straight into build_portfolio (= simulate, which
     # consumes them); the `_reject_pit_sidecar` guard is removed here — unblocking needs_* in
@@ -309,6 +304,8 @@ def walk_forward(
 
     return WalkForwardResult(
         strategy=strategy.name,
+        model_ref=(strategy.config.model_ref.as_dict() if strategy.config.needs_model
+                   and strategy.config.model_ref is not None else None),
         config_hash=cfg_hash,
         timeframe="1d",
         code_hash=stamps["code_hash"],

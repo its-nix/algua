@@ -1,25 +1,14 @@
 import json
-import os
-import sqlite3
 
 import pytest
 from typer.testing import CliRunner
 
 from algua.cli.main import app
-from tests._human_actor_helpers import install_human_actor_anchor, promote_signed
 
 runner = CliRunner()
 
-# --- #329 authenticated --actor human plumbing ---------------------------------------------------
-_HUMAN_KEY = None
-_TMP_PATH = None
-
 
 def _promote(args):
-    """Drop-in for `runner.invoke(app, args)` at gated promote call sites: when `args` requests
-    `--actor human`, run the signed challenge dance; otherwise a plain invoke."""
-    if "human" in args:
-        return promote_signed(runner, app, args, _HUMAN_KEY, _TMP_PATH)
     return runner.invoke(app, args)
 
 
@@ -27,54 +16,12 @@ def _promote(args):
 def _tmp(monkeypatch, tmp_path):
     monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "r.db"))
     monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path))
-    global _HUMAN_KEY, _TMP_PATH
-    _HUMAN_KEY = install_human_actor_anchor(monkeypatch, tmp_path)
-    _TMP_PATH = tmp_path
+    # A PIT universe covering the demo window: there is no non-PIT override (spec 2026-11-13).
+    from algua.data.store import DataStore
 
-
-def _ensure_family(strategy_name: str = "cross_sectional_momentum",
-                   family_name: str = "csm_family") -> None:
-    """Pre-assign a strategy to a family. Task 4 (#222) prerequisite for promote tests."""
-    from datetime import UTC, datetime
-    db_path = os.environ["ALGUA_DB_PATH"]
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    now = datetime.now(UTC).isoformat()
-    try:
-        row = conn.execute(
-            "SELECT family_id FROM family_members WHERE strategy_name=? AND removed_at IS NULL",
-            (strategy_name,),
-        ).fetchone()
-        if row is not None:
-            return
-        with conn:
-            cur = conn.execute(
-                "INSERT INTO families(name, created_at, created_by_actor, created_by_strategy)"
-                " VALUES (?,?,?,?)",
-                (family_name, now, "agent", strategy_name),
-            )
-            fam_id = cur.lastrowid
-            conn.execute(
-                "INSERT INTO family_events(event_type, family_id, actor, created_at)"
-                " VALUES (?,?,?,?)",
-                ("family_created", fam_id, "agent", now),
-            )
-            conn.execute(
-                "INSERT INTO family_members(family_id, strategy_name, joined_at, joined_by_actor)"
-                " VALUES (?,?,?,?)",
-                (fam_id, strategy_name, now, "agent"),
-            )
-            conn.execute(
-                "INSERT INTO family_events"
-                "(event_type, family_id, strategy_name, actor,"
-                " clustering_verdict, similarity_score, clustering_version,"
-                " clustering_config_json, axis_json, matched_family_id, created_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                ("strategy_assigned", fam_id, strategy_name, "agent",
-                 "NOVEL", 0.0, "v0", "{}", "{}", None, now),
-            )
-    finally:
-        conn.close()
+    DataStore(tmp_path).ingest_universe(
+        universe="demo_pit", symbols=["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL"],
+        effective_date="2021-01-01", as_of="2021-01-02T00:00:00+00:00", source="test")
 
 
 def test_sweep_demo_emits_ranked():
@@ -107,7 +54,7 @@ def test_sweep_combos_carry_no_holdout():
 
 def test_sweep_of_unregistered_strategy_still_records_breadth():
     # Breadth is keyed by NAME, so a sweep BEFORE registration still records (closes the leak
-    # where an agent sweeps broadly first, then registers and declares a smaller --n-combos).
+    # where a run sweeps broadly first, then registers to reset its breadth).
     result = runner.invoke(app, ["backtest", "sweep", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
                                  "--param", "lookback=20,40"])
@@ -117,7 +64,7 @@ def test_sweep_of_unregistered_strategy_still_records_breadth():
 
 def test_pre_registration_sweep_breadth_used_by_promote():
     # Sweep broadly while UNREGISTERED, then register + backtest, then promote: the measured sum
-    # must be used (provenance "measured"), and a smaller --n-combos cannot undercut it.
+    # must be used (provenance "measured").
     sweep = runner.invoke(app, ["backtest", "sweep", "cross_sectional_momentum", "--demo",
                                 "--start", "2022-01-01", "--end", "2023-12-31",
                                 "--param", "lookback=20,40", "--param", "construction.top_k=1,3"])
@@ -127,14 +74,11 @@ def test_pre_registration_sweep_breadth_used_by_promote():
     backtested = runner.invoke(app, ["backtest", "run", "cross_sectional_momentum", "--demo",
                                      "--start", "2022-01-01", "--end", "2023-12-31", "--register"])
     assert backtested.exit_code == 0, backtested.stdout
-    _ensure_family()
 
     promote = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                   "--start", "2022-01-01", "--end", "2023-12-31",
                                   "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                                  "--min-pct-positive", "0", "--min-window-sharpe", "-100",
-                                  "--n-combos", "1",  # smaller declaration must NOT undercut
-                                  "--allow-non-pit", "--actor", "human"])
+                                  "--universe", "demo_pit"])
     assert promote.exit_code == 0, promote.stdout
     payload = json.loads(promote.stdout)
     assert payload["breadth_provenance"] == "measured"
@@ -144,8 +88,8 @@ def test_pre_registration_sweep_breadth_used_by_promote():
 def _promote_to_backtested_with_breadth():
     """Shared setup for the promote tests below: measure breadth, register+backtest, assign family.
 
-    Returns the base `research promote` args (sans --summary) for an --allow-non-pit human run that
-    passes the (relaxed) gate against the demo provider.
+    Returns the base `research promote` args (sans --summary) for a PIT run that passes the
+    (relaxed-threshold) gate against the demo provider.
     """
     sweep = runner.invoke(app, ["backtest", "sweep", "cross_sectional_momentum", "--demo",
                                 "--start", "2022-01-01", "--end", "2023-12-31",
@@ -154,12 +98,10 @@ def _promote_to_backtested_with_breadth():
     backtested = runner.invoke(app, ["backtest", "run", "cross_sectional_momentum", "--demo",
                                      "--start", "2022-01-01", "--end", "2023-12-31", "--register"])
     assert backtested.exit_code == 0, backtested.stdout
-    _ensure_family()
     return ["research", "promote", "cross_sectional_momentum", "--demo",
             "--start", "2022-01-01", "--end", "2023-12-31",
             "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-            "--min-pct-positive", "0", "--min-window-sharpe", "-100",
-            "--allow-non-pit", "--actor", "human"]
+            "--universe", "demo_pit"]
 
 
 def test_promote_full_emits_deep_diagnostics():
@@ -170,8 +112,7 @@ def test_promote_full_emits_deep_diagnostics():
     assert res.exit_code == 0, res.stdout
     payload = json.loads(res.stdout)
     # full output is unchanged: deep gate diagnostics present, no summary marker
-    assert "dsr_confidence" in payload and "haircut_would_have_blocked" in payload
-    assert "per_regime_sharpes" in payload
+    assert "dsr_confidence" in payload and "dsr_trial_sr_var_ann" in payload
     assert "summary" not in payload
 
 
@@ -180,9 +121,9 @@ def test_promote_summary_drops_deep_diagnostics():
     res = _promote(base + ["--summary"])
     assert res.exit_code == 0, res.stdout
     payload = json.loads(res.stdout)
-    # summary drops the ~25 deep dsr_*/fdr_*/regime/shadow-audit fields
-    assert "dsr_confidence" not in payload and "haircut_would_have_blocked" not in payload
-    assert "per_regime_sharpes" not in payload and "own_lifetime_combos" not in payload
+    # summary drops the deep dsr_*/shadow-audit fields
+    assert "dsr_confidence" not in payload and "dsr_trial_sr_var_ann" not in payload
+    assert "own_lifetime_combos" not in payload
     # keeps the decision essence + marker
     assert payload["summary"] is True and payload["ok"] is True
     assert "promoted" in payload and "checks" in payload and "passed" in payload

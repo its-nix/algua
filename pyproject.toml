@@ -33,6 +33,7 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
     "import-linter>=2.0",
+    "pytest-xdist>=3.8.0",
 ]
 
 [build-system]
@@ -62,6 +63,11 @@ warn_unused_ignores = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-n auto --maxprocesses=6 --dist loadgroup -m 'not slow'"
+markers = [
+    "slow: >5s; excluded by default, run with -m ''",
+    "serial: must not run in parallel",
+]
 
 [tool.importlinter]
 root_package = "algua"
@@ -308,6 +314,22 @@ forbidden_modules = [
 ]
 
 [[tool.importlinter.contracts]]
+# Drive is the IDEATION backend only (spec 2026-11-12): only the CLI composes it. Trading, gates,
+# the registry, data and research never reach it — not even through the inspirations domain, which
+# receives a Drive-backed store from the CLI instead of choosing one itself.
+name = "only the cli composes the Drive ideation backend"
+type = "forbidden"
+source_modules = [
+    "algua.audit", "algua.backtest", "algua.calendar", "algua.config", "algua.contracts",
+    "algua.data", "algua.evaluation", "algua.execution", "algua.features", "algua.live",
+    "algua.models", "algua.observability", "algua.operator", "algua.portfolio",
+    "algua.primitives", "algua.provenance", "algua.registry", "algua.research", "algua.risk",
+    "algua.strategies", "algua.tracking", "algua.training",
+    "algua.knowledge.inspirations", "algua.knowledge.sources_registry", "algua.knowledge.sync",
+]
+forbidden_modules = ["algua.knowledge.drive"]
+
+[[tool.importlinter.contracts]]
 name = "pure + execution lanes stay off the knowledge layer"
 type = "forbidden"
 source_modules = ["algua.backtest", "algua.live", "algua.features", "algua.contracts"]
@@ -315,34 +337,20 @@ forbidden_modules = ["algua.knowledge"]
 
 [[tool.importlinter.contracts]]
 # Strategy modules are pure authored functions — they receive ALL data (bars, fundamentals) via the
-# engine, never by importing the data layer. Without this, a strategy could import the hindsight
-# accessor straight into compute_weights (issue #132 — the worst leak in the platform).
+# engine, never by importing the data layer. Without this, a strategy could import an unmasked
+# full-history read straight into compute_weights (issue #132 — the worst leak in the platform).
 name = "strategies layer stays off the data lane"
 type = "forbidden"
 source_modules = ["algua.strategies"]
 forbidden_modules = ["algua.data"]
 
 [[tool.importlinter.contracts]]
-# The hindsight (full-future) fundamentals accessor must be structurally unreachable from any lane
-# that can influence a trading decision. Stated directly so it survives a future relocation.
-name = "hindsight fundamentals accessor is unreachable from decision lanes"
-type = "forbidden"
-source_modules = [
-    "algua.backtest", "algua.features", "algua.contracts",
-    "algua.strategies", "algua.live", "algua.execution",
-    # registry now legitimately imports algua.data (universe_binding, #559) — bar it from the
-    # hindsight accessor explicitly so that new edge can never widen into a decision-lane leak.
-    "algua.registry",
-]
-forbidden_modules = ["algua.data.hindsight"]
-
-[[tool.importlinter.contracts]]
 # Live/execution receive market data via the CLI composition seam, never by importing algua.data.
 # Barring them COMPLETES the data wall: every decision/execution lane is now off algua.data —
 # backtest, features, strategies, and contracts are barred by their OWN contracts above; this adds
 # the last two (live, execution). So NO such lane can reach an unmasked full-history read
-# (algua.data.store.read_news / read_fundamentals); only the walled hindsight accessors and the CLI
-# may. (issue #132 — news hindsight slice.)
+# (algua.data.store.read_news / read_fundamentals); only the CLI composition seam may.
+# (issue #132.)
 name = "live and execution stay off the data lane"
 type = "forbidden"
 source_modules = ["algua.live", "algua.execution"]
@@ -377,30 +385,36 @@ forbidden_modules = ["algua.live"]
 # The registry owns the lifecycle and its gates; the live/paper trading lanes sit ABOVE it and
 # import it, never the reverse. Probed and added in stage 6c, when the forward-gate module was split
 # into forward_evidence.py + live_certificate.py: those files reason about live trading evidence, so
-# the direction is worth enforcing rather than trusting. (`registry -> cli` is NOT contracted: it has
-# exactly one violating edge, human_actor.py's challenge print, tracked in #592 and left visible
-# rather than blessed by an exemption. `registry -> backtest` is NOT contracted either: it is a real,
-# pre-existing dependency -- forward_evidence needs backtest.metrics to score the evidence.)
+# the direction is worth enforcing rather than trusting. (`registry -> cli` has its own contract
+# below. `registry -> backtest` is NOT contracted: it is a real, pre-existing dependency --
+# forward_evidence needs backtest.metrics to score the evidence.)
 name = "registry stays off the live lane"
 type = "forbidden"
 source_modules = ["algua.registry"]
 forbidden_modules = ["algua.live"]
 
 [[tool.importlinter.contracts]]
+# The registry is composed BY the cli, never the reverse. Its one violating edge (#592) was
+# human_actor.py's lazy `typer`/`algua.cli.app.emit` challenge print; that module was deleted with
+# the signed --actor human override (spec 2026-11-13), so the direction is now enforced.
+name = "registry stays off the cli layer"
+type = "forbidden"
+source_modules = ["algua.registry"]
+forbidden_modules = ["algua.cli"]
+
+[[tool.importlinter.contracts]]
 # The backtest lane is a pure evaluator: it simulates and scores, and knows nothing about the
 # registry that decides what to do with the result. Probed and added in stage 7, when engine.py was
 # carved into pit_view/decision_path/errors/grid — five new modules is five new chances for an
 # evaluator to reach for a lifecycle table, and this makes that a gate failure rather than a review
-# catch. (`research -> backtest` is deliberately NOT contracted: it fails on two REAL pre-existing
-# dependencies, `research.dsr -> backtest._constants` and `research.eval_harness -> backtest._sample`,
-# both present before this stage. A contract with an exemption would hide them; leaving it unwritten
-# keeps them visible.)
+# catch. (`research -> backtest` is deliberately NOT contracted: it fails on REAL pre-existing
+# dependencies such as `research.dsr -> backtest._constants`. A contract with an exemption would
+# hide them; leaving it unwritten keeps them visible.)
 #
 # Sized properly (the linter prints CHAINS, not edges, so an earlier note here said "two"): there
-# are NINE direct edges across SIX modules -- research/{dsr,haircut,forward_gates,gates,regime}
-# -> backtest._constants (all five just for `ANN`), gates -> backtest.walkforward
-# (WalkForwardResult), eval_harness -> backtest.{_sample,walkforward}. Whoever closes this boundary
-# should know that most of it is one shared constant, not deep coupling.
+# are several direct edges across three modules -- research/{dsr,forward_gates,gates}
+# -> backtest._constants (all three just for `ANN`), gates -> backtest.walkforward
+# (WalkForwardResult). Whoever closes this boundary should know that most of it is one shared constant, not deep coupling.
 name = "backtest lane stays off the registry"
 type = "forbidden"
 source_modules = ["algua.backtest"]
@@ -417,10 +431,8 @@ type = "independence"
 modules = [
     "algua.cli.backtest_cmd",
     "algua.cli.data_cmd",
-    "algua.cli.data_context_cmd",
     "algua.cli.data_refresh_cmd",
     "algua.cli.fleet_cmd",
-    "algua.cli.governance_cmd",
     "algua.cli.idea_cmd",
     "algua.cli.idea_ops_cmd",
     "algua.cli.inspirations_cmd",
@@ -453,9 +465,9 @@ forbidden_modules = [
 [[tool.importlinter.contracts]]
 # algua/operator/ is clean of algua.cli today (stage 6d, #592-adjacent). Lock that in BEFORE the
 # session decision tree lands here: its original body called algua.cli.app.emit ten times, so
-# without this contract a lazy import could silently recreate the same registry->cli edge stage 6a
-# left behind in human_actor.py (#592) -- an edge that, once merged, cannot be contracted without
-# an exemption. With this contract in place first, that CLI surface must be injected into the
+# without this contract a lazy import could silently recreate the registry->cli edge stage 6a left
+# behind in human_actor.py (#592, since deleted) -- an edge that, once merged, cannot be contracted
+# without an exemption. With this contract in place first, that CLI surface must be injected into the
 # operator lane rather than imported, and an accidental import fails the gate instead of slipping
 # past review.
 name = "operator lane stays off the cli layer"

@@ -24,8 +24,10 @@ import sqlite3
 from datetime import UTC, datetime
 
 from algua.registry.db._util import _add_missing_columns
+from algua.registry.db.connection import check_schema_version
 from algua.registry.db.constants import SCHEMA_VERSION
 from algua.registry.db.core import _migrate_shortlisted_to_candidate
+from algua.registry.db.experimental_migration import widen_qualification_actors
 from algua.registry.db.frozen_evidence import TICK_LINK_COLUMN, TICK_LINK_STATEMENTS
 from algua.registry.db.gate import _backfill_fdr_cohorts, _relabel_fdr_cohorts_for_current_size
 from algua.registry.db.holdout import _backfill_holdout_intervals
@@ -39,12 +41,14 @@ def migrate(conn: sqlite3.Connection) -> None:
     The `CREATE TABLE IF NOT EXISTS` bootstrap brings a DB missing whole tables up to date but
     CANNOT add a column to an already-populated table. Adding a column to an existing table needs
     a dedicated `ALTER TABLE` — `_add_missing_columns` does exactly that, guarded by an
-    introspection check so re-running is a no-op. We do not gate on user_version (doing so would
-    falsely imply migration history and could skip needed table creation on a pre-stamped DB);
-    we only stamp it afterward as a schema-generation marker.
+    introspection check so re-running is a no-op. Bootstrap still runs on old/current markers,
+    including pre-stamped partial schemas. A newer marker is refused before any schema writes:
+    older code must not mutate or downgrade a database it does not understand.
     """
+    check_schema_version(conn)
     _migrate_shortlisted_to_candidate(conn)
     conn.executescript(SCHEMA)
+    widen_qualification_actors(conn)  # v53; rebuild CHECK while preserving live references.
     # v40: advisory shadow lane deleted (simplification stage 1). Idempotent drop; the rows were
     # advisory-only (never gate evidence), so no export is taken.
     conn.execute("DROP TABLE IF EXISTS shadow_evaluations")

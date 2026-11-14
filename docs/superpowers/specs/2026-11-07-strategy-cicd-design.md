@@ -5,9 +5,10 @@ Status: written design approved by the owner in conversation on 2026-11-07.
 This document changes no executable policy, lifecycle edge, approval, allocation or service.
 
 Owner reconfirmation, 2026-11-14: the historical-economic plus short-paper operational route is
-the adopted experimental-delivery target, incorporated in PRD §16. It still requires protected
-implementation. The 20% drawdown proposal below is not adopted: the 10% policy and separate
-15% runtime default retain their distinct statuses under PRD §21.
+the adopted experimental-delivery direction, incorporated in PRD §16. The original proposal
+status below is historical: current main implements the separate capped route and opt-in
+layered risk controller under subsequent owner amendments. See the November 8 addendum below
+and `docs/agent/capped-live.md` / `docs/agent/layered-risk.md` for current behavior.
 
 ## 1. Agreed objective and constraints
 
@@ -236,3 +237,28 @@ remain unexercised. It does not certify a durable edge or justify deploying the 
 - [Man AHL shared platform](https://www.man.com/ahl),
   [Jane Street deterministic failure testing](https://blog.janestreet.com/getting-from-tested-to-battle-tested/),
   [Alpaca paper/live differences](https://docs.alpaca.markets/us/docs/paper-trading).
+
+## Owner amendment — 2026-11-08
+
+The owner explicitly approved removing the extra model-only trading blocker and retaining the
+existing unsandboxed reviewed-code execution model. This waiver covers import-time preparation
+and paper evaluation; it does not certify OS isolation or satisfy the verified-PR isolation
+attestation. Signed live authority, reproducibility, model availability, bundle verification,
+module boundaries and later-bar execution remain unchanged.
+
+The owner selected current historical eligibility criteria plus five actual paper sessions for
+the accelerated experimental profile. Statistical robustness checks retain their current advisory
+status. The experimental record must be distinct from strict forward/live evidence. Drawdown
+handling is being extended to configurable layers. The proposed starting profile is an inclusive
+10% drawdown reducing the approved normal exposure budget to 50%, and an inclusive 20% drawdown
+halting new risk, canceling orders and reconciling before a controlled exit. These are proposed
+owner-specific thresholds, not an industry standard or a guaranteed loss ceiling.
+
+The layered controller is not implemented by this amendment. It needs a separate cash-flow-aware
+account/book high-water record, durable severity across restarts, authenticated policy changes
+and restoration, aggregate exposure enforcement including existing holdings, and bounded
+risk-reduction orders only against healthy reconciliation and current quotes. Unvalued capital
+flows or unavailable venue state must pause and alert rather than reset history or send blind
+liquidations. Retain independent daily-loss, data-integrity and execution controls. The current
+15% raw-equity breaker needs explicit reconciliation with the selected profile before activation;
+neither that breaker nor the PRD capital policy is changed silently here.

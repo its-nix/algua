@@ -73,10 +73,10 @@ def _assert_all_lines_namespace_scoped(allowed_signers_path: Path) -> None:
     """Fail closed if ANY enrolled line lacks an explicit `namespaces="..."` restriction.
 
     OpenSSH treats an allowed_signers line with no `namespaces=` field as valid for EVERY namespace,
-    so a single unscoped line would let a key enrolled for one namespace (e.g. go-live) authenticate
-    a DIFFERENT namespace (e.g. human-actor) — collapsing the namespace separation this design
-    depends on (#329, codex GATE-1). Every enrolled key MUST carry an explicit namespaces= token;
-    the enroll-approver command always writes one, and this backstops a hand-edited anchor."""
+    so a single unscoped line would let a key enrolled for another purpose authenticate the go-live
+    namespace — collapsing the namespace scoping this design depends on (#329, codex GATE-1).
+    Every enrolled key MUST carry an explicit namespaces= token; the enroll-approver command
+    always writes one, and this backstops a hand-edited anchor."""
     for raw in allowed_signers_path.read_text().splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -96,8 +96,7 @@ def verify_signature(allowed_signers_path: Path, payload: str, signature: bytes,
     `allowed_signers_path`. Returns the matched principal on success, or None if the signature is
     invalid / the signer is not enrolled FOR THIS NAMESPACE. Raises SignatureError when ssh-keygen
     can't run, the trust anchor file is missing, or any enrolled line is unscoped — never a silent
-    pass (codex review). `namespace` defaults to the go-live namespace so existing callers are
-    unchanged; the human-actor path passes `algua-human-actor` to reuse this one primitive."""
+    pass (codex review). `namespace` defaults to the go-live namespace, the only one in use."""
     if not allowed_signers_path.is_file():
         raise SignatureError(f"allowed_signers trust anchor not found: {allowed_signers_path}")
     _assert_all_lines_namespace_scoped(allowed_signers_path)
@@ -164,7 +163,8 @@ class LiveAuthorizationError(RuntimeError):
 
 
 def verify_live_authorization(conn: sqlite3.Connection, repo: StrategyReader, name: str,
-                              allowed_signers_path: Path) -> LiveAuthorization:
+                              allowed_signers_path: Path, *,
+                              frozen_verifier=None) -> LiveAuthorization:
     """Trade-time wall: prove the strategy's CURRENT artifact is human-authorized for live by
     re-verifying a stored signature against the CURRENT trust anchor. Trusts nothing forgeable —
     not the `stage` column, not an `approvals` row. Raises LiveAuthorizationError on any failure;
@@ -175,6 +175,11 @@ def verify_live_authorization(conn: sqlite3.Connection, repo: StrategyReader, na
     rec = repo.get(name)
     if rec.stage is not Stage.LIVE:
         raise LiveAuthorizationError(f"{name} is not live (stage={rec.stage.value})")
+    deployment = getattr(repo, 'active_deployment', lambda _id: None)(rec.id)
+    if deployment is not None and deployment.source_kind == 'frozen':
+        if frozen_verifier is None:
+            raise LiveAuthorizationError("frozen verification requires the data composition seam")
+        return frozen_verifier(conn, repo, name, allowed_signers_path)
     identity = compute_artifact_hashes(name)
     # Newest authorization for this strategy + recomputed identity REGARDLESS of revocation, so a
     # revoked newest row BLOCKS even if an older unrevoked one for the same artifact exists.
@@ -224,6 +229,10 @@ def authorization_active(conn: sqlite3.Connection, authorization: LiveAuthorizat
     of THIS invocation (the real wall, run every tick before any order). It is an in-tick liveness
     check for mid-tick revocation, not protection against a forged row — that is the full
     re-verify's job. (Slice 4 may tie this to the verified row id for defense in depth.)"""
+    from algua.contracts.capped_live import CappedLiveAuthorization
+    if isinstance(authorization,CappedLiveAuthorization):
+        from algua.registry.capped_active import active
+        return active(conn,authorization)
     row = conn.execute(
         "SELECT 1 FROM live_authorizations WHERE strategy_id=? AND code_hash=? AND config_hash=? "
         "AND dependency_hash IS ? AND revoked_at IS NULL LIMIT 1",

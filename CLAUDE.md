@@ -87,16 +87,18 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   venue has not published yet, clears on retry.
 - `uv run algua paper promote <name>` — gate `paper -> forward_tested` on ≥63 broker-clocked
   daily return observations (≥90% session coverage), realized Sharpe ≥ max(0.5×holdout, 0.3),
-  vol/drawdown bounds, clean integrity + account hygiene, evidence ≤5 sessions stale; relaxation
-  flags (`--degradation-factor`, `--sharpe-floor`, `--min-observations`, `--min-coverage`,
-  `--min-vol`, `--max-drawdown`, `--max-staleness`) are human-only. A passing run is the ONLY
-  agent path to `forward_tested`; re-running at `forward_tested` refreshes the live-wall
+  vol/drawdown bounds, clean integrity + account hygiene, evidence ≤5 sessions stale; the
+  threshold flags (`--degradation-factor`, `--sharpe-floor`, `--min-observations`,
+  `--min-coverage`, `--min-vol`, `--max-drawdown`, `--max-staleness`,
+  `--forward-sharpe-confidence`) are tighten-only for EVERY actor — loosening one is refused. A
+  passing run is the ONLY path to `forward_tested`; re-running at `forward_tested` refreshes the live-wall
   certificate without changing the stage.
-  **Experimental-delivery target (owner reconfirmed 2026-11-14):** historical economic
-  qualification plus approximately five completed scheduled paper sessions for operational
-  qualification, extended until required mechanics are exercised. This target is not the current
-  gate; do not lower thresholds or relabel replay to obtain it. See PRD §16 and the
-  `2026-11-07-strategy-cicd-design.md` design for the pending protected implementation.
+- `uv run algua paper handoff NAME` — unallocate and drain qualified frozen paper exposure;
+  no new tick, kill switch or live authority. `live activate-experimental NAME --capital USD`
+  previews the approved historical-plus-five-session route; `--actor human` only issues its
+  challenge. Only the enrolled human's exact signature activates/allocates the frozen deployment.
+  See [capped live](docs/agent/capped-live.md); raw frozen registry go-live stays refused and no
+  strict forward certificate is manufactured. Capital increases require a new signed request.
 - `uv run algua paper merge-back --branch B --strategy S --universe U --start D --end D` — autonomous
   research-cycle merge-back (#485): one repo-global-locked cycle that gated-merges a candidate branch
   onto `main` (preview-merge → FULL quality gate on the staged tree → commit only on green), runs the
@@ -109,14 +111,13 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   `promoted_queued` (a not-promoted cycle is `ok`, not an error). Mutually exclusive with `paper
   trade-tick`/`run-all` BY OPERATOR DISCIPLINE (like #316); concurrent merge-backs are hard-serialized
   by a `merge_back.lock` flock. The push is a real remote compare-and-swap to `refs/heads/main`.
-- **Authenticated `--actor human` (#329).** `--actor human` on `research promote` / `paper promote`
-  is NOT a bare string anymore: run once with `--actor human` to print a single-use challenge, sign
-  it (`ssh-keygen -Y sign -n algua-human-actor -f <key> <file>`), then re-run with `--actor-signature
-  <file>.sig`. The signature binds the command + strategy + artifact identity + the exact run
-  (every flag incl. the relaxation set) + a nonce, so it cannot be replayed onto another run/artifact
-  /relaxation. A bare `--actor human` unlocks NOTHING. Enroll a human-actor key with `registry
-  enroll-approver --namespace human-actor` (or `--namespace both` for a key that also does go-live);
-  the anchor is `approvers/allowed_signers`, shared with the go-live gate under a distinct namespace.
+- **Go-live is the only signed approval.** The gates are fixed at the same values for every actor:
+  `--actor human` on `research promote` / `paper promote` is an audit label that unlocks nothing.
+  There is no signed override and no relaxation flag (`--actor-signature`, `--n-combos`,
+  `--allow-non-pit`, `--allow-holdout-reuse`, `--assume-terminal-last-close` and `--new-family`
+  were removed with #329's human-actor path). An exception needs a reviewed code change, not a
+  signature. `registry enroll-approver` enrolls go-live keys only; the anchor is
+  `approvers/allowed_signers`.
 - `uv run algua registry transition <name> --to live --actor human` — step 1 of go-live: prints a
   challenge (includes forward certificate summary). Sign it, then re-run with
   `--signature <file>.sig` to complete the transition. Requires a fresh, matching forward
@@ -128,39 +129,26 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   universe required (`--universe`; non-PIT fails closed), a minimum holdout-observations floor
   (63 — underpowered holdouts fail closed), and **raw holdout Sharpe > 0**
   (`holdout_sharpe_floor`), plus the preflight raises (measured breadth via `backtest sweep`,
-  default-on costs, declared feature_lookback, reproducible source, signal-panel parity, delisting
-  handling). The whole statistical stack — the breadth-DEFLATED holdout-Sharpe bar, window
-  stability, DSR evidence + bootstrap, regime robustness, idiosyncratic alpha — still computes and
-  is RECORDED on every run as **ADVISORY** (`"advisory": true` on the check; `*_binding` fields
-  mean armed/evaluated, NOT veto). FDR has no promotion veto or throttle; legacy accounting is
-  inactive (`fdr_binding` NULL, skip reason `stats_advisory`). Historical FDR designs are not
-  operating requirements. The **FORWARD gate is the harsh threshold** (its Sharpe bar is
-  0.5× the holdout Sharpe recorded here, so overfit inflation self-punishes).
-  A passing run is the ONLY way an agent reaches `candidate`
+  default-on costs, declared feature_lookback, reproducible source, signal-panel parity, gated-
+  universe subset, delisting handling). Everything statistical is RECORDED on every run as
+  **ADVISORY** (`"advisory": true` on the check; `*_binding` fields mean armed/evaluated, NOT
+  veto): `holdout_sharpe` (base `--min-holdout-sharpe`), `holdout_return`, and the ONE
+  trial-aware quality signal — **deflated Sharpe (`dsr_evidence`) plus its bootstrap
+  (`dsr_bootstrap`)**, whose trial count is `max(own lifetime sweep combos, funnel-wide combos in
+  the 90-day window)`, every recorded sweep counting (failed gates and human-labelled runs
+  included; `dsr_n_trials` on the decision). Making DSR binding is a separate owner decision. The
+  FDR ledger, strategy-family governance (#222/#524, incl. `AGENT_NOVEL_MINT_CAP`), the breadth
+  haircut, window stability, regime robustness and the idiosyncratic-alpha screen were removed
+  (lean trim step 7, spec 2026-11-12 §4.7–4.9); their DB columns/tables stay and old gate rows
+  still show their values. On the STRICT route the forward gate is the harsh threshold (Sharpe ≥
+  max(0.5× holdout, 0.3) over 63 broker-clocked sessions). On the CAPPED experimental route the
+  edge is judged only by this gate's out-of-sample holdout (Sharpe > 0, ≥63 bars) — a weak bar —
+  while the five paper sessions prove mechanics, not edge; DSR is the quality measure there and the
+  candidate binding bar. A passing run is the ONLY way an agent reaches `candidate`
   — `registry transition`
   REFUSES `backtested -> candidate` and `paper -> forward_tested` for EVERY actor
-  (code `raw_edge_refused`, #682); the promote commands are the only paths (`--allow-non-pit`,
-  `--allow-holdout-reuse` and `--n-combos` are human-only).
-  **Family governance (#222, #524):** at preflight, the strategy is empirically classified into a
-  family via code-ancestry + factor-lineage + return-correlation clustering; MERGE verdict → assign
-  into the incumbent family (inherits its breadth); PARENTAGE → new family but inherits the
-  incumbent's accumulated breadth via a parent edge; NOVEL + agent → **the family is NOT created in
-  preflight**: classification returns a deferred spec and the seeded family is minted **only if the
-  gate passes, AT THE PASS MOMENT**, inside the atomic promote transaction — seeded with the
-  funnel-wide **LIFETIME** search total (a durable prior that survives the 90-day window roll, so a
-  future sibling can never wait out the window to reset the tax). The founder itself pays family arm
-  0 (a no-op, symmetric with a human fresh family). Agent minting is bounded SOLELY by an automatic
-  per-window rate cap (`AGENT_NOVEL_MINT_CAP` ≈ 8 mints / 90 days, fail-closed, canonical-UTC,
-  CODEOWNERS-protected `algua/registry/store/family.py` constant — no human budget, no human
-  top-up: zero-human autonomy).
-  The rate cap is the retained count-bound because the deferred pass-time seed alone can't stop a
-  repeated-founder attack (the founder passes and escapes the tax before its family is seeded). The
-  mint re-checks a still-NOVEL family-graph fingerprint CAS under the write lock (drift →
-  `FamilyGraphDrift` re-run; no holdout burned for drift caught at/before the `on_peek` burn — the
-  post-peek/pre-lock re-check is a narrowed, monitored residual, release-on-failure + WARNING audit,
-  not fully closed). NOVEL + human still creates a fresh 0-prior family in preflight (requires
-  `--new-family` + `--actor human`). Family-scoped lifetime breadth feeds the 3-way
-  `effective_funnel_breadth(own, windowed_total, family_lifetime_effective)` tighten-only max.
+  (code `raw_edge_refused`, #682); the promote commands are the only paths. Breadth is always
+  measured (`backtest sweep`), the universe always PIT, and a burned holdout stays burned.
 - `uv run algua data ingest ... --from-file PATH` — register a local immutable snapshot.
 - `uv run algua data ingest-bars --provider yfinance --symbols AAPL --start D --end D` — fetch
   historical bars into a parquet snapshot.
@@ -176,15 +164,15 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   strictly > 0) as a point-in-time delistings snapshot. Backtests opt in with `--delistings NAME`: a
   held name whose bars end mid-backtest is realized at its terminal price and removed (no silent
   survivorship drop); a held-into-gap name WITHOUT a record fails closed. `--assume-terminal-last-close`
-  realizes such a name at its last close instead, but is HUMAN-ONLY (rejected on the agent
-  `research promote` path).
+  realizes such a name at its last close instead on `backtest run/walk-forward/sweep` only; it is
+  not a `research promote` option (the gate always fails closed).
 - `uv run algua data import-bars --vendor firstrate --raw-dir DIR --adjusted-dir DIR --as-of TS` —
   bulk-import local vendor files (FirstRateData: per-symbol unadjusted + adjusted), normalized to
   the bar-schema as one consolidated snapshot. Streamed (bounded RAM); `adj_close` from the adjusted
   file (no corporate-action math yet).
 - `--summary` (context-rot defense #349) — `backtest walk-forward`, `backtest sweep`, and
   `research promote` accept `--summary` to emit ONLY the decision-relevant scalars (drops the
-  per-window/per-combo lists and the deep dsr_*/fdr_*/regime gate diagnostics); the projected
+  per-window/per-combo lists and the deep dsr_* gate diagnostics); the projected
   payload carries `"summary": true`. Prefer it for unattended operation; omit for full detail.
 - `uv run algua data inspect [--summary|--dataset NAME|--snapshot-id ID]` — inspect data snapshots.
 - `uv run algua data verify [--snapshot-id ID]` — power-loss backstop: read each snapshot's
@@ -205,6 +193,12 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   hypotheses, depth-gated), `algua-forage.timer` (daily `03:00 UTC`, web search →
   `kb/inspirations/` notes). A human steers the engine through two files: `.opencode/categories.txt`
   (the ideation category list) and `kb/inspirations/_sources.yaml` (the venue registry).
+- **Drive ideation backend** (`docs/agent/drive.md`, off unless `ALGUA_DRIVE_FOLDER_ID` is set):
+  the steering surfaces, inspirations and an owner **Inbox** live as Google Sheets; drivers export
+  a run-start snapshot (`research steering export --to DIR`, read via `ALGUA_STEERING_DIR`), take
+  the Inbox in each leap firing (`research inbox intake`, each row exactly once, as a
+  `source_kind: human` inspiration) and project the pool back (`research idea publish`). Agents
+  never call Drive; trading/gates/capital/data never touch it. Driver-facing, like `idea` ops.
 - **The agent runtime is OpenCode, reached through ONE seam.** `.opencode/scripts/run_agent.sh` is
   the only invocation seam for the loop drivers. Models live in
   `.opencode/opencode.json`; agent definitions (research / leap / forage, plus the `author` and `interpret`
@@ -215,6 +209,16 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   terminal provider error instead of burning the whole timeout. Changing how an agent is launched
   means changing the seam, never a driver.
 ## Lifecycle stages
+
+**Autonomous paper (owner direction, 2026-11-09):** normal paper operation never asks the owner
+to sign. `risk configure paper --policy FILE` applies the valid paper-only account policy directly;
+`risk restore paper --reason TEXT` is an explicit reconciled restoration with immutable history.
+`paper qualify-experimental NAME` records passing historical-plus-five-session evidence as the
+actual agent; `--preview` reads without recording. No human identity is fabricated. These commands
+grant no live authority. Existing historical/forward integrity checks and optional authenticated
+human exceptions retain their meaning. Live activation, live risk-policy changes/restoration and
+capital increases still require their real-money human ceremonies.
+
 `idea -> backtested -> candidate -> paper -> forward_tested -> live -> retired`
 (plus allowed back-steps and `-> retired`). See `algua/contracts/lifecycle.py`.
 `dormant` is a NON-terminal rest state for validated-but-resting strategies (entered only from
@@ -234,21 +238,24 @@ small change. Run broader integration checks when the scope warrants them or the
 Automatic CI/CD workflows are disabled; the full CI workflow is available manually when re-enabled.
 Preserve live authorization, execution lag, data integrity and other product safety controls.
 
+Default test run: `uv run pytest -q` runs in parallel (`pytest-xdist`, `-n auto`) and skips tests
+marked `slow` (>5s). Run the full set with `uv run pytest -q -m ""`; tests marked `serial` share one
+worker. Workers are capped at 6 (`--maxprocesses=6`): 10 workers crashed a 7.6 GB Docker VM.
+`algua.cli` does not import on macOS (`os.waitid`), so on macOS run pytest/mypy in Linux:
+`docker run --rm -v "$PWD":/w -v algua-linux-venv:/venv -w /w -e UV_PROJECT_ENVIRONMENT=/venv -e UV_LINK_MODE=copy ghcr.io/astral-sh/uv:python3.12-bookworm uv run --frozen pytest -q`
+(run `uv sync --frozen` in the same container first).
+
 Available full check, when needed:
-`uv run pytest -q && uv run ruff check . && uv run mypy algua && uv run lint-imports`
+`uv run pytest -q -m "" && uv run ruff check . && uv run mypy algua && uv run lint-imports`
 
 Two of those enforce structure, not style, and are worth knowing before you fight them:
-- **`lint-imports`** — 29 contracts fixing the package layering (`cli` composes everything; nothing
+- **`lint-imports`** — 32 contracts fixing the package layering (`cli` composes everything; nothing
   composes `cli`). Adding an import that breaks one is a design decision; do not add an exemption
   without saying why in the commit.
 - **`tests/test_module_size_ratchet.py`** — a shrink-only size ratchet over every module ≥300 lines.
   Carved files cannot regrow and new god-files cannot appear silently. When it fails, prefer putting
   the change where it belongs, or carving; raising a pin is the last option and is meant to be
   visible in review.
-
-When a change touches `web/` (the monitor PWA — a STANDALONE uv project; NEVER add web deps to
-the root project, the root `uv.lock` is dependency_hash identity), also run:
-`uv run --project web pytest web/backend/tests -q` and `cd web/frontend && npm run check && npm run build`.
 
 ## Company context
 

@@ -30,6 +30,10 @@ from algua.registry.artifact_errors import FrozenEnvironmentUnavailable, FrozenS
 from algua.registry.db import connect, migrate
 from algua.registry.store import SqliteStrategyRepository
 
+# Merge-back cycles share repo-global locks and git state; under xdist a different subset failed
+# on each run (serial 38/38), so the module runs on the serial lane.
+pytestmark = pytest.mark.serial
+
 runner = CliRunner()
 _STRAT = "cross_sectional_momentum"
 _GATED_TREE = "f" * 40  # the tree sha the stubbed green gate returns (binds commit_merge)
@@ -120,6 +124,11 @@ def _insert_passing_gate(conn, strategy_id, token):
 
 def _wire(monkeypatch, *, gate: bool, git: _FakeGit, promote_calls: list,
           promote_commits: bool = True):
+    # Exercise CLI callback wiring against the legacy saga explicitly. Public PR admission is
+    # tested separately below and in tests/operator/test_pr_admission.py; it may never merge main.
+    from algua.operator.mergeback import _run_merge_back_saga
+
+    monkeypatch.setattr(paper_cmd, "run_merge_back", _run_merge_back_saga)
     monkeypatch.setattr(paper_cmd, "RealGitOps", lambda repo_root: git)
     # The gate seam's real contract: gated tree sha on green, None on red.
     monkeypatch.setattr(paper_cmd, "_run_quality_gate",
@@ -452,3 +461,21 @@ def test_mergeback_intake_refuses_a_name_that_would_break_client_order_id(tmp_pa
     with _pytest.raises(ValueError, match="client_order_id"):
         ensure_backtested(conn, strategy="x" * 120, branch="b", branch_tip="a" * 40,
                           merge_sha="b" * 40, base_sha="c" * 40)
+
+
+def test_public_mergeback_without_pr_proof_never_enters_legacy_saga(monkeypatch):
+    _register_backtested(_STRAT)
+    git = _FakeGit()
+    monkeypatch.delenv('ALGUA_MERGEBACK_ADMISSION', raising=False)
+    monkeypatch.setattr(paper_cmd, 'RealGitOps', lambda repo_root: git)
+
+    def forbidden(**kwargs):
+        pytest.fail('missing PR proof must refuse before promotion')
+
+    monkeypatch.setattr(paper_cmd, 'promote_task', forbidden)
+    result = _invoke()
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload['status'] == 'awaiting_pr_admission'
+    assert payload['promoted'] is False and payload['merged'] is False
+    assert git.calls == []

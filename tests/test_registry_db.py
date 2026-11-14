@@ -9,12 +9,46 @@ _META_COLS = {"family", "tags", "author", "hypothesis_status", "derived_from", "
 
 # Pinned fingerprint of the schema a full bootstrap produces. BUMP THESE DELIBERATELY, together
 # with SCHEMA_VERSION and the migration that earns it — never to make a red test go green.
-_SCHEMA_OBJECT_COUNT = 138
-_SCHEMA_DIGEST = "16b2b87dfc4211b5cf2dd3889e302f30fd668ff89421a5a4f06fd5740fee166e"
+_SCHEMA_OBJECT_COUNT = 171
+_SCHEMA_DIGEST = "60c26da356e3624f3841cbef98adeaba4617d69bd099c8e0199d12415b0fccbc"
 
 
 def test_schema_version_is_current():
-    assert SCHEMA_VERSION == 49
+    assert SCHEMA_VERSION == 53
+
+
+def test_migrate_refuses_newer_schema_without_mutating_schema_or_data(tmp_path):
+    with connect(tmp_path / "future.db") as conn:
+        conn.execute(
+            "CREATE TABLE strategies (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE,"
+            " stage TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+        )
+        conn.execute("INSERT INTO strategies VALUES (1,'future','shortlisted','t','t')")
+        conn.execute("CREATE TABLE shadow_evaluations (value TEXT NOT NULL)")
+        conn.execute("INSERT INTO shadow_evaluations VALUES ('future data to preserve')")
+        conn.execute(f"PRAGMA user_version={SCHEMA_VERSION + 1}")
+        conn.commit()
+        before = tuple(conn.iterdump())
+        changes = conn.total_changes
+        with pytest.raises(ValueError, match="newer than supported"):
+            migrate(conn)
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION + 1
+        assert tuple(conn.iterdump()) == before
+        assert conn.total_changes == changes
+
+
+def test_connect_closes_the_connection_when_refusing_a_newer_schema(tmp_path, monkeypatch):
+    from algua.registry.db import connection
+
+    path = tmp_path / "future.db"
+    opened = sqlite3.connect(path)
+    opened.execute(f"PRAGMA user_version={SCHEMA_VERSION + 1}")
+    opened.commit()
+    monkeypatch.setattr(connection.sqlite3, "connect", lambda _: opened)
+    with pytest.raises(ValueError, match="newer than supported"):
+        connect(path)
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        opened.execute("SELECT 1")
 
 
 def test_v47_adds_explicit_deployment_epoch_schema(tmp_path):
@@ -615,7 +649,7 @@ def test_bootstrap_runs_even_when_version_already_current(tmp_path):
 
     A stale/pre-stamped user_version must NOT cause the schema to be skipped:
     the CREATE TABLE IF NOT EXISTS script always runs and brings the DB up to
-    the full current schema regardless of the recorded version.
+    the full current schema for every old or current recorded version.
     """
     conn = connect(tmp_path / "r.db")
     # Pre-stamp the version without creating any tables, simulating a DB whose
@@ -759,10 +793,9 @@ def test_v33_backfills_legacy_binding_rows_into_cohorts(tmp_path):
 def test_529_relabels_old_cohort_size_binding_rows(tmp_path):
     """#529: binding rows labeled under a PRIOR (larger) FDR_COHORT_SIZE — e.g. (cohort=0,
     index=1..10) as recorded under N=64 — are re-partitioned to the CURRENT size (N=8) so a stale
-    within-cohort index > N can never wedge fdr_stream_state. Idempotent; fdr_alpha_level/passed
-    frozen; the re-labeled stream reads back cleanly."""
+    within-cohort index > N can never wedge the (now removed) stream reader. Idempotent;
+    fdr_alpha_level/passed frozen."""
     from algua.registry.db import FDR_COHORT_SIZE
-    from algua.registry.store import SqliteStrategyRepository
 
     assert FDR_COHORT_SIZE == 8
     conn = connect(tmp_path / "r.db")
@@ -803,12 +836,8 @@ def test_529_relabels_old_cohort_size_binding_rows(tmp_path):
     assert rows[0]["fdr_alpha_level"] == 0.01
     assert abs(rows[8]["fdr_alpha_level"] - 0.09) < 1e-9
     assert rows[0]["passed"] == 1 % 2
-    # The stream reads back cleanly (was None-wedged before the re-partition): the next test joins
-    # the partially-filled cohort 1 at within-cohort position 3.
-    repo = SqliteStrategyRepository(conn)
-    stream = repo.fdr_stream_state()
-    assert stream is not None
-    assert (stream.t, stream.cohort_index, stream.binding_tests) == (3, 1, n)
+    # (The fdr_stream_state reader was removed in lean trim step 7; this migration still runs so
+    # historical rows keep the labels they had.)
 
     before = [dict(r) for r in rows]
     migrate(conn)  # idempotent — no second re-partition
@@ -891,7 +920,7 @@ def test_v26_fdr_columns_are_null_on_legacy_rows(tmp_path):
 
 
 def test_paper_venue_tables_created_at_v30(tmp_path):
-    assert SCHEMA_VERSION == 49
+    assert SCHEMA_VERSION == 53
     conn = sqlite3.connect(tmp_path / "r.db")
     conn.row_factory = sqlite3.Row
     migrate(conn)
@@ -915,7 +944,7 @@ def test_paper_reconcile_and_cycle_tables_exist(tmp_path):
         "SELECT name FROM sqlite_master WHERE type='table'")}
     assert "paper_reconcile_state" in tables
     assert "paper_cycle" in tables
-    assert SCHEMA_VERSION == 49
+    assert SCHEMA_VERSION == 53
 
 
 def test_v32_negative_results_table_created(tmp_path):
@@ -980,7 +1009,7 @@ def test_v46_ideas_columns_and_tables_exist_after_migrate(tmp_path):
     tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"idea_attempts", "idea_inspirations"} <= tables
     migrate(conn)  # idempotent
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 49
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 53
 
 
 def test_v46_preserves_v45_idea_rows(tmp_path):
@@ -1033,12 +1062,12 @@ def test_v46_preserves_v45_idea_rows(tmp_path):
             "claimed_by", "claim_token", "claimed_at"} <= cols
     tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"idea_attempts", "idea_inspirations"} <= tables
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 49
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 53
 
     migrate(conn)  # idempotent re-run must not raise
     row = conn.execute("SELECT title FROM ideas").fetchone()
     assert row["title"] == "t"
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 49
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 53
 
 
 def test_v46_rebuilds_negative_results_check_on_legacy_db(tmp_path):
@@ -1114,3 +1143,42 @@ def test_v46_rebuilds_negative_results_check_on_legacy_db(tmp_path):
     ).fetchone()
     assert (before["rootpage"], before["sql"]) == (after["rootpage"], after["sql"])
     assert conn.execute("SELECT COUNT(*) FROM negative_results").fetchone()[0] == 2
+
+
+def test_v51_adds_risk_state_without_erasing_legacy_halt(tmp_path):
+    from algua.registry.db.drawdown import SCHEMA as DRAWDOWN
+    from algua.registry.db.schema import SCHEMA
+
+    conn = connect(tmp_path / "v50.db")
+    conn.executescript(SCHEMA.replace(DRAWDOWN, ""))
+    conn.execute("PRAGMA user_version=50")
+    conn.execute("INSERT INTO global_halt VALUES (1,'existing halt','human','t')")
+    conn.commit()
+    migrate(conn)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 53
+    assert conn.execute("SELECT reason FROM global_halt").fetchone()[0] == "existing halt"
+    assert conn.execute("SELECT COUNT(*) FROM drawdown_accounts").fetchone()[0] == 0
+    migrate(conn)
+    assert conn.execute("SELECT reason FROM global_halt").fetchone()[0] == "existing halt"
+    conn.close()
+
+
+def test_v52_preserves_v51_policy_bytes_and_starts_without_live_authority(tmp_path):
+    from algua.registry.db.capped_live import SCHEMA as CAPPED
+    from algua.registry.db.schema import SCHEMA
+
+    conn = connect(tmp_path / 'v51.db')
+    conn.executescript(SCHEMA.replace(CAPPED, ''))
+    conn.execute('PRAGMA user_version=51')
+    old_policy = '{"normal_capital":"1000"}'
+    conn.execute('INSERT INTO drawdown_policies '
+                 '(lane,account_id,policy_json,principal,created_at) '
+                 "VALUES ('live','acct',?,'owner','t')", (old_policy,))
+    conn.commit()
+    migrate(conn)
+    assert conn.execute('PRAGMA user_version').fetchone()[0] == 53
+    assert conn.execute('SELECT policy_json FROM drawdown_policies').fetchone()[0] == old_policy
+    assert conn.execute('SELECT COUNT(*) FROM capped_live_authorizations').fetchone()[0] == 0
+    migrate(conn)
+    assert conn.execute('SELECT policy_json FROM drawdown_policies').fetchone()[0] == old_policy
+    conn.close()

@@ -18,6 +18,7 @@ from algua.contracts.idea import (
 )
 from algua.registry.campaign_selection import validate_campaign
 from algua.registry.idea_claim_selection import select_ideas
+from algua.registry.idea_eligibility import idea_eligibility
 from algua.registry.ideas import IdeaRepository
 
 # `IdeaAttemptsRepository.claim`'s return type says `list[Idea]`; nothing here shadows the
@@ -104,6 +105,12 @@ class IdeaAttemptsRepository:
                 raise ValueError("campaign selection exceeds cycle budget")
             claimed: list[Idea] = []
             for idea_id in picked:
+                status, gaps = idea_eligibility(self._ideas.get(idea_id))
+                if status is not IdeaStatus.OPEN:
+                    if selected is not None:
+                        raise ValueError(
+                            f'idea {idea_id} requires unsupported capabilities: {gaps}')
+                    continue
                 token = str(uuid.uuid4())
                 cur = self._conn.execute(
                     "UPDATE ideas SET claimed_by=?, claim_token=?, claimed_at=?, updated_at=?"
@@ -236,7 +243,10 @@ class IdeaAttemptsRepository:
                 raise ClaimTokenMismatch(f"idea {idea_id}: attempt already has an outcome")
             sets = ["updated_at=?"]
             params: list[object] = [now]
-            if outcome in REFUTING_OUTCOMES and row["status"] == IdeaStatus.OPEN.value:
+            if outcome is AttemptOutcome.DATA_BLOCKED and row['status'] == IdeaStatus.OPEN.value:
+                sets.extend(['status=?', 'parked_reason=?'])
+                params.extend([IdeaStatus.NEEDS_DATA.value, 'qualification:data_blocked'])
+            elif outcome in REFUTING_OUTCOMES and row["status"] == IdeaStatus.OPEN.value:
                 sets.append("status=?")
                 params.append(IdeaStatus.REFUTED.value)
             elif (outcome is not AttemptOutcome.CANDIDATE_PREVIEW_PASS

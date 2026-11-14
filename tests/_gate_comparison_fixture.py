@@ -1,7 +1,6 @@
 """Owned synthetic acceptance inputs; the gate, burn, vector and lineage use the real CLI.
 
 Run with this tree's Python and explicit ALGUA_{DB_PATH,DATA_DIR,KNOWLEDGE_DIR}.
-Family assignments alone are fixture scaffolding, never qualification evidence.
 """
 
 from __future__ import annotations
@@ -11,7 +10,6 @@ import json
 import os
 import subprocess
 from collections.abc import Callable
-from datetime import UTC, datetime
 from pathlib import Path
 
 from algua.backtest._sample import SyntheticProvider
@@ -57,43 +55,6 @@ def cli(*args: str) -> dict:
     return payload
 
 
-def fixture_family(name: str) -> None:
-    """Explicit fixture-only family scaffolding; no gate/holdout/run writes here."""
-    now = datetime.now(UTC).isoformat()
-    with registry_conn() as conn, conn:
-        family = conn.execute(
-            "INSERT INTO families(name,created_at,created_by_actor,created_by_strategy) "
-            "VALUES (?,?,?,?)",
-            (f"synthetic_fixture_{name}", now, "agent", name),
-        ).lastrowid
-        conn.execute(
-            "INSERT INTO family_events(event_type,family_id,actor,created_at) VALUES (?,?,?,?)",
-            ("family_created", family, "agent", now),
-        )
-        conn.execute(
-            "INSERT INTO family_members(family_id,strategy_name,joined_at,joined_by_actor) "
-            "VALUES (?,?,?,?)",
-            (family, name, now, "agent"),
-        )
-        conn.execute(
-            "INSERT INTO family_events(event_type,family_id,strategy_name,actor,clustering_verdict,"
-            "similarity_score,clustering_version,clustering_config_json,axis_json,created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (
-                "strategy_assigned",
-                family,
-                name,
-                "agent",
-                "NOVEL",
-                0.0,
-                "fixture-only",
-                "{}",
-                "{}",
-                now,
-            ),
-        )
-
-
 def generate(
     *,
     names: tuple[str, ...] = NAMES,
@@ -124,7 +85,6 @@ def generate(
     for name in names:
         common = [name, "--snapshot", snapshot.snapshot_id, "--start", start, "--end", end]
         invoke("backtest", "run", *common, "--register")
-        fixture_family(name)
         invoke("backtest", "sweep", *common, "--param", "construction.top_k=1,3")
         decision = invoke("research", "promote", *common)
         assert decision["passed"] is False and decision["promoted"] is False, decision

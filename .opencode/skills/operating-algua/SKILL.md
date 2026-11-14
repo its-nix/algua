@@ -44,8 +44,8 @@ commands may reach `forward_tested` under their gates. Stage lives in the SQLite
 - `uv run algua backtest sweep <name> --demo --param KEY=v1,v2` — bounded parameter grid, ranked.
 - `uv run algua research promote <name> --snapshot <id> --universe <pit-universe> --start D --end D`
   — gate `backtested → candidate`; requires measured sweep breadth and a fresh holdout, and
-  promotes only on pass. Research workers never use the human-only `--n-combos` declaration.
-- `uv run algua paper promote <name>` — gate `paper → forward_tested`; requires ≥63 broker-clocked daily return observations, ≥90% coverage, realized Sharpe ≥ max(0.5×holdout, 0.3), vol/DD bounds, clean integrity + hygiene, evidence ≤5 sessions stale. Relaxation flags are human-only.
+  promotes only on pass. Breadth is measured from sweeps; declarations are unsupported.
+- `uv run algua paper promote <name>` — gate `paper → forward_tested`; requires ≥63 broker-clocked daily return observations, ≥90% coverage, realized Sharpe ≥ max(0.5×holdout, 0.3), vol/DD bounds, clean integrity + hygiene, evidence ≤5 sessions stale. Threshold flags may only tighten, for every actor.
 - `uv run algua data inspect --summary` — what data snapshots exist.
 
 Pass `--summary` to `backtest walk-forward`, `backtest sweep`, and `research promote` to emit

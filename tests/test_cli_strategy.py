@@ -7,6 +7,8 @@ from typer.testing import CliRunner
 import algua.strategies  # noqa: PLC0415
 from algua.cli.main import app
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 runner = CliRunner()
 
 

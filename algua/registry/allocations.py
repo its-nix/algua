@@ -111,6 +111,9 @@ def allocate_in_lane(conn: sqlite3.Connection, strategy_id: int, capital: float,
             raise AllocationError(
                 f"cannot allocate to strategy {strategy_id} at stage {row['stage']!r}; "
                 f"allowed {sorted(allowed_stages)}")
+        if row["stage"] == "live":
+            from algua.registry.capped_allocation import require_ordinary_allocation
+            require_ordinary_allocation(conn, strategy_id, capital)
         if max_concurrent is not None and active_allocation(conn, strategy_id) is None:
             n = active_paper_lane_count(conn)
             if n >= max_concurrent:

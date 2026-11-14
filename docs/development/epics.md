@@ -17,7 +17,8 @@ externalInputs:
 > **Dated delivery breakdown.** Product intent follows the current PRD; present permissions follow
 > the operating guides. The owner reconfirmed the short-paper experimental-delivery target on
 > 2026-11-14 (PRD §16). Conflicting qualification criteria, especially Story 2.1's blanket predicate,
-> need revision before implementation. The 10% pause remains policy; 20% is only a proposal.
+> need reconciliation with the current capped route before reuse. The earlier 10% pause target
+> was amended by the opt-in layered risk policy; see `docs/agent/layered-risk.md`.
 
 ## Overview
 

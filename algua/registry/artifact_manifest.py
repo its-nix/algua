@@ -10,6 +10,7 @@ from algua.contracts.canonical import (
     FROZEN_WIRE_VERSION,
     canonical_json,
 )
+from algua.contracts.frozen_model import FrozenModelAsset
 from algua.contracts.planner import PLANNER_PROTOCOL_VERSION
 from algua.registry.artifact_contract import (
     DESCRIPTOR_VERSION,
@@ -76,19 +77,37 @@ def _load_canonical(raw: Any) -> Any:
 
 
 def parse_frozen_manifest(raw: str) -> FrozenManifest:
-    root = _require_keys(_load_canonical(raw), {
+    payload = _load_canonical(raw)
+    if not isinstance(payload, dict):
+        raise ValueError("frozen manifest must be an object")
+    version = payload.get('descriptor_version')
+    if type(version) is not int or version not in (DESCRIPTOR_VERSION, 2):
+        raise ValueError("unsupported frozen manifest descriptor version")
+    model_profile = version == 2
+    keys = {
         "descriptor_version", "source_kind", "source_ref", "identity", "resolved_config",
         "universe_name", "bundle", "environment", "assets", "planner_protocol_version",
         "planner_boundary_version", "frozen_wire",
-    }, "frozen manifest")
-    _require_version(root["descriptor_version"], DESCRIPTOR_VERSION, "descriptor version")
+    }
+    if model_profile:
+        keys.add('strategy_interface')
+    root = _require_keys(payload, keys, "frozen manifest")
     _require_version(
-        root["planner_protocol_version"], PLANNER_PROTOCOL_VERSION, "planner protocol version")
+        root["planner_protocol_version"], 2 if model_profile else PLANNER_PROTOCOL_VERSION,
+        "planner protocol version")
     _require_version(
-        root["planner_boundary_version"], PLANNER_BOUNDARY_VERSION, "planner boundary version")
+        root["planner_boundary_version"], 2 if model_profile else PLANNER_BOUNDARY_VERSION,
+        "planner boundary version")
     wire = _require_keys(root["frozen_wire"], set(FROZEN_WIRE), "frozen wire identity")
-    _require_version(wire["version"], FROZEN_WIRE_VERSION, "frozen wire version")
-    if (root["source_kind"] != "frozen" or root["assets"] != []
+    _require_version(wire["version"], 2 if model_profile else FROZEN_WIRE_VERSION,
+                     "frozen wire version")
+    model_asset = None
+    if model_profile:
+        if (root['strategy_interface'] != 'context_v1' or type(root['assets']) is not list
+                or len(root['assets']) != 1):
+            raise ValueError('unsupported frozen model profile')
+        model_asset = FrozenModelAsset.from_dict(root['assets'][0])
+    if (root["source_kind"] != "frozen" or (not model_profile and root["assets"] != [])
             or wire["name"] != FROZEN_WIRE_NAME):
         raise ValueError("unsupported frozen manifest version or lane")
     identity = _require_keys(root["identity"], {"code_hash", "config_hash", "dependency_hash"},
@@ -127,4 +146,5 @@ def parse_frozen_manifest(raw: str) -> FrozenManifest:
         config_hash=identity["config_hash"], dependency_hash=identity["dependency_hash"],
         resolved_config=root["resolved_config"], universe_name=root["universe_name"],
         bundle=BundleDescriptor(**bundle_raw), environment=environment,
+        strategy_interface='context_v1' if model_profile else 'legacy', model_asset=model_asset,
     )

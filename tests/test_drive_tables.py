@@ -1,0 +1,270 @@
+"""Inspirations, sources and categories as Sheets behind the existing writers (spec §6.2–6.6)."""
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from algua.config.settings import Settings
+from algua.knowledge import inspirations as insp
+from algua.knowledge.drive import DriveError, tables
+from algua.knowledge.sources_registry import SourcesRegistry
+from tests._drive_fake import FakeDrive
+
+CATS = {"momentum", "mean_reversion"}
+NOTE = """---
+id: {id}
+found_at: '2026-11-12'
+source_url: https://example.com/{id}
+venue: blog/example
+source_kind: blog
+category: momentum
+market: us_equities
+horizon: daily
+mechanism: quiet names drift
+obscurity: niche
+status: fresh
+---
+Body of {id}.
+"""
+
+
+@pytest.fixture
+def drive(monkeypatch):
+    fake = FakeDrive()
+    monkeypatch.setattr(tables, "client_for", lambda _s: fake)
+    return fake
+
+
+def _settings(tmp_path) -> Settings:
+    return Settings(_env_file=None, knowledge_dir=tmp_path / "kb", data_dir=tmp_path / "data",
+                    drive_folder_id="F")
+
+
+def _stage(tmp_path, *ids):
+    d = tmp_path / "staged"
+    d.mkdir(exist_ok=True)
+    for i in ids:
+        (d / f"{i}.md").write_text(NOTE.format(id=i))
+    return d
+
+
+def _accept(tmp_path, staged):
+    return insp.accept_new_notes(staged_dir=staged, settings=_settings(tmp_path),
+                                 seen_path=tmp_path / "seen.jsonl", categories=CATS,
+                                 run_stamp="r1", max_notes=10,
+                                 store=tables.InspirationsTable(tables.client_for(None)))
+
+
+def test_accept_appends_rows_and_skips_ids_already_in_sheet(tmp_path, drive):
+    drive.seed(*tables.INSPIRATIONS, tables.INSPIRATION_HEADER, [{"id": "2026-11-12-foo"}])
+    result = _accept(tmp_path, _stage(tmp_path, "2026-11-12-foo", "2026-11-12-bar"))
+    assert result["accepted"] == ["2026-11-12-bar"]
+    assert result["rejected"] == [{"file": "2026-11-12-foo.md",
+                                   "reasons": ["id already exists in the vault"]}]
+    bar = [r for r in drive.rows(*tables.INSPIRATIONS) if r["id"] == "2026-11-12-bar"][0]
+    assert bar["body"].strip() == "Body of 2026-11-12-bar."
+    assert bar["url_hash"] == insp.url_hash("https://example.com/2026-11-12-bar")
+    assert not (tmp_path / "kb" / "inspirations").exists()  # nothing written to the vault
+
+
+def test_accept_rerun_after_partial_failure_does_not_duplicate(tmp_path, drive):
+    staged = _stage(tmp_path, "2026-11-12-aaa", "2026-11-12-bbb")
+    drive.fail["append_rows"] = 2
+    with pytest.raises(DriveError):
+        _accept(tmp_path, staged)
+    drive.fail.clear()
+    _accept(tmp_path, staged)
+    ids = [r["id"] for r in drive.rows(*tables.INSPIRATIONS)]
+    assert sorted(ids) == ["2026-11-12-aaa", "2026-11-12-bbb"]
+
+
+def test_mark_used_appends_leap_and_flips_status_in_sheet(tmp_path, drive):
+    _accept(tmp_path, _stage(tmp_path, "2026-11-12-foo"))
+    s = _settings(tmp_path)
+    store = tables.InspirationsTable(drive)
+    fm = insp.mark_used(s, "2026-11-12-foo", idea_id=7, store=store)
+    assert fm["leaps"] == [7] and fm["status"] == "used"
+    insp.mark_used(s, "2026-11-12-foo", idea_id=7, store=store)
+    row = drive.rows(*tables.INSPIRATIONS)[0]
+    assert row["leaps"] == "[7]" and row["status"] == "used"
+    insp.mark_exhausted(s, "2026-11-12-foo", store=store)
+    assert drive.rows(*tables.INSPIRATIONS)[0]["status"] == "exhausted"
+
+
+def test_sources_roundtrip_is_lossless(tmp_path, drive):
+    venues = [
+        {"key": "blog/x", "kind": "blog", "url": "https://x", "categories": ["momentum"],
+         "yield": {"n": 5, "survival_yield": 0.2}, "notes": "keep me"},
+        {"key": "ssrn", "kind": "paper", "url": "https://ssrn.com", "categories": [],
+         "added_by": "forage", "added_at": "2026-11-01"},
+    ]
+    t = tables.SourcesTable(drive)
+    t.save(venues)
+    assert t.load() == venues
+
+
+def test_sources_registry_dispatches_to_sheet(tmp_path, drive):
+    reg = SourcesRegistry(_settings(tmp_path), backend=tables.SourcesTable(drive))
+    reg.propose({"key": "blog/new", "kind": "blog", "url": "https://n", "categories": ["momentum"]})
+    reg.write_yields({"blog/new": {"n": 9}})
+    loaded = tables.SourcesTable(drive).load()
+    assert loaded[0]["key"] == "blog/new" and loaded[0]["yield"] == {"n": 9}
+    assert loaded[0]["added_by"] == "forage"
+
+
+def test_categories_lines_render_disabled_as_comments_and_require_one_enabled(drive):
+    drive.seed(*tables.CATEGORIES, tables.CATEGORY_HEADER, [
+        {"slug": "momentum", "market": "us_equities", "horizon": "daily", "enabled": ""},
+        {"slug": "crypto_carry", "enabled": "FALSE"},
+    ])
+    assert tables.CategoriesTable(drive).lines() == [
+        "momentum market=us_equities horizon=daily", "# crypto_carry"]
+    drive.seed(*tables.CATEGORIES, tables.CATEGORY_HEADER, [{"slug": "a", "enabled": "no"}])
+    with pytest.raises(DriveError) as exc:
+        tables.CategoriesTable(drive).lines()
+    assert exc.value.code == "drive_schema"
+
+
+def test_file_backend_untouched_without_a_store(tmp_path, monkeypatch):
+    def boom(_s):
+        raise AssertionError("Drive must not be touched when disabled")
+    monkeypatch.setattr(tables, "client_for", boom)
+    s = Settings(_env_file=None, knowledge_dir=tmp_path / "kb", data_dir=tmp_path / "data")
+    result = insp.accept_new_notes(staged_dir=_stage(tmp_path, "2026-11-12-foo"), settings=s,
+                                   seen_path=tmp_path / "seen.jsonl", categories=CATS,
+                                   run_stamp="r", max_notes=5)
+    assert result["accepted"] == ["2026-11-12-foo"]
+    assert (tmp_path / "kb" / "inspirations" / "2026-11-12-foo.md").exists()
+
+
+def test_update_touches_every_duplicate_row(drive):
+    drive.seed(*tables.INSPIRATIONS, tables.INSPIRATION_HEADER, [
+        {"id": "2026-11-12-dup", "status": "fresh"}, {"id": "2026-11-12-dup", "status": "fresh"}])
+    tables.InspirationsTable(drive).update("2026-11-12-dup", lambda fm: fm.update(status="used"))
+    assert [r["status"] for r in drive.rows(*tables.INSPIRATIONS)] == ["used", "used"]
+
+
+def test_owner_columns_in_sources_survive_a_save(drive):
+    drive.seed(*tables.SOURCES, [*tables.SOURCES_HEADER, "my notes"],
+               [{"key": "ssrn", "kind": "paper", "my notes": "great venue"}])
+    t = tables.SourcesTable(drive)
+    venues = t.load()
+    venues[0]["yield"] = {"n": 7}
+    t.save(venues)
+    row = drive.rows(*tables.SOURCES)[0]
+    assert row["my notes"] == "great venue" and json.loads(row["yield"]) == {"n": 7}
+    assert row["extra"] == ""
+
+
+def test_renamed_inbox_idea_column_is_a_schema_error(drive):
+    drive.seed(*tables.INBOX, ["id", "Idea", "status"], [{"Idea": "x"}])
+    from algua.knowledge.drive.inbox import intake
+    with pytest.raises(DriveError) as exc:
+        intake(drive, today=__import__("datetime").date(2026, 11, 12), categories=CATS)
+    assert exc.value.code == "drive_schema" and "missing header idea" in str(exc.value)
+
+
+def test_malformed_json_cell_is_a_schema_error_naming_the_row(drive):
+    with pytest.raises(DriveError) as exc:
+        tables.note_from_row({"id": "2026-11-12-bad", "leaps": "[1,", "_row": "2"})
+    assert exc.value.code == "drive_schema" and "row 2" in str(exc.value)
+    drive.seed(*tables.SOURCES, tables.SOURCES_HEADER, [{"key": "k", "yield": "{oops"}])
+    with pytest.raises(DriveError) as exc:
+        tables.SourcesTable(drive).load()
+    assert exc.value.code == "drive_schema" and "Steering/Sources" in str(exc.value)
+
+
+def test_pilot_recipe_survives_drive_accept_and_snapshot_roundtrip(tmp_path, drive):
+    from tests.test_source_selection import recipe
+
+    staged = _stage(tmp_path, "2026-11-12-recipe")
+    path = staged / "2026-11-12-recipe.md"
+    fm, body = insp.parse_note(path.read_text())
+    fm["pilot_recipe"] = recipe()
+    from algua.knowledge.frontmatter import render_doc
+    path.write_text(render_doc(fm, body))
+    _accept(tmp_path, staged)
+    row, = drive.rows(*tables.INSPIRATIONS)
+    restored, _ = tables.note_from_row(row)
+    assert restored["pilot_recipe"] == recipe()
+    insp.mark_used(_settings(tmp_path), restored["id"], idea_id=7,
+                   store=tables.InspirationsTable(drive))
+    row, = drive.rows(*tables.INSPIRATIONS)
+    assert tables.note_from_row(row)[0]["pilot_recipe"] == recipe()
+
+
+def test_accept_reports_recipe_fit_separately_from_note_count(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from algua.cli import inspirations_cmd
+    from algua.cli.main import app
+    from algua.knowledge.frontmatter import render_doc
+    from tests.test_source_selection import PROFILE, recipe
+
+    staged = _stage(tmp_path, "2026-11-12-fit", "2026-11-12-backlog", "2026-11-12-unknown")
+    for identity, declared in [("fit", recipe()), ("backlog", recipe(253))]:
+        path = staged / f"2026-11-12-{identity}.md"
+        fm, body = insp.parse_note(path.read_text())
+        fm["pilot_recipe"] = declared
+        path.write_text(render_doc(fm, body))
+    monkeypatch.setenv("ALGUA_KNOWLEDGE_DIR", str(tmp_path / "kb"))
+    monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(inspirations_cmd, "load_research_profile", lambda _: PROFILE)
+    monkeypatch.setattr(inspirations_cmd, "inspirations_store", lambda _: None)
+    cats = tmp_path / "categories.txt"
+    cats.write_text("momentum\n")
+    result = CliRunner().invoke(app, ["research", "inspirations", "accept", "--from", str(staged),
+                                    "--run", "fixture", "--categories-file", str(cats)])
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert len(payload["accepted"]) == 3
+    assert payload["recipe_fit"]["feasible"] == ["2026-11-12-fit"]
+    assert payload["recipe_fit"]["blocked"] == ["2026-11-12-backlog"]
+    assert payload["recipe_fit"]["unknown"] == ["2026-11-12-unknown"]
+
+
+def test_broken_advisory_profile_does_not_discard_accepted_notes(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from algua.cli import inspirations_cmd
+    from algua.cli.main import app
+
+    def broken(_):
+        raise ValueError("SYNTHETIC_FIXTURE corrupt descriptor")
+
+    staged = _stage(tmp_path, "2026-11-12-accepted")
+    monkeypatch.setenv("ALGUA_KNOWLEDGE_DIR", str(tmp_path / "kb"))
+    monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(inspirations_cmd, "load_research_profile", broken)
+    monkeypatch.setattr(inspirations_cmd, "inspirations_store", lambda _: None)
+    cats = tmp_path / "categories.txt"
+    cats.write_text("momentum\n")
+    result = CliRunner().invoke(app, ["research", "inspirations", "accept", "--from", str(staged),
+                                    "--run", "fixture", "--categories-file", str(cats)])
+    assert result.exit_code == 0, result.stdout
+    assert json.loads(result.stdout)["accepted"] == ["2026-11-12-accepted"]
+    assert json.loads(result.stdout)["recipe_fit"] is None
+
+
+@pytest.mark.parametrize("assessment", [{}, {"status": "unexpected"}, {"status": []}])
+def test_broken_advisory_assessment_keeps_accepted_json(tmp_path, monkeypatch, assessment):
+    from typer.testing import CliRunner
+
+    from algua.cli import inspirations_cmd
+    from algua.cli.main import app
+    from tests.test_source_selection import PROFILE
+
+    staged = _stage(tmp_path, "2026-11-12-accepted")
+    monkeypatch.setenv("ALGUA_KNOWLEDGE_DIR", str(tmp_path / "kb"))
+    monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(inspirations_cmd, "load_research_profile", lambda _: PROFILE)
+    monkeypatch.setattr(inspirations_cmd, "assess_recipe", lambda *_: assessment)
+    monkeypatch.setattr(inspirations_cmd, "inspirations_store", lambda _: None)
+    cats = tmp_path / "categories.txt"
+    cats.write_text("momentum\n")
+    result = CliRunner().invoke(app, ["research", "inspirations", "accept", "--from", str(staged),
+                                    "--run", "fixture", "--categories-file", str(cats)])
+    assert result.exit_code == 0, result.stdout
+    assert json.loads(result.stdout)["accepted"] == ["2026-11-12-accepted"]
+    assert json.loads(result.stdout)["recipe_fit"]["unknown"] == ["2026-11-12-accepted"]

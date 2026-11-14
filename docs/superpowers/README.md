@@ -18,9 +18,9 @@ promotion. Do not restore those requirements from an old spec or plan. Current b
 checks are described in `CLAUDE.md` and implemented in the promotion path.
 
 The [November 7 strategy-delivery design](specs/2026-11-07-strategy-cicd-design.md) is the adopted
-experimental-delivery target (reconfirmed 2026-11-14), now reflected in PRD §16. Its proposed 20%
-drawdown amendment is not adopted. Earlier conflicting qualification plans need revision before
-implementation; existing executable gates still apply.
+experimental-delivery direction (reconfirmed 2026-11-14), now reflected in PRD §16. Its original
+proposal status is superseded by the implemented [capped route](../agent/capped-live.md) and
+[layered risk policy](../agent/layered-risk.md). Read those guides before reusing older plans.
 
 The September 6 PRD and its numbered sections remain available in
 [the pre-reconciliation revision](https://github.com/Lior-Nis/algua/blob/d9ed65455a626d3120559eca30fc0ed0818f9084/docs/PRD.md).

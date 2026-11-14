@@ -4,11 +4,17 @@ baseline_commit: e875b6d
 
 # Story 2.6: Pause live trading at a 10% drawdown of the experimental account
 
-Status: backlog
+Status: superseded policy; historical acceptance criteria below
 
-Owner clarification, 2026-11-14: this story's 10% pause remains the established policy target.
-The generic runtime breaker defaults to 15%; November's proposed 20% amendment has not been
-adopted. Agreement on the short-paper qualification target does not change this loss policy.
+Owner amendment, 2026-11-08: the owner approved configurable 10% -> 50% exposure and 20% ->
+halt/cancel/reconcile/controlled exit, with signed restoration. See
+[the implementation plan](../../superpowers/plans/2026-11-08-layered-drawdown.md) and
+[current controls](../../agent/layered-risk.md). The historical must-not-liquidate/constant-threshold
+requirements below are not current operating instructions. Deployment acceptance remains separate.
+
+Alignment note: the earlier 10% pause-only interpretation is historical. Current main includes
+the owner amendment above and the opt-in layered controller. Follow
+[the implemented risk guide](../../agent/layered-risk.md), retaining separate legacy defaults.
 
 Prepared: 2026-10-04. Baseline: `e875b6d` (main after PR #686). Epic: 2.
 Requirements: FR11 (10% pause), NFR2, NFR4, NFR6, NFR8. PRD §§15, 19, 21.

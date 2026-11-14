@@ -24,7 +24,7 @@ WorkingDirectory=/opt/algua
 # first with a clean non-zero exit instead of systemd SIGKILLing mid-run.
 TimeoutStartSec=1800
 # opencode must be on PATH and AUTHENTICATED for the user this unit runs as (see README).
-ExecStart=/opt/algua/.opencode/scripts/forage.sh
+ExecStart=/opt/algua/.opencode/scripts/forage.sh --scheduled
 
 [Install]
 WantedBy=multi-user.target

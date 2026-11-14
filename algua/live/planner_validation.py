@@ -55,7 +55,8 @@ def validate_early(
     early: EarlyPlannerInput, strategy: LoadedStrategy | None
 ) -> PlannerInputFailure | None:
     """The first failure, or ``None``; without a strategy, the strategy-free checks only."""
-    if type(early.boundary_version) is not int or early.boundary_version != BOUNDARY_VERSION:
+    if (type(early.boundary_version) is not int
+            or early.boundary_version not in (BOUNDARY_VERSION, 2)):
         return input_failure("unsupported_boundary_version", str(early.boundary_version))
     if not isinstance(early.request_id, str) or not _REQUEST_ID.fullmatch(early.request_id):
         return input_failure("invalid_request_id", "request_id must be 32 lowercase hex chars")
@@ -137,6 +138,10 @@ def validate_early(
                     "strategy_identity_mismatch",
                     "resolved config does not match effective strategy",
                 )
+        if early.boundary_version == 2 and strategy is not None and (
+            strategy.strategy_interface != "context_v1" or not strategy.config.needs_model
+        ):
+            return input_failure("strategy_identity_mismatch", "strategy is not a model profile")
         phase_a_binding(early, decision_ts=None, warming=False)
         MarketCalendar(early.calendar_code)
     except (TypeError, ValueError) as exc:

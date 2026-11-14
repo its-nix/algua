@@ -18,6 +18,7 @@ from algua.registry.store.run_public import (
     public_config,
     public_extra,
     public_lineage,
+    public_model_components,
     public_number,
     public_rows,
     public_sort_metric,
@@ -114,7 +115,7 @@ class RunLedgerMixin:
     def _insert_run_locked(self, kind: str, strategy_name: str, **kwargs: Any) -> int:
         """The `record_run` INSERT with NO transaction of its own — for callers that already hold
         one (the gate's `BEGIN IMMEDIATE` block; see `GateLedgerMixin
-        .record_gate_with_fdr_and_maybe_promote`). `record_run` is this plus `with self._conn:`.
+        .record_gate_and_maybe_promote`). `record_run` is this plus `with self._conn:`.
 
         Takes `**kwargs` (only the store itself calls this — never CLI/research code), but still
         validates every key against `record_run`'s own keyword set: an unexpected key would
@@ -158,7 +159,7 @@ class RunLedgerMixin:
         if kind in WINDOWED_KINDS:
             mets = {k: public_number(v) for k, v in mets.items()
                     if k in WINDOW_METRICS and kind != "sweep"}
-            config, components = public_config(config), []
+            config, components = public_config(config), public_model_components(components)
             extra_metrics = public_extra(kind, extra_metrics)
             derived_from = public_lineage(derived_from)
             series_backtest_id = series_holdout_id = None

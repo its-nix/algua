@@ -48,43 +48,20 @@ uv run algua data inspect
 uv run algua data inspect --summary
 ```
 
-### Current-collected fundamentals
+### Fundamentals and news
 
-Current quarterly fundamentals can be acquired without preparing a CSV:
-
-```sh
-uv run algua data fetch-fundamentals --symbols AAPL,MSFT
-uv run algua data query-fundamentals --snapshot-id <returned-id>
-```
-
-This uses the existing yfinance dependency and immutable fundamentals store for revenue, diluted
-EPS and net income. Every row becomes knowable at actual collection completion; fiscal period
-labels are not filing/availability timestamps. The snapshot records library/version, clocks,
-metric mapping and limitations. Vendor history can be restated, historical availability is UNKNOWN,
-and currency/units are not independently verified. No `--as-of` override backdates the collection.
-Before collection time, the existing as-of serving path returns none of these rows. This supplies
-current-collected research inputs, not a historical PIT dataset or evidence of news/combined alpha.
-Missing/invalid data for any requested issuer refuses before any snapshot is published. Existing
-`ingest-fundamentals --from-file` remains available for explicitly sourced local data.
-
-### Current-collected news
-
-```sh
-uv run algua data fetch-news --symbols AAPL,MSFT
-uv run algua data query-news --snapshot-id <returned-id>
-```
-
-The separate yfinance news API was unavailable during the live check, but the official Yahoo
-Finance RSS feed returned genuine current headlines. This command collects RSS titles, links and
-vendor publication times, with every row becoming knowable only at collection completion.
-It records raw feed hashes, clocks and limitations in the existing immutable news snapshot.
-Feed tickers are source associations, not independently verified issuer mentions. Publication
-times are vendor declarations; historical availability remains UNKNOWN. The feed is not exhaustive
-history, and no full article body or sentiment is inferred. Each feed is capped at 2 MiB and a
-10-second wall deadline; malformed, future-dated or missing requested feeds refuse the whole batch.
-No `--as-of` override backdates collection. The existing source-file ingest path remains available.
+Fundamentals and news ingestion (`data fetch-*`, `ingest-*`, `query-*`) was removed pending a
+redesign of context inputs. Existing manifest records still list under `data inspect`, and the
+as-of read path is unchanged.
 
 ## Containerized research-loop runs (local-first)
+
+For event-driven host research, enable `deploy/systemd/algua-research.path` alongside the existing
+six-hour timer. Trusted leap imports touch `ALGUA_DATA_DIR/research-ready`; `research ready` skips
+idle or exhausted invocations without starting a model. Configure the path unit for the installed
+data directory. `ALGUA_RESEARCH_DAILY_CYCLE_LIMIT=4` admits at most four chooser launches per UTC
+day, including failures and existing recorded launches. The worker's per-run CPU, wall-time and
+memory caps still apply. This resource budget grants no paper/live authority.
 
 Reproducible, disposable runs that don't pollute the host. One image runs both the loop and the
 gate. Prerequisite: `cp .env.example .env` (compose loads it; paper creds only — never live).
@@ -116,13 +93,11 @@ unless you explicitly point `ALGUA_DB_PATH` at the authoritative DB (or set `ALG
 ## Advisory campaign feedback (Task6)
 
 ```bash
-ALGUA_DB_PATH=/path/to/existing/registry.db uv run algua research campaign-menu \
-  --budget 4 --novelty-min 1 --novelty-max 2
 # Supply a NEW disposable directory; the example refuses reuse and ignores ALGUA_DB_PATH.
 uv run python scripts/examples/campaign_feedback.py --output-dir "$TASK6_SCRATCH/new-demo"
 ```
 
-The command reads lifetime idea attempts and negative-result context, then returns deterministic
+The example reads lifetime idea attempts and negative-result context, then returns deterministic
 `CampaignChoice(category, hypothesis_id, reason, prior_evidence_ids, budget)` options. One budget
 unit is an attempt slot. Set `TASK6_SCRATCH` to an authorized scratch directory for the example.
 Novelty uses unseen pool families (category fallback); an unavailable

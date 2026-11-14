@@ -14,6 +14,10 @@ Description=Algua autonomous research cycle (agent-driven, scratch preview)
 
 [Service]
 Type=oneshot
+ExecCondition=/opt/algua/.venv/bin/algua research ready
+# Scheduled/event-driven research is capped even when an older env file omits the new setting.
+# EnvironmentFile may explicitly tune it; manual CLI usage keeps its existing optional default.
+Environment=ALGUA_RESEARCH_DAILY_CYCLE_LIMIT=4
 EnvironmentFile=/etc/algua/algua.env
 # Scrub broker credentials from the research unit — the offline research loop never needs them, and
 # the sandboxed agent has network access (for uv), so leaving secrets in its environment is needless

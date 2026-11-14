@@ -113,13 +113,18 @@ CMD=(opencode run --pure --agent "$MODE" --dir "$WORKDIR")
 [ -n "$VARIANT" ] && CMD+=(--variant "$VARIANT")
 CMD+=(--print-logs --log-level INFO)
 [ "$MODE" = "chooser" ] && CMD+=(--format json --title "Constrained campaign choice")
-# The prompt is passed as a FILE, never as argv: Linux caps a single argument at 128 KiB and the
-# leap prompt (inspirations + pool state + refuted list) is the one that gets close.
-#
-# ORDER MATTERS. `--file` is an ARRAY flag, so `-f FILE "message"` swallows the message as a
-# second filename and the run dies with `File not found: message`. The message must come FIRST.
-# Measured, not assumed: the first form failed every invocation until a live smoke test caught it.
-CMD+=("Follow the instructions in the attached file." -f "$PROMPT_FILE")
+if [ "$MODE" = "chooser" ]; then
+  # Attachments pass through the runtime reader's 2000-char line / 50-KiB page limits. A bounded
+  # JSON menu can still lose its identity and evidence there. Deliver the chooser's <=96-KiB
+  # prompt literally, below Linux's 128-KiB single-argument limit, without shell evaluation.
+  [ "$(wc -c < "$PROMPT_FILE")" -le 98304 ] || die "chooser prompt exceeds 96 KiB argument bound"
+  CHOOSER_PROMPT="$(cat "$PROMPT_FILE")" || die "cannot read chooser prompt"
+  CMD+=(-- "$CHOOSER_PROMPT")
+else
+  # Unbounded research/leap/forage prompts keep file delivery to avoid Linux's argument limit.
+  # --file is an array flag: the message must precede it or it becomes a second filename.
+  CMD+=("Follow the instructions in the attached file." -f "$PROMPT_FILE")
+fi
 
 # Optional kernel write boundary: bwrap limits writable paths to the worktree and runtime state.
 # auto selects none when bwrap is unavailable. No mode here isolates network access or hides all
@@ -145,11 +150,19 @@ if [ "$SANDBOX" = "bwrap" ]; then
         --bind "${HOME}/.cache" "${HOME}/.cache"
         --bind "$XDG_DIR" "$XDG_DIR"
         --new-session --die-with-parent)
+  # Agents never call Drive (spec 2026-11-12 §5): hide the owner's refresh token from the agent,
+  # which runs model-written code and, for forage, reads untrusted web pages.
+  if [ -n "${ALGUA_DRIVE_CREDENTIALS:-}" ] && [ -e "${ALGUA_DRIVE_CREDENTIALS}" ]; then
+    WRAP+=(--ro-bind /dev/null "${ALGUA_DRIVE_CREDENTIALS}")
+  fi
 elif [ "$SANDBOX" != "none" ]; then
   die "unknown ALGUA_AGENT_SANDBOX: $SANDBOX (expected auto|bwrap|none)"
 fi
 
-FULL=(timeout "$TIMEOUT" env "${ENVV[@]}" "${WRAP[@]}" "${CMD[@]}")
+# Strip the Drive backend from the agent's environment: with these unset every ideation CLI call
+# the agent makes stays on its snapshot/scratch files and cannot write the owner's Sheets.
+FULL=(timeout "$TIMEOUT" env -u ALGUA_DRIVE_FOLDER_ID -u ALGUA_DRIVE_CREDENTIALS "${ENVV[@]}"
+      "${WRAP[@]}" "${CMD[@]}")
 
 if [ "$DRY_RUN" = "1" ]; then
   printf 'would run:'

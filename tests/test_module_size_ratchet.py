@@ -47,17 +47,19 @@ BUDGET: dict[str, int] = {
     # cohesive thing -- claims, attempts, outcomes for the idea pool -- and splitting the cap away
     # from the outcome transition it guards would put two halves of one rule in two files.
     "algua/registry/idea_attempts.py": 332,
+    # The existing fleet rollup crossed 300 adding the independent account-risk latch check.
+    "algua/execution/fleet_health.py": 301,
     "algua/backtest/bootstrap.py": 365,
     "algua/backtest/decision_path.py": 382,
     "algua/backtest/engine.py": 322,
     "algua/backtest/sweep.py": 461,
     "algua/backtest/walkforward.py": 347,
-    "algua/cli/data_cmd.py": 410,
+    "algua/cli/data_cmd.py": 319,
     "algua/cli/live_cmd.py": 730,
     "algua/cli/operator_cmd.py": 334,
-    "algua/cli/paper_cmd.py": 1381,
+    "algua/cli/paper_cmd.py": 1349,
     # Story 2.2: the live exit-drain selection moved to execution/lane_exit.select_exit_guard.
-    "algua/cli/registry_cmd.py": 380,
+    "algua/cli/registry_cmd.py": 378,
     # +39 for #560: ExecutionContract.target_gross_utilization plus its domain guards. The field
     # and guards are ~8 lines; the rest is the comment deriving the 0.95 default from an explicit
     # between-tick move policy (u <= 1/(1+r)), sizing 5% as a stress allowance against measured
@@ -91,18 +93,15 @@ BUDGET: dict[str, int] = {
     # so the client_order_id name rule must be enforced here too or it is decorative on exactly the
     # path that runs unattended.
     "algua/registry/mergeback_intake.py": 471,
-    "algua/registry/promote_run.py": 348,
-    "algua/registry/promotion.py": 542,
-    "algua/registry/repository.py": 965,
+    "algua/registry/promote_run.py": 268,
+    "algua/registry/promotion.py": 406,
+    "algua/registry/repository.py": 690,
     # +7 for #560: the registration-time call to assert_coid_safe_name, plus why the rule lives in
     # a stdlib-only leaf (order_state imports algua.live, which this layer may not reach).
     "algua/registry/store/crud.py": 393,
-    "algua/registry/store/family.py": 470,
-    "algua/registry/store/gate.py": 594,
-    "algua/research/eval_harness.py": 423,
+    "algua/registry/store/gate.py": 322,
     "algua/research/forward_gates.py": 392,
-    "algua/research/gates.py": 544,
-    "algua/research/regime.py": 365,
+    "algua/research/gates.py": 296,
     # +14 for #560: the gross-utilization step at the shared construction chokepoint. The logic
     # itself lives in portfolio/construction.py; this is the wiring plus why it runs last.
     "algua/strategies/base.py": 394,

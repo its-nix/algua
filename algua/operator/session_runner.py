@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from algua.calendar.factory import get_calendar
@@ -60,6 +60,7 @@ def run_session(
     emit: Callable[[Any], None],
     ok: Callable[[dict], dict],
     run_driver: Callable[[list[str], float], subprocess.CompletedProcess],
+    on_completed: Callable[[date, dict], None] | None = None,
 ) -> bool:
     """Gate → (run → record), all inside the held run lock.
 
@@ -171,6 +172,8 @@ def run_session(
         )
         return False
     payload = parse_driver_payload(proc.stdout)
+    if on_completed is not None and isinstance(payload, dict):
+        on_completed(decision.session, payload)
     rc = proc.returncode
     stdout_head = (proc.stdout or "")[:_STDOUT_HEAD_CAP]
 

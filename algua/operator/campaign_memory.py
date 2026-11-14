@@ -11,10 +11,12 @@ from typing import Any
 
 from algua.operator.campaign_memory_schema import (
     ATTEMPT,
+    COMPARISON_SELECTION_PROTOCOL,
     CYCLE,
-    RECENT_SELECTION_PROTOCOL,
+    LEGACY_SELECTION_PROTOCOL,
     SELECTION_PROTOCOLS,
     MemoryContextError,
+    context_limit,
     exact,
     integer,
     memory_reference,
@@ -52,7 +54,7 @@ def validate_public_memory_snapshot(value: object) -> dict:
     return validate_snapshot(value)
 
 
-def select_cycles(menu: dict, *, protocol: str = RECENT_SELECTION_PROTOCOL,
+def select_cycles(menu: dict, *, protocol: str = COMPARISON_SELECTION_PROTOCOL,
                   ) -> tuple[list[dict], dict]:
     """Bound recent terminal history across families; preserve old captured relevance semantics."""
     try:
@@ -71,7 +73,7 @@ def select_cycles(menu: dict, *, protocol: str = RECENT_SELECTION_PROTOCOL,
                     "request_invalid")
             by_id[row["id"]] = row
         require(all(int(ref.split(":")[1]) in by_id for ref in refs), "request_invalid")
-        relevant = (list(by_id.values()) if protocol == RECENT_SELECTION_PROTOCOL else
+        relevant = (list(by_id.values()) if protocol != LEGACY_SELECTION_PROTOCOL else
                     [by_id[int(ref.split(":")[1])] for ref in refs])
         relevant = sorted((r for r in relevant if r["outcome"] is not None),
                           key=lambda row: row["id"], reverse=True)[:64]
@@ -128,7 +130,7 @@ def capture_public_memory(menu: dict, *, cycle_directory: Path, tracking_uri: st
     """One20s work/result-acceptance deadline; blocking full teardown may overhang it."""
     deadline = time.monotonic() + 20.0
     require(phase in ("capture", "revalidate"), "request_invalid")
-    protocol = RECENT_SELECTION_PROTOCOL
+    protocol = COMPARISON_SELECTION_PROTOCOL
     if phase == "revalidate":
         previous = menu.get("request", {}).get("context", {}).get("public_research_memory")
         if previous is not None:
@@ -151,16 +153,18 @@ def capture_public_memory(menu: dict, *, cycle_directory: Path, tracking_uri: st
             require(remaining > 0, "read_deadline_exceeded")
             env = {"PATH": os.defpath, "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "TZ": "UTC",
                 "HOME": scratch, "TMPDIR": scratch, "PYTHONDONTWRITEBYTECODE": "1",
+                "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "NUMBA_NUM_THREADS": "1",
+                "MLFLOW_DISABLE_TELEMETRY": "true",
                 "NUMBA_CACHE_DIR": scratch + "/numba", "MPLCONFIGDIR": scratch + "/mpl",
                 "XDG_CACHE_HOME": scratch + "/cache", "XDG_CONFIG_HOME": scratch + "/config"}
             result = _run_contained(
                 [sys.executable, "-I", "-B", "-c", _BOOTSTRAP, str(root), raw.decode()],
                 cwd=root, env=env, timeout=remaining, grace=0.0,
-                max_stdout=25 * 1024, stderr_capture=4096)
+                max_stdout=context_limit(protocol) + 1024, stderr_capture=4096)
             require(time.monotonic() < deadline and not result.timed_out, "read_deadline_exceeded")
             require(not result.stdout_exceeded, "worker_output_exceeded")
             require(result.returncode == 0 and result.signal is None, "worker_exit_abnormal")
-            require(len(result.stdout) <= 25 * 1024, "worker_output_exceeded")
+            require(len(result.stdout) <= context_limit(protocol) + 1024, "worker_output_exceeded")
             try:
                 snapshot = _wire(result.stdout)
                 require(snapshot["selection_protocol"] == protocol, "worker_result_invalid")

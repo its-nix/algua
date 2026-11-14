@@ -2,8 +2,12 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 import algua.strategies.momentum as _momfam
 from algua.registry.lineage import factors_used_by
+
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
 
 
 def _write_strategy_using_momentum(stem: str) -> Path:

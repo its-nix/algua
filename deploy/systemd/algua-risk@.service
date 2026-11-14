@@ -1,0 +1,10 @@
+[Unit]
+Description=Algua independent account-risk check (%i)
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/algua/algua.env
+WorkingDirectory=/opt/algua
+TimeoutStartSec=180
+# Separate from the daily session marker; serialize with the paper operator and policy changes.
+ExecStart=/opt/algua/.venv/bin/algua operator lock-run -- algua risk check %i

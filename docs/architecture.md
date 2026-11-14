@@ -14,10 +14,10 @@ This map grants no operating, deployment, capital or activation permission.
 
 **Owner alignment, 2026-11-14:** the experimental-delivery target combines historical economic
 qualification with approximately five completed scheduled paper sessions for operational
-qualification, as described in PRD §16 and the November 7 strategy-delivery design. This is pending
-protected implementation; current forward gates and human live authorization remain unchanged.
-The 10% experimental pause remains established policy, the generic breaker defaults to 15%, and
-20% remains a proposed amendment. These are different statuses, not interchangeable thresholds.
+qualification, as described in PRD §16. Current main provides the separate opt-in
+[capped live route](agent/capped-live.md) and [layered risk controller](agent/layered-risk.md).
+The strict forward gate retains its meaning; capped qualification does not manufacture that
+certificate. The opted-in 10%-reduction/20%-halt policy differs from legacy generic defaults.
 
 **Read this before adding anything.** It tells you which package owns what, and where the
 extension points are. If you find yourself editing a core file to add a provider, broker, calendar,
@@ -46,7 +46,12 @@ planner attempt the supervisor decides to run a child for is recorded append-onl
 settles itself are not) and each frozen tick links its final invocation; forward evidence for a
 frozen deployment counts only linked ticks, and `paper promote` qualifies it from its
 recorded descriptor and freshly verified content, never the checkout (the raw `registry transition`
-edge refuses it). The live lane and go-live refuse frozen deployments (`frozen_live_unsupported`).
+edge refuses it). The raw registry go-live route still refuses frozen deployments; the separate human-signed
+[capped live connector](agent/capped-live.md) accepts an exact frozen deployment under the approved
+experimental profile. It does not mint a strict forward certificate.
+
+On the STRICT route the forward gate is the harsh threshold (Sharpe ≥ max(0.5× holdout, 0.3) over 63 broker-clocked sessions). On the CAPPED experimental route the edge is judged only by the research gate's out-of-sample holdout (Sharpe > 0, ≥63 bars). That is a weak bar. The five paper sessions prove mechanics, not edge. The deflated-Sharpe signal (DSR + bootstrap; trials = max(own lifetime sweep combos, funnel-wide combos in the 90-day window)) recorded by the research gate is advisory — the one trial-aware quality measure, and a candidate for a future binding bar (an owner decision).
+
 The shipped frozen-paper slice includes the two-phase planner boundary, verified immutable
 content/environments, child execution and deployment-bound operational evidence/qualification
 (Stories 1.3a–d). Existing migration-time tenants remain an explicit unmigrated cohort. The supervisor retains broker access, reconciliation and account-wide
@@ -82,9 +87,9 @@ paper-trades, and only a human with a signed challenge puts it live. The package
 ```
 
 **The one-way rule:** `cli` composes everything; nothing composes `cli`. Domain packages never
-import `algua.cli`. There is exactly one exception in the tree — `registry/human_actor.py` prints a
-signing challenge — and it is tracked as debt in **#592**, deliberately left uncontracted so it
-stays visible rather than being blessed by an exemption.
+import `algua.cli`. The last exception (`registry/human_actor.py`, debt #592) was deleted with the
+signed human-actor override, so the registry's side is now contracted ("registry stays off the cli
+layer").
 
 ### Three harnesses, one product
 
@@ -112,14 +117,14 @@ research database, MLflow instance, execution fork or speculative service split.
 | `features` / `portfolio` | signal computation; weight construction | I/O, registry, cli |
 | `backtest` | `simulate`/`run`, PIT masking (`pit_view`), the fast/canonical dual path + parity guard (`decision_path`), windowing (`walkforward`) | registry access, tracking, live/execution |
 | `calendar` | `MarketCalendar` + the settings-honouring `get_calendar()` factory | cli or registry imports |
-| `research` | the statistical gate: DSR, breadth deflation, regime robustness, forward gates | registry imports (`research` never imports `registry`) |
-| `registry` | **the lifecycle authority**: stages, transitions, gate tokens, allocations, approvals, families, the SQLite schema | live-lane imports |
+| `research` | the statistical gate: the integrity floor, DSR (the advisory trial-aware signal), forward gates | registry imports (`research` never imports `registry`) |
+| `registry` | **the lifecycle authority**: stages, transitions, gate tokens, allocations, approvals, the SQLite schema | live-lane imports |
 | `execution` | broker adapters, order state, ledgers, sizing, flatten/drain | cli imports |
 | `live` | the shared tick engine (`run_tick`), book exposure | cli imports |
 | `risk` | limits, breaches, kill-switch, global halt, peaks, book breaker | cli or live-lane imports |
 | `operator` | the autonomous loop: session gating, merge-back saga, loop health | cli imports |
 | `evaluation` | shared task bodies (`backtest_run`, `sweep_run`) + input resolution, importable by BOTH cli and registry | cli imports |
-| `knowledge` | the Obsidian vault sync; inspirations domain (`kb/inspirations/`) | imports of cli/registry/backtest/live/execution |
+| `knowledge` | the Obsidian vault sync; inspirations domain (`kb/inspirations/`); `knowledge/drive` — the stdlib Google Sheets client + tables for the ideation backend ([setup](agent/drive.md)) | imports of cli/registry/backtest/live/execution; any import of `knowledge.drive` from a trading/gate/data path |
 | `tracking` | experiment provenance and artifacts; the default MLflow SQLite backend | treating recorded results as promotion authority |
 | `audit` / `observability` | operational events and structured telemetry | granting permissions from runtime evidence |
 | `cli` | typer commands, the JSON envelope, flag resolution | domain logic — extract it |
@@ -180,7 +185,9 @@ adapters/declarations rather than permanent mutually exclusive strategy APIs.
 - `contracts/strategy_context.py` supplies `AsOfView`, `AsOfContext`, `ResearchStrategy` and shared
   score validation. Context includes aware `decision_ts`/`first_decision_ts`, eligible universe,
   immutable snapshot identities, defensive feature/model copies and verified model bytes/provenance.
-  News/fundamentals use existing PIT masks; models must be trained no later than the first decision.
+  News/fundamentals use existing PIT masks (their ingestion CLI and bundled strategies were removed pending
+  a redesign; the masks, store read path and manifest records remain); models must be trained no later than
+  the first decision.
   `as_of` is the decision cutoff. Daily UTC-midnight bar labels are not fabricated availability times.
 - `strategies/context_loader.py` binds `STRATEGY_INTERFACE = "context_v1"` and `score(context)`;
   a context module cannot also expose `signal` or `signal_panel`. `contracts/strategy_identity.py`
@@ -262,6 +269,27 @@ script and `.opencode/opencode.json`; this is not evidence of a completed single
 or live service configuration. Market-session operation and necessary trusted queues keep separate
 clocks/locks. Hermes monitors aggregate health and owns engineering incidents, not each trial.
 
+Current refill behavior (2026-11-13): the forage timer checks hourly at :05; `--scheduled` uses
+the actual eligible research menu, not open-pool depth. It permits at most two launches per UTC
+day with a two-hour cooldown, for an empty eligible queue or the 03 UTC refresh. Failed launches
+consume durable reservations. Manual foraging remains explicit. Accepted-note digests distinguish
+declared feasible, blocked and unknown recipes; these are source-fit labels, never empirical
+results or qualification. Drive stores `pilot_recipe` and leap reads the exported steering snapshot.
+Source retry identities bind content, verified profile and an explicit capability-file fingerprint
+(`operator/source_selection.py`), so unrelated deployments do not erase retry history. Extend that
+manifest when implementing a new recipe capability. Migration from old commit-based keys resets
+advisory retry counters once; durable criticism and experiment evidence are retained.
+The manifest also binds leap's skill review policy: changing that file legitimately reopens
+advisory source reviews; unrelated deployments still do not. Forage receives up to six prior
+review gaps for its selected categories, each bounded to 1,000 characters, as untrusted search
+context. Missing feedback is visible but does not stop forage. Leap separately assesses faithful
+replication and at most one source-motivated, explicitly labelled extension per offered source;
+the existing feasibility, semantic dedup/refutation and qualification checks remain binding.
+Conceptual `auto:leap_critic` / `CRITIC:untestable` discards without strategy/evaluation links remain
+required context for an unattempted idea's first trial rather than a permanent veto. Current-data
+preflight must recheck them. Actual attempts, empirical/manual and other critic rejections retain
+their dedup barriers; promotion gates are unchanged.
+
 ## Strategy-first monitor: delivered and target
 
 The private monitor home is now the strategy-first view (PR #722), with secondary diagnostics
@@ -302,7 +330,7 @@ strategy load/evaluation, with typed validated output. Hostile-code tests must r
 boundary, not just an authoring worktree. Missing kernel isolation must fail closed. This is an
 acceptance blocker; source hashes, prompts, allowlists and fresh processes do not satisfy it.
 
-Root and standalone web CI are implemented in `.github/workflows/ci.yml` (including PR #720).
+Root CI is implemented in `.github/workflows/ci.yml` (including PR #720).
 The target release chain additionally needs independent review and CI bound to the exact reviewed
 and integrated source, immutable artifact digests, isolated untrusted PR execution, serialized safe
 paper release, smoke/health verification and known-good recovery. A green CI run or an ordinary
@@ -328,7 +356,7 @@ can qualify forward operation.
 | Board (PRs #722–#724) | Strategy-first UI, stable identity, latest evidence, opt-in provenance/OOS disclosure | Honest non-comparability; sorting and broader integrated target not accepted. |
 | Portfolio / memory / factory | Construction, allocations, risk, attempts, scorecards, tracking/KB and operator primitives | Integrated allocator, comprehensive learning and one independent factory require system evidence. |
 | Execution / release / repair | Frozen-paper reproducibility/evidence, current supervisor, CI and operational controls | Authoritative strategy sandbox, safe immutable paper release/recovery and closed repair loop not accepted. |
-| Capital / live | Authenticated promotion/live gates and existing book guards | ₪2,000 envelope and inclusive cash-flow-adjusted 10% pause differ from current defaults; frozen live unsupported. |
+| Capital / live (November 8 update) | Signed capped frozen-live connector, explicit instruments and opt-in layered account guards | Actual USD ceiling/instruments, qualifying evidence, immutable deployment anchor and activation remain owner/deployment inputs. Legacy defaults remain. |
 | Unattended machine | Components and fixtures exist | **3 unattended cycles / >=100 real-data attempts: UNKNOWN.** Integrated scheduled operation and fault-recovery acceptance not established. |
 
 The architecture dependency order is data/provenance and canonical direction → context and
@@ -472,6 +500,61 @@ for the changed behavior, plus relevant lint, type and import-boundary checks. U
 for broad integration changes or when requested. Existing automated merge-back gates still apply.
 Report the checks actually run; a full-suite run is not required before every small commit.
 
-Touching `web/`? Also `uv run --project web pytest web/backend/tests -q` and
-`cd web/frontend && npm run check && npm run build`. The root `uv.lock` is `dependency_hash`
-identity — never add web deps to it.
+The root `uv.lock` is `dependency_hash` identity.
+
+### Frozen model mechanics (version 2; reviewed-code paper execution)
+
+The frozen descriptor can bind one portable offline price-linear model and its training
+provenance (`contracts/frozen_model`, `registry/frozen_model_assets`). Explicit version-2
+descriptor/boundary/planner/wire stamps select a bars-plus-model `context_v1` path; version 1
+keeps its original identity and bytes. `strategies/context_inputs` composes the shared immutable
+context, `live/model_context` applies the single-decision cutoff, and the cold child loads only
+the bundled pin through `strategies/frozen_model`. `live/frozen_model_wire` validates the profile
+and the two phases bind the exact bars snapshot and model identity. The supervisor retains risk
+validation, effects and evidence recording.
+
+On 2026-11-08 the owner explicitly approved removing the additional model-only isolation hold.
+Verified model-paper intake and resolution now use the existing unsandboxed reviewed-code trust
+model, including authored imports during preparation. The cold child still has process/output
+bounds and a replacement environment; it is not a filesystem/network/credential sandbox and
+escaped descendants are an accepted residual. Restrict this path to human-reviewed strategy code.
+The waiver does not provide verified-PR admission's separate isolation attestation, change signed
+live authority, relax qualification criteria, or activate services/accounts.
+
+
+`backtest/model_policy` admits a fixed pre-period price-linear context pin for walk-forward and
+sweep evaluation, with exact model identity retained in output and the economic ledger. It adds
+no training or model grid. `registry/experimental_sessions` records actual scheduled per-tenant
+paper mechanics; `experimental_qualification` binds current historical criteria plus five sessions
+into a separate authenticated record. `paper qualify-experimental` does not advance stages or
+mint a strict forward/live certificate. The separate capped-live connector and opt-in layered
+drawdown controller are implemented; see their operating guides below.
+
+
+### Configured layered account risk
+
+`risk/layered` owns pure policy arithmetic; `registry/drawdown_store` and `drawdown_auth` own
+independent durable state, immutable evidence and single-use human policy/restoration signatures
+(schema v51). `execution/drawdown_cycle` performs assessment before effects, confirms cancellation,
+synchronizes/reconciles fills and refreshes cash before guarded attributed limit reductions.
+`drawdown_guard` separates reduced sizing from economic NAV and caps aggregate buys. The paper
+and live CLI cycles share this body; direct trade-tick cannot skip a configured policy.
+`risk` commands expose configuration, restoration and status. The optional risk watcher is
+independent of the daily session gate and can obtain live trading capability only through existing
+signature verification. These implementations do not enable a timer or account.
+See [layered risk](agent/layered-risk.md) for scope and deployment obligations.
+
+
+### Capped frozen-live connector (schema v52)
+
+`registry/capped_auth`, `capped_context`, `capped_qualification` and `capped_state` bind a distinct
+human signature to frozen content, the original five-session qualification, provider/account,
+signed risk policy and exact capital. Matching approval, legal human lifecycle edges and allocation
+share one transaction. `capped_active` supplies the row-bound mid-order revocation check.
+`cli/capped_runtime` supplies data-aware verification to the live composition seam; execution
+modules cannot import the data lane. The risk watcher receives that verifier explicitly.
+`cli/experimental_handoff` revokes paper allocation and drains attributed paper exposure without a
+new tick or kill switch. `cli/frozen_planner` is shared by paper and `cli/frozen_live`; the live
+supervisor owns every effect and links the tick to its frozen invocation. Generic configured live
+allocation increases require the signed capped command. No activation or deployment is implicit.
+See [capped live](agent/capped-live.md) for the sequence, legacy scope and deployment obligations.

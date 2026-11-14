@@ -14,6 +14,8 @@ import pytest
 import algua.strategies.momentum as _momentum_fam
 from algua.strategies.loader import StrategyNotFound, load_strategy
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 _FAM_PATH = Path(_momentum_fam.__path__[0])
 
 # ---------------------------------------------------------------------------

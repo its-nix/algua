@@ -10,13 +10,11 @@ import sys
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 
-from algua.cli.main import app
 from algua.contracts.idea import AttemptOutcome
 from algua.registry.campaign_read import read_campaign_scorecard
 from algua.registry.db import connect, migrate
-from tests.campaign_fixtures import add_idea, attempt
+from tests.campaign_fixtures import add_idea, attempt, invoke_menu
 
 
 def test_persisted_example_reconsiders_duplicate_only_after_its_outcome(tmp_path):
@@ -51,7 +49,7 @@ def test_campaign_menu_reads_empty_persisted_history(tmp_path, monkeypatch):
     conn.close()
     monkeypatch.setenv("ALGUA_DB_PATH", str(path))
     before = {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()}
-    result = CliRunner().invoke(app, ["research", "campaign-menu", "--budget", "2"])
+    result = invoke_menu(2)
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
@@ -72,7 +70,7 @@ def test_campaign_cli_exclusions_include_reason_and_exact_causal_ids(tmp_path, m
     finally:
         conn.close()
     monkeypatch.setenv("ALGUA_DB_PATH", str(path))
-    result = CliRunner().invoke(app, ["research", "campaign-menu", "--budget", "2"])
+    result = invoke_menu(2)
     assert result.exit_code == 0, result.output
     exclusions = json.loads(result.stdout)["exclusions"]
     assert set(exclusions[str(old.id)]["prior_evidence_ids"]) == {"ideas:1", "idea_attempts:1"}
@@ -93,13 +91,13 @@ def test_lifetime_denominators_preserve_all_attempts_and_wal(tmp_path):
         before = {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()}
         sc = read_campaign_scorecard(path)
         assert sc["totals"] == {
-            "attempted": 9, "completed": 8, "unfinished": 1, "invalid": 1,
+            "attempted": 10, "completed": 9, "unfinished": 1, "invalid": 1, "data_blocked": 1,
             "run_error": 1, "abandoned": 1, "economic_rejected": 3,
             "economic_evaluated": 5, "preview_pass": 1, "promoted_candidate": 1,
         }
-        assert len(sc["attempts"]) == 9
+        assert len(sc["attempts"]) == 10
         assert {a["evidence_id"] for a in sc["attempts"]} == {
-            f"idea_attempts:{n}" for n in range(1, 10)}
+            f"idea_attempts:{n}" for n in range(1, 11)}
         assert {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()} == before
     finally:
         conn.close()
@@ -115,7 +113,7 @@ def test_missing_registry_or_schema_refuses_json_without_creating_files(tmp_path
                 conn.execute("CREATE TABLE ideas(id INTEGER)")
     before = {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()}
     monkeypatch.setenv("ALGUA_DB_PATH", str(path))
-    result = CliRunner().invoke(app, ["research", "campaign-menu", "--budget", "2"])
+    result = invoke_menu(2)
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
     assert payload["ok"] is False
@@ -146,7 +144,7 @@ def test_source_changing_during_capture_refuses_without_opening_it(tmp_path, mon
 
     monkeypatch.setattr(shutil, "copyfile", changed_source)
     monkeypatch.setenv("ALGUA_DB_PATH", str(path))
-    result = CliRunner().invoke(app, ["research", "campaign-menu", "--budget", "1"])
+    result = invoke_menu(1)
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
     assert payload["code"] == "db_unavailable"
@@ -163,7 +161,7 @@ def test_schema_missing_campaign_columns_refuses_instead_of_silently_using_legac
     conn.commit()
     conn.close()
     monkeypatch.setenv("ALGUA_DB_PATH", str(path))
-    result = CliRunner().invoke(app, ["research", "campaign-menu", "--budget", "1"])
+    result = invoke_menu(1)
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
     assert payload["code"] == "invalid_input"

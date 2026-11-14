@@ -31,6 +31,22 @@ and required sidecar options supplied for this experiment. Use `--demo` only for
 synthetic experiment, and report it as synthetic. Never fall back to demo when real inputs are
 missing. If the selected interface cannot run a required evaluation, record `run_error` with the
 actual refusal; do not replace the hypothesis, strip a required model or relax a gate.
+For a real snapshot, add `--research-only` to author smoke and registered `backtest run` commands
+(and the supplied `--holdout-frac` when nondefault). It stops before the same reserved tail used
+by walk-forward. Synthetic demo smoke has no claim to a fresh statistical holdout.
+Before numerical evaluation, declare the whole experiment including mandatory controls in a
+`research run-all --tasks <file>` task array. Each sweep must declare `required_window_metrics`,
+including `total_return` when the falsification compares costed window returns. Such a batch
+preflights the whole plan and authored configs before running its first numerical task. Pair
+the returned per-trial `window_metrics` on exact start/end dates and preserve them in the report;
+an aggregate Sharpe or mean is not a substitute. Reuse these outputs instead of rerunning trials.
+The batch accepts backtest/sweep/promote, not walk-forward; call that CLI separately. Backtest
+tasks use CONFIG defaults and accept no param grid. A required broad equal-weight control may be
+a diagnostic benchmark sweep under the configured pilot: declare `evaluation_role: "benchmark"`
+and `benchmark_for: "<primary name>"` in its task and CONFIG.params. Include its primary sweep in
+the same batch. Use a common conservative feature_lookback, identical market data/terminal handling,
+lag and costs, and preserve paired dates. Broader construction applies only to the benchmark;
+the primary book keeps top-20. Do not register/promote a diagnostic control or claim authority.
 
 ### Declared real-data pilot
 
@@ -52,7 +68,7 @@ CLI refuses or a required input is missing. Report those failures honestly; neve
 metrics. Qualification remains separate: a known-ineligible proxy must not reach candidate or
 enqueue `merge_back`. A strict preview may record the gate's actual refusal, without relaxation
 flags; otherwise record the known provenance preflight limit with `preview_gate: null`. Keep the
-existing `integrity_fail` outcome for that qualification limit and assess the economic
+non-refuting `data_blocked` outcome for that qualification limit and assess the economic
 falsification only as far as the recorded proxy evidence supports. Do not describe an unrun gate
 as an executed gate or a provenance limitation as numerical refutation of the hypothesis.
 
@@ -81,8 +97,9 @@ For each claimed idea:
    Pass the hypothesis and exact evaluation inputs. Do not create the same scaffold beforehand.
    `strategy new` already registers the scratch idea and creates the KB doc + family hub;
    then fill in the doc's `## Hypothesis` and `## Derivation` prose. Confirm it loads:
-   `uv run algua backtest run <name> <data-options>`.
-3. **Backtest + register.** `uv run algua backtest run <name> <data-options> --register` (advances `idea →
+   `uv run algua backtest run <name> <data-options> --research-only` for real snapshots.
+3. **Backtest + register.** `uv run algua backtest run <name> <data-options> --research-only --register`
+   for real snapshots (advances `idea →
    backtested`).
 4. **Out-of-sample evidence.** `uv run algua backtest walk-forward <name> <data-options>` (K windows +
    stability; the holdout is withheld until `research promote`). If matching measured breadth is
@@ -92,10 +109,9 @@ For each claimed idea:
 5. **Interpret.** Delegate the results JSON to the `interpret` subagent for a promote/discard
    recommendation with reasoning, and assess the idea's own `falsification` statement against the
    walk-forward evidence -> `falsification_assessment` (`refuted` | `survived` | `untested`).
-6. **Gate.** Run `uv run algua research promote <name> <data-options>` using measured breadth from
-   `backtest sweep`, a fresh holdout and PIT universe inputs. `--n-combos` is an authenticated
-   human-only declaration; research workers never pass it. The gate advances
-   `backtested → candidate` **only on pass**; on a fail it
+6. **Gate.** Run `uv run algua research promote <name> <data-options> --universe <pit-universe>` (the
+   combos you searched are counted from the recorded `backtest sweep` trials; breadth cannot be
+   declared, so sweep first). The gate advances `backtested → candidate` **only on pass**; on a fail it
    reports why and leaves the stage unchanged. Trust the gate — do not lower thresholds to force a pass.
 7. **Record.** Sync the synced fact blocks: `uv run algua strategy doc <name>`. Then write
    the doc's `## Verdict & next` (what was learned + the next idea as a `[[dangling-link]]`),
@@ -132,14 +148,15 @@ recorded as `run_error` / `missing_from_trailer` anyway; saying why yourself is 
    - `idea_id` — the claimed idea's id. Required; an entry without it teaches the pool nothing.
    - `title` — <= 120 chars, plain ASCII.
    - `outcome` — what actually happened, written straight into the authoritative idea ledger:
-     `integrity_fail` (preflight/integrity refused it) | `holdout_negative` (holdout Sharpe <= 0) |
+     `data_blocked` (known data/provenance exclusion; not an economic refutation) |
+     `integrity_fail` (an actual integrity check refused it) | `holdout_negative` (holdout Sharpe <= 0) |
      `walkforward_refuted` (out-of-sample windows refute it) | `sweep_unstable` (only isolated
      combos work) | `candidate_preview_pass` (the preview gate passed) | `run_error` (you could not
      test it). Be honest — this is the record the funnel learns from.
    - `reason` — <= 300 chars, why that outcome.
    - `falsification_assessment` — `refuted` | `survived` | `untested`, judging the idea's own
      falsification statement against your walk-forward evidence.
-   - `verdict` — `"discarded"|"candidate-preview-pass"|"error"` (kept for the digest readers).
+   - `verdict` — `"blocked"|"discarded"|"candidate-preview-pass"|"error"` (kept for the digest readers).
    - `merge_back` — ONLY when `verdict` is `"candidate-preview-pass"`: `idea_id`, `strategy`,
      `universe`, `start`, `end`, `eval_context`, naming the exact strategy module you authored and
      its promote window.

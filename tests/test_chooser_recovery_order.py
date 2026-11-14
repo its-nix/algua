@@ -87,24 +87,46 @@ def test_prior_recovery_precedes_real_chooser_and_memory_admission(
     if memory:
         context = menu["request"]["context"]["public_research_memory"]
         assert len(observed) == 2 and all(rows[0]["outcome"] == "run_error" for rows in observed)
-        # The unrelated family is absent from offered evidence; recovery does not broaden it.
-        assert context["coverage"]["candidate_attempts_considered"] == 0
+        # Current memory protocol considers bounded terminal history across families, including
+        # infrastructure failures. The old relevance-only protocol is no longer the default.
+        assert context["coverage"]["candidate_attempts_considered"] == 1
+        assert context["coverage"]["cycles_without_receipt"] == 1
         assert context["evidence_mode"] == "UNVERIFIED_WORKER" and context["authority"] == "none"
         assert checkpoint["request"]["context"]["public_research_memory"] == context
     assert not (tmp_path / "absent-tracking.db").exists()
 
 
-def test_empty_menu_still_reconciles_prior_cycle_without_spending(
+def test_recovered_attempt_is_not_reoffered_and_empty_pool_is_a_safe_noop(
         interrupted, fake_runtime, tmp_path):
     conn, data, original = interrupted
-    result, refused = invoke("--run", "following", "--limit", "1", "--choose",
+    result, started = invoke("--run", "following", "--limit", "1", "--choose",
                              "--choice-dir", str(tmp_path / "choice"))
-    assert result.exit_code == 1 and "empty campaign menu" in refused["error"]
+    assert result.exit_code == 0, result.stdout
+    assert started['claimed'] == [] and started['phase'] == 'pool_empty'
     prior = conn.execute("SELECT * FROM idea_attempts WHERE id=?", (original["id"],)).fetchone()
     assert prior["outcome"] == "run_error" and prior["reason"] == "controller_restart:1"
     assert prior["claim_token"] == original["claim_token"]
     assert conn.execute("SELECT COUNT(*) FROM idea_attempts").fetchone()[0] == 1
-    assert not calls(fake_runtime) and not (data / "research-cycles/following.json").exists()
+    assert not calls(fake_runtime)
+
+
+def test_empty_menu_finishes_prior_checkpoint_without_spending(interrupted, fake_runtime, tmp_path):
+    from algua.contracts.idea import AttemptOutcome
+
+    conn, data, original = interrupted
+    # Model a crash after a terminal outcome committed but before the cycle checkpoint finished.
+    IdeaAttemptsRepository(conn).record_outcome(original['idea_id'], token=original['claim_token'],
+        outcome=AttemptOutcome.WALKFORWARD_REFUTED, reason='SYNTHETIC_FIXTURE terminal result')
+    result, refused = invoke("--run", "following", "--limit", "1", "--choose",
+                             "--choice-dir", str(tmp_path / "choice"))
+    assert result.exit_code == 0 and refused['claimed'] == []
+    assert refused['phase'] == 'pool_empty'
+    assert conn.execute("SELECT COUNT(*) FROM idea_attempts").fetchone()[0] == 1
+    prior = conn.execute('SELECT outcome, reason FROM idea_attempts WHERE id=?',
+                         (original['id'],)).fetchone()
+    assert tuple(prior) == ('walkforward_refuted', 'SYNTHETIC_FIXTURE terminal result')
+    assert not calls(fake_runtime)
+    assert (data / 'research-cycles/following.json').is_file()
 
 
 @pytest.mark.parametrize("fault", ["cycle", "rows", "checkpoint-object", "checkpoint-symlink",

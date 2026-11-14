@@ -30,6 +30,8 @@ from typing import Any
 
 import algua
 from algua.contracts.canonical import canonical_json
+from algua.live.frozen_model_loading import bundle_model
+from algua.live.frozen_model_wire import protocol_profile
 from algua.live.frozen_wire import (
     BARS_FILE,
     EXIT_BAD_REQUEST,
@@ -42,11 +44,11 @@ from algua.live.frozen_wire import (
     WireError,
     decode_request,
 )
-from algua.live.frozen_wire_json import expect_wire, parse_canonical
+from algua.live.frozen_wire_json import parse_canonical
 from algua.live.frozen_wire_result import encode_result
 from algua.live.planner import phase_a, phase_b
-from algua.live.planner_contract import BOUNDARY_VERSION
 from algua.strategies.base import LoadedStrategy
+from algua.strategies.frozen_model import load_frozen_model_strategy
 from algua.strategies.loader import load_tradable_strategy
 
 PROTOCOL_FILE = "_algua/protocol.json"
@@ -104,20 +106,11 @@ def _bundle_bytes(bundle_root: Path, relative: str) -> bytes:
     return data
 
 
-def _check_protocol(bundle_root: Path) -> None:
+def _check_protocol(bundle_root: Path) -> int:
     try:
-        protocol = parse_canonical(_bundle_bytes(bundle_root, PROTOCOL_FILE))
-        if type(protocol) is not dict or set(protocol) != _PROTOCOL_KEYS:
-            raise WireError("bad_protocol", "unexpected protocol fields")
-        expect_wire(protocol["frozen_wire"])
-        boundary = protocol["planner_boundary_version"]
-        if type(boundary) is not int or boundary != BOUNDARY_VERSION:
-            raise WireError("unsupported_boundary_version", str(boundary))
-        if any(type(protocol[key]) is not int
-               for key in ("descriptor_version", "planner_protocol_version")):
-            raise WireError("bad_protocol", "protocol versions must be integers")
+        return protocol_profile(parse_canonical(_bundle_bytes(bundle_root, PROTOCOL_FILE)))
     except WireError as exc:
-        raise _Refused(f"{PROTOCOL_FILE} is not frozen-planner wire 1, boundary 1: {exc}") from None
+        raise _Refused(f"{PROTOCOL_FILE} has an unsupported profile: {exc}") from None
 
 
 def _read_request(invocation_dir: Path) -> DecodedRequest:
@@ -146,7 +139,8 @@ def _load_bundle_strategy(bundle_root: Path, request: DecodedRequest) -> LoadedS
         raise _Refused(f"{RESOLVED_CONFIG_FILE} is not the request's recorded config")
     name = identity.strategy_name
     try:
-        strategy = load_tradable_strategy(name)
+        strategy = (load_tradable_strategy(name) if request.early.boundary_version == 1
+                    else load_frozen_model_strategy(name, model=bundle_model(bundle_root)))
     except (LookupError, ValueError) as exc:
         raise _Refused(f"the bundle holds no tradable strategy {name!r}: {exc}") from None
     if strategy.config.name != name:
@@ -170,7 +164,8 @@ def _run(bundle_root: Path, request: DecodedRequest) -> bytes:
         _load_bundle_strategy(bundle_root, request), request.early.gate_universe)
     late = request.late  # decode_request: None exactly for phase "a"
     result = phase_a(strategy, request.early) if late is None else phase_b(strategy, late)
-    payload = encode_result(request.phase, request.early.request_id, result)
+    payload = encode_result(request.phase, request.early.request_id, result,
+                            protocol_version=request.identity.protocol_version)
     foreign = foreign_algua_modules(dict(sys.modules), str(bundle_root))
     if foreign:
         raise _Refused(f"algua modules loaded from outside the bundle: {foreign}")
@@ -197,12 +192,14 @@ def main(invocation_dir: str) -> int:
     with os.fdopen(_divert_stdout(), "wb") as result_channel:
         try:
             bundle_root = _bundle_root()
-            _check_protocol(bundle_root)
+            profile = _check_protocol(bundle_root)
             try:
                 request = _read_request(Path(invocation_dir))
             except WireError as exc:
                 sys.stderr.write(f"frozen_child: bad request: {exc}\n")
                 return EXIT_BAD_REQUEST
+            if request.identity.protocol_version != profile:
+                raise _Refused("request profile differs from bundle profile")
             payload = _run(bundle_root, request)
         except _Refused as exc:
             sys.stderr.write(f"frozen_child: refused: {exc}\n")

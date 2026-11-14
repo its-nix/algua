@@ -16,8 +16,8 @@ from typing import Any, Literal
 
 import pandas as pd
 
-from algua.contracts.canonical import FROZEN_WIRE
 from algua.contracts.types import OrderIntent, Side
+from algua.live.frozen_model_wire import wire_tag, wire_version
 from algua.live.frozen_wire import MAX_STDOUT_BYTES
 from algua.live.frozen_wire_json import (
     Phase,
@@ -33,7 +33,6 @@ from algua.live.frozen_wire_json import (
     expect_hex,
     expect_object,
     expect_phase,
-    expect_wire,
     optional,
     parse_canonical,
 )
@@ -174,14 +173,16 @@ def _encode_body(result: Any) -> dict[str, Any]:
     raise WireError("not_encodable", f"{type(result).__name__} never crosses the wire")
 
 
-def encode_result(phase: Phase, request_id: str, result: Any) -> bytes:
+def encode_result(
+    phase: Phase, request_id: str, result: Any, *, protocol_version: int = 1,
+) -> bytes:
     """The child's stdout: the canonical result document and one trailing newline."""
     expect_phase(phase)
     body = _encode_body(result)
     if body["kind"] not in _PHASE_KINDS[phase]:
         raise WireError("forbidden_kind", f"{body['kind']} is not a phase {phase} result")
     envelope = {
-        "wire": dict(FROZEN_WIRE),
+        "wire": wire_tag(protocol_version),
         "phase": phase,
         "request_id": expect_hex(request_id, 32, "request_id"),
         "result": body,
@@ -221,14 +222,16 @@ def _decode_body(kind: str, r: dict[str, Any]) -> WireResult:
     return Decision(state, tuple(_decode_intent(intent) for intent in intents))
 
 
-def decode_result(stdout: bytes, *, phase: Phase, request_id: str) -> WireResult:
+def decode_result(
+    stdout: bytes, *, phase: Phase, request_id: str, protocol_version: int = 1,
+) -> WireResult:
     """The supervisor's strict reader of one child's stdout."""
     expect_phase(phase)
     if len(stdout) > MAX_STDOUT_BYTES:
         raise WireError("output_too_large", f"{len(stdout)} > {MAX_STDOUT_BYTES} bytes")
     body = stdout[:-1] if stdout.endswith(b"\n") else stdout
     root = expect_object(parse_canonical(body), _ENVELOPE_KEYS, "result envelope")
-    expect_wire(root["wire"])
+    wire_version(root["wire"], expected=protocol_version)
     if root["phase"] != phase or root["request_id"] != request_id:
         raise WireError("echo_mismatch", "result does not echo this phase and request_id")
     result = root["result"]

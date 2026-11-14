@@ -63,9 +63,10 @@ def _breadth(repo, provenance: str, *, n: int = 5) -> BreadthContext:
 def _run_gate(repo, breadth, sharpe: float = 7.0):
     return run_gate(
         repo, _gate_wf(sharpe), name=_GATE_NAME, actor=Actor.AGENT, criteria=GateCriteria(),
-        breadth=breadth, universe_name=None, universe_snapshots=None,
+        breadth=breadth, universe_name="pit_u",
+        universe_snapshots=[{"snapshot_id": "u1", "effective_date": "2020-01-01"}],
         period_start=_GATE_START, period_end=_GATE_END, holdout_frac=0.2,
-        data_source="synthetic", snapshot_id=None, allow_non_pit=True, reason_suffix="")
+        data_source="synthetic", snapshot_id=None)
 
 
 def test_min_funnel_floor_strategies_value():
