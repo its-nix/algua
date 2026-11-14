@@ -1,8 +1,8 @@
 """Delisting-aware exit overlay — pure transform on the (timestamp × symbol) execution grid,
 applied right before vectorbt `from_orders`. It NEVER invents an exit: it forces a liquidation
 only for a position HELD past its last real bar, and only with a confirmed delisting record
-(else fail-closed, unless the human-only relaxation). It always kills the post-delisting NaN
-tail so `0 × NaN` cannot poison group equity. See the #212 design spec.
+(else fail-closed, unless the backtest-only relaxation; never on the promote path). It always
+kills the post-delisting NaN tail so `0 × NaN` cannot poison group equity. See the #212 design spec.
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ def apply_delisting_exits(
     """Return (adj_exec, weights_exec, forced_exits). See module docstring + spec.
 
     `adj` is the ORDINARY fill-price grid (adj_close, or adj_open under issue #383's open-fill
-    basis). `terminal_price_grid` (default: `adj`) is the grid the human-only
+    basis). `terminal_price_grid` (default: `adj`) is the grid the backtest-only
     `assume_terminal_last_close` fallback reads the last-bar terminal price from — pinned to
     adj_close by the caller so a delisting realizes at the last CLOSE (a close-of-book event),
     never the last open, regardless of the ordinary fill basis. Record-backed terminal prices are
@@ -134,7 +134,8 @@ def apply_delisting_exits(
             if not assume_terminal_last_close:
                 raise DelistingExitError(
                     f"{c}: held position past its last bar {T.date().isoformat()} with no "
-                    f"delisting record (provide one or pass --assume-terminal-last-close)"
+                    f"delisting record (provide one; a plain backtest may pass "
+                    f"--assume-terminal-last-close)"
                 )
             weights_exec.loc[T:, c] = 0.0
             # Last adj_CLOSE (from terminal_price_grid), NOT the ordinary fill grid — a delisting

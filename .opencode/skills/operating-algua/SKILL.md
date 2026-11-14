@@ -39,7 +39,7 @@ idea → backtested → candidate → paper → forward_tested → live → reti
 - `uv run algua backtest walk-forward <name> --demo` — K windows + stability (out-of-sample evidence); the holdout is withheld until `research promote`.
 - `uv run algua backtest sweep <name> --demo --param KEY=v1,v2` — bounded parameter grid, ranked.
 - `uv run algua research promote <name> --demo` — gate `backtested → candidate`; promotes only on pass.
-- `uv run algua paper promote <name>` — gate `paper → forward_tested`; requires ≥63 broker-clocked daily return observations, ≥90% coverage, realized Sharpe ≥ max(0.5×holdout, 0.3), vol/DD bounds, clean integrity + hygiene, evidence ≤5 sessions stale. Relaxation flags are human-only.
+- `uv run algua paper promote <name>` — gate `paper → forward_tested`; requires ≥63 broker-clocked daily return observations, ≥90% coverage, realized Sharpe ≥ max(0.5×holdout, 0.3), vol/DD bounds, clean integrity + hygiene, evidence ≤5 sessions stale. Threshold flags may only tighten, for every actor.
 - `uv run algua data inspect --summary` — what data snapshots exist.
 
 Pass `--summary` to `backtest walk-forward`, `backtest sweep`, and `research promote` to emit

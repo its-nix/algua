@@ -543,11 +543,10 @@ def merge_back(
             # via a legal static `from algua.registry.promote_run import promote_task` at module
             # scope — the cli-independence import-linter contract (#165) forbids a
             # paper_cmd<->research_cmd sibling edge, but neither command module imports the other
-            # here; both import the same shared registry module. Strict-agent inputs ONLY — no
-            # relaxation flags reach the seam, so a human-only relaxation is impossible by
-            # construction. The per-attempt ``attempt_token`` is stamped on the gate row so the
-            # driver reads the outcome authoritatively (finding #5). promote_task opens+closes its
-            # OWN registry_conn (per its contract).
+            # here; both import the same shared registry module. Strict-agent inputs ONLY (and no
+            # relaxation exists for any actor any more). The per-attempt ``attempt_token`` is
+            # stamped on the gate row so the driver reads the outcome authoritatively (finding #5).
+            # promote_task opens+closes its OWN registry_conn (per its contract).
             return promote_task(
                 name=strategy, universe=universe, start=start, end=end,
                 demo=demo, snapshot=snapshot, fundamentals_snapshot=fundamentals_snapshot,

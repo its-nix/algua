@@ -87,7 +87,7 @@ without rerunning calculations. `--summary` is available when those detailed res
 `backtest|sweep|promote`, **not** walk-forward or `summary/track`. Keep standalone walk-forward.
 Record actual `sweep_trial` rows/overflow and failures; a sweep parent or claim slot is not a variant.
 Known proxy qualification ends `integrity_fail`, `preview_gate: null`, no `merge_back`; report empirical
-falsification separately. Do not pass `--n-combos`, human relaxation flags or a fabricated universe.
+falsification separately. Do not pass a fabricated universe; breadth is always measured and the gates have no relaxation.
 
 ## Isolated preparation commands
 

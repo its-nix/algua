@@ -117,18 +117,14 @@ future capabilities during a review without explicit scope, especially when they
 - **Target capabilities remain partial:** immutable deployed planners, complete hourly operation,
   comprehensive experiment memory, the complete autonomous repair/release loop and compatible
   external-capital integrations. Their absence is roadmap work, not a foundation defect.
-- **`--actor human` below the live wall is now AUTHENTICATED (#329).** Asserting `--actor human`
-  on a gated command (`research promote`, `paper promote`) requires an SSH signature (namespace
-  `algua-human-actor`, enrolled via `registry enroll-approver --namespace human-actor`) over a
-  fresh single-use challenge that binds the command + strategy + recomputed artifact identity + the
-  full run context (every gate-relevant input incl. the exact relaxation set). A bare `--actor
-  human` no longer unlocks any human-only path — it just prints a challenge and runs nothing. The
-  gate reuses the go-live trust anchor (`approvers/allowed_signers`) under a distinct namespace and
-  fails closed on a forged/replayed/expired/cross-run signature. So the human-only relaxations
-  (declared breadth, holdout reuse, non-PIT, assume-terminal-last-close, NOVEL-family mint, the
-  paper thresholds) are a cryptographic boundary against a same-CLI agent that cannot write the
-  tree/DB — no longer "discipline." The go-live `registry transition --to live` signed ceremony was
-  already authenticated. The RESIDUAL deferred half is deploy-time anchor immutability (below).
+- **`--actor human` below the live wall unlocks nothing (spec 2026-11-13).** The signed
+  human-actor override (#329) and every relaxation it unlocked (declared breadth, holdout reuse,
+  non-PIT, assume-terminal-last-close, the human family mint, loosened paper thresholds) were
+  removed, so the gates are fixed at the same values for every actor and `--actor` on
+  `research promote` / `paper promote` is an audit label. The signed go-live
+  `registry transition --to live` ceremony is the ONLY signed approval. The deferred half is
+  deploy-time anchor immutability (below). The `actor_challenges` table is kept as history; a key
+  still enrolled for `algua-human-actor` is inert.
 - **Live-hardening remains an acceptance obligation:** verify economic-state reconciliation,
   crash/restart recovery, monitoring/alerting, production secrets and runtime isolation against
   the intended deployment. Reconciliation, monitoring, kill switches, Docker research runs and
@@ -151,11 +147,10 @@ named mitigation — not defects to fix:
   separate boundary. Artifact-freeze implementation is partial; see the reconciliation record.
 
 **Deployment hardening (enforce when deployment lands).** The trust anchor
-`approvers/allowed_signers` is the root of BOTH go-live authority AND (since #329) authenticated
-`--actor human`. In any real deployment it MUST NOT be writable by the runtime (agent/operator)
-user — only by the human who controls CODEOWNERS — else the runtime could enroll its own key and
-self-authorize (this is the explicit RESIDUAL of #329: the gate code reads the anchor from the
-running tree, so a tree/DB writer defeats it exactly as it defeats go-live). Docker research and
+`approvers/allowed_signers` is the root of go-live authority. In any real deployment it MUST NOT
+be writable by the runtime (agent/operator) user — only by the human who controls CODEOWNERS —
+else the runtime could enroll its own key and self-authorize (the gate code reads the anchor from
+the running tree, so a tree/DB writer defeats it). Docker research and
 systemd operator deployment files exist. Verify an immutable installed anchor distinct from the
 mutable worktree before real deployment; these files alone do not prove that requirement is met.
 Changes to the anchor or its enforcement require human review.

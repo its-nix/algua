@@ -29,7 +29,7 @@ _NORM = NormalDist()
 
 # Window floor: minimum daily RETURN observations in the forward window. Symmetric with
 # gates.MIN_HOLDOUT_OBSERVATIONS (~one trading quarter); underpowered windows fail closed.
-# Protected — NOT an agent-tunable knob (relaxation is human-only; agents may only tighten).
+# Protected — NOT a tunable knob (no actor may relax it; any actor may only tighten).
 MIN_FORWARD_OBSERVATIONS = 63
 
 # Coverage: decided sessions / trading sessions in [first, last] admissible tick. Sparse ticking
@@ -53,7 +53,7 @@ SHARPE_FLOOR = 0.3
 # Power tradeoff: at MIN_FORWARD_OBSERVATIONS=63 clearing even the 0.3 floor bar at the LCB
 # demands an observed ANNUAL Sharpe of ~3.8; the remedy for a marginal strategy is a LONGER
 # forward window (the standard error shrinks with T), NOT a weaker bar. Protected — an agent may
-# only RAISE it (stricter); lowering is human-only.
+# only RAISE it (stricter); lowering is refused for every actor.
 FORWARD_SHARPE_CONFIDENCE = 0.95  # one-sided confidence the LCB must clear the performance bar
 
 # Volatility floor: near-zero vol makes Sharpe undefined/explosive; a do-nothing strategy must
@@ -101,8 +101,8 @@ CERTIFICATE_FRESH_SESSIONS = 10
 @dataclass
 class ForwardGateCriteria:
     """Thresholds for promoting paper -> forward_tested. Defaults are the protected walls above;
-    an agent may pass TIGHTER values, never looser (relaxation flags are human-only at the CLI —
-    this module never relaxes)."""
+    any actor may pass TIGHTER values, never looser (the CLI refuses a loosened value for every
+    actor — this module never relaxes)."""
 
     min_forward_observations: int = MIN_FORWARD_OBSERVATIONS
     min_session_coverage: float = MIN_SESSION_COVERAGE

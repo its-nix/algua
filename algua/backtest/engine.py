@@ -110,7 +110,7 @@ def simulate(
 
     This public simulation step is shared by run()/walk_forward(); metrics are computed separately.
     A held-into-gap symbol is realized through `delisting_records`, or fails closed unless the
-    human-only `assume_terminal_last_close` relaxation is active.
+    backtest-only `assume_terminal_last_close` relaxation is active (never on the promote path).
 
     Point-in-time universe (`universe_by_date`): when provided, bars are fetched for the UNION of
     all ever-effective members and the per-bar decision is masked to as-of-t membership (see

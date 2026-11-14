@@ -380,7 +380,7 @@ class FamilyGraphMixin:
             raise AgentMintCapError(
                 f"agent-NOVEL mint rate cap reached: {in_window} agent families in the last "
                 f"{AGENT_NOVEL_MINT_WINDOW_DAYS}d (cap {AGENT_NOVEL_MINT_CAP}); wait out the "
-                "window or promote --actor human --new-family")
+                "window (raising the cap needs a reviewed code change)")
 
     def _family_member_strategies(self, family_id: int) -> list[str]:
         """DISTINCT strategy names for a family and all its transitive ancestors."""

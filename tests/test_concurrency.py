@@ -463,9 +463,9 @@ def test_concurrent_research_promote_single_burn_e2e(tmp_path):
     db = tmp_path / "e2e.db"
     env = {**os.environ, "ALGUA_DB_PATH": str(db), "ALGUA_DATA_DIR": str(tmp_path)}
 
-    # #329: a real subprocess cannot authenticate `--actor human` (no interactive signature), so the
-    # race is run on the AGENT-LEGAL path — a reproducible bars snapshot + a PIT universe + MEASURED
-    # breadth from `backtest sweep`, no human-only relaxation. The burn race is actor-independent
+    # The gates have no relaxation for any actor (spec 2026-11-13), so the race runs on the only
+    # path there is — a reproducible bars snapshot + a PIT universe + MEASURED breadth from
+    # `backtest sweep`. The burn race is actor-independent
     # (a committed DB row), so this exercises exactly the same single-use guard as before.
     import numpy as _np
     import pandas as _pd

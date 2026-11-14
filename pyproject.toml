@@ -385,14 +385,22 @@ forbidden_modules = ["algua.live"]
 # The registry owns the lifecycle and its gates; the live/paper trading lanes sit ABOVE it and
 # import it, never the reverse. Probed and added in stage 6c, when the forward-gate module was split
 # into forward_evidence.py + live_certificate.py: those files reason about live trading evidence, so
-# the direction is worth enforcing rather than trusting. (`registry -> cli` is NOT contracted: it has
-# exactly one violating edge, human_actor.py's challenge print, tracked in #592 and left visible
-# rather than blessed by an exemption. `registry -> backtest` is NOT contracted either: it is a real,
-# pre-existing dependency -- forward_evidence needs backtest.metrics to score the evidence.)
+# the direction is worth enforcing rather than trusting. (`registry -> cli` has its own contract
+# below. `registry -> backtest` is NOT contracted: it is a real, pre-existing dependency --
+# forward_evidence needs backtest.metrics to score the evidence.)
 name = "registry stays off the live lane"
 type = "forbidden"
 source_modules = ["algua.registry"]
 forbidden_modules = ["algua.live"]
+
+[[tool.importlinter.contracts]]
+# The registry is composed BY the cli, never the reverse. Its one violating edge (#592) was
+# human_actor.py's lazy `typer`/`algua.cli.app.emit` challenge print; that module was deleted with
+# the signed --actor human override (spec 2026-11-13), so the direction is now enforced.
+name = "registry stays off the cli layer"
+type = "forbidden"
+source_modules = ["algua.registry"]
+forbidden_modules = ["algua.cli"]
 
 [[tool.importlinter.contracts]]
 # The backtest lane is a pure evaluator: it simulates and scores, and knows nothing about the
@@ -457,9 +465,9 @@ forbidden_modules = [
 [[tool.importlinter.contracts]]
 # algua/operator/ is clean of algua.cli today (stage 6d, #592-adjacent). Lock that in BEFORE the
 # session decision tree lands here: its original body called algua.cli.app.emit ten times, so
-# without this contract a lazy import could silently recreate the same registry->cli edge stage 6a
-# left behind in human_actor.py (#592) -- an edge that, once merged, cannot be contracted without
-# an exemption. With this contract in place first, that CLI surface must be injected into the
+# without this contract a lazy import could silently recreate the registry->cli edge stage 6a left
+# behind in human_actor.py (#592, since deleted) -- an edge that, once merged, cannot be contracted
+# without an exemption. With this contract in place first, that CLI surface must be injected into the
 # operator lane rather than imported, and an accidental import fails the gate instead of slipping
 # past review.
 name = "operator lane stays off the cli layer"
