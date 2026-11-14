@@ -558,6 +558,7 @@ _V50_PLUS_TABLES = frozenset({
     "experimental_paper_sessions", "experimental_qualifications",
     "drawdown_policies", "drawdown_accounts", "drawdown_events", "drawdown_challenges",
     "drawdown_reductions", "capped_live_challenges", "capped_live_authorizations",
+    "inbox_items",
 })
 _LINK_COLUMN = ", frozen_invocation_id INTEGER REFERENCES frozen_invocations(id)"
 
@@ -619,7 +620,7 @@ def test_migration_from_v47_keeps_existing_ticks_unlinked_and_is_idempotent(tmp_
     migrate(fresh)
     for _ in range(2):
         migrate(conn)
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 53
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 54
         assert _fingerprint(conn) == _fingerprint(fresh)
         rows = conn.execute("SELECT * FROM tick_snapshots ORDER BY id").fetchall()
         assert [tuple(r)[:-1] for r in rows] == before

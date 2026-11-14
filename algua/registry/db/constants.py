@@ -38,7 +38,8 @@ from __future__ import annotations
 # v51: signed layered drawdown account policies and durable risk evidence.
 # v52: separate capped frozen-live challenges and human authority.
 # v53: experimental qualification authorship admits actual human/agent/system provenance.
-SCHEMA_VERSION = 53
+# v54: inbox_items — the owner's dashboard Inbox (spec 2026-11-14 §7.3).
+SCHEMA_VERSION = 54
 
 # v37 (#524, R9-M3): the per-search_trials-row upper bound on n_combos. A per-sweep combo count
 # above any legitimate grid; bounds each summand of the funnel-lifetime seed SUM so it is
