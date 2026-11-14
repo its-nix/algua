@@ -50,7 +50,7 @@ class SearchBreadthLedgerMixin:
         trial_sharpe_var_ann: float | None = None,
     ) -> int:
         # v37 (#524, R9-M3): type-safe + bounded so a corrupt/overlarge row can never overflow the
-        # funnel-lifetime seed SUM. `type(n_combos) is int` (NOT isinstance) excludes `bool` — an
+        # SUM(n_combos) breadth reads. `type(n_combos) is int` (NOT isinstance) excludes `bool` — an
         # `int` subclass that would otherwise store True as 1 and pass a typeof='integer' check.
         if type(n_combos) is not int or not (1 <= n_combos <= MAX_N_COMBOS):
             raise ValueError(

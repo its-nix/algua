@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import typer
 
 from algua.cli._common import ok, project
@@ -70,6 +72,10 @@ def promote(
     holdout is single-use. The gates are the same for every `--actor`: there is no override. See
     docs/superpowers/specs/2026-11-13-go-live-only-approval-design.md.
     """
+    for flag, value in (("--min-holdout-sharpe", min_holdout_sharpe),
+                        ("--min-holdout-return", min_holdout_return)):
+        if not math.isfinite(value):  # Infinity/NaN would land in decision_json (not strict JSON)
+            raise ValueError(f"{flag} must be a finite number")
     payload = promote_task(
         name, start=start, end=end, demo=demo, snapshot=snapshot,
         fundamentals_snapshot=fundamentals_snapshot, news_snapshot=news_snapshot,

@@ -411,3 +411,21 @@ def test_haircut_fields_are_gone():
     for name in ("PHASE3_COMPONENT_MASK", "DOMINANCE_AUDIT_MIN_PROMOTIONS",
                  "DOMINANCE_AUDIT_MIN_WINDOW_DAYS", "DOMINANCE_AUDIT_ZERO_HAIRCUT_EXCEPTIONS"):
         assert not hasattr(gates, name), name
+
+
+
+@pytest.mark.parametrize("flag", ["--min-holdout-sharpe", "--min-holdout-return"])
+@pytest.mark.parametrize("bad", ["inf", "-inf", "nan"])
+def test_promote_refuses_non_finite_threshold_before_any_work(flag, bad):
+    # A non-finite threshold would land as Infinity/NaN in decision_json (not strict JSON).
+    import json
+
+    from typer.testing import CliRunner
+
+    from algua.cli.main import app
+
+    res = CliRunner().invoke(app, ["research", "promote", "no_such_strategy", "--universe", "u",
+                                   "--start", "2020-01-01", "--end", "2021-01-01", flag, bad])
+    assert res.exit_code != 0
+    out = json.loads(res.stdout)
+    assert out["ok"] is False and flag in out["error"] and "finite" in out["error"]
