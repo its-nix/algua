@@ -177,7 +177,9 @@ adapters/declarations rather than permanent mutually exclusive strategy APIs.
 - `contracts/strategy_context.py` supplies `AsOfView`, `AsOfContext`, `ResearchStrategy` and shared
   score validation. Context includes aware `decision_ts`/`first_decision_ts`, eligible universe,
   immutable snapshot identities, defensive feature/model copies and verified model bytes/provenance.
-  News/fundamentals use existing PIT masks; models must be trained no later than the first decision.
+  News/fundamentals use existing PIT masks (their ingestion CLI and bundled strategies were removed pending
+  a redesign; the masks, store read path and manifest records remain); models must be trained no later than
+  the first decision.
   `as_of` is the decision cutoff. Daily UTC-midnight bar labels are not fabricated availability times.
 - `strategies/context_loader.py` binds `STRATEGY_INTERFACE = "context_v1"` and `score(context)`;
   a context module cannot also expose `signal` or `signal_panel`. `contracts/strategy_identity.py`

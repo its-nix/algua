@@ -19,6 +19,12 @@ REMOVED = [
     "governance list",
     "governance overdue",
     "eval gate",
+    "ingest-fundamentals",
+    "query-fundamentals",
+    "ingest-news",
+    "query-news",
+    "fetch-fundamentals",
+    "fetch-news",
 ]
 
 
@@ -56,6 +62,12 @@ def test_removed_reference_absent(needle: str) -> None:
         ["backtest", "replay"],
         ["governance", "list"],
         ["eval", "gate"],
+        ["data", "ingest-fundamentals"],
+        ["data", "query-fundamentals"],
+        ["data", "ingest-news"],
+        ["data", "query-news"],
+        ["data", "fetch-fundamentals"],
+        ["data", "fetch-news"],
     ],
 )
 def test_removed_command_is_gone(argv: list[str]) -> None:

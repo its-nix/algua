@@ -1,5 +1,8 @@
 """Tests: `research promote` accepts --fundamentals/--news-snapshot and the PIT funnel is
-unblocked end-to-end to candidate for BOTH lanes (Task 6, #132)."""
+unblocked end-to-end to candidate for BOTH lanes (Task 6, #132).
+
+The bundled fundamentals/news strategies were removed; these tests use the test-local stand-ins from
+tests/_context_strategies.py."""
 from __future__ import annotations
 
 import json
@@ -11,7 +14,10 @@ from typer.testing import CliRunner
 
 from algua.cli.main import app
 from algua.data.store import DataStore
+from tests._context_strategies import context_strategies  # noqa: F401
 from tests._human_actor_helpers import install_human_actor_anchor, promote_signed
+
+pytestmark = [pytest.mark.serial, pytest.mark.usefixtures("context_strategies")]
 
 runner = CliRunner()
 

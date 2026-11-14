@@ -54,7 +54,7 @@ BUDGET: dict[str, int] = {
     "algua/backtest/engine.py": 322,
     "algua/backtest/sweep.py": 461,
     "algua/backtest/walkforward.py": 347,
-    "algua/cli/data_cmd.py": 410,
+    "algua/cli/data_cmd.py": 319,
     "algua/cli/live_cmd.py": 730,
     "algua/cli/operator_cmd.py": 334,
     "algua/cli/paper_cmd.py": 1381,

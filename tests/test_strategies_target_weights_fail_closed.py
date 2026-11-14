@@ -5,6 +5,9 @@ import pandas as pd
 import pytest
 
 from algua.strategies.loader import load_strategy
+from tests._context_strategies import context_strategies  # noqa: F401
+
+pytestmark = [pytest.mark.serial, pytest.mark.usefixtures("context_strategies")]
 
 
 def test_target_weights_raises_when_fundamentals_missing():

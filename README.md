@@ -48,41 +48,11 @@ uv run algua data inspect
 uv run algua data inspect --summary
 ```
 
-### Current-collected fundamentals
+### Fundamentals and news
 
-Current quarterly fundamentals can be acquired without preparing a CSV:
-
-```sh
-uv run algua data fetch-fundamentals --symbols AAPL,MSFT
-uv run algua data query-fundamentals --snapshot-id <returned-id>
-```
-
-This uses the existing yfinance dependency and immutable fundamentals store for revenue, diluted
-EPS and net income. Every row becomes knowable at actual collection completion; fiscal period
-labels are not filing/availability timestamps. The snapshot records library/version, clocks,
-metric mapping and limitations. Vendor history can be restated, historical availability is UNKNOWN,
-and currency/units are not independently verified. No `--as-of` override backdates the collection.
-Before collection time, the existing as-of serving path returns none of these rows. This supplies
-current-collected research inputs, not a historical PIT dataset or evidence of news/combined alpha.
-Missing/invalid data for any requested issuer refuses before any snapshot is published. Existing
-`ingest-fundamentals --from-file` remains available for explicitly sourced local data.
-
-### Current-collected news
-
-```sh
-uv run algua data fetch-news --symbols AAPL,MSFT
-uv run algua data query-news --snapshot-id <returned-id>
-```
-
-The separate yfinance news API was unavailable during the live check, but the official Yahoo
-Finance RSS feed returned genuine current headlines. This command collects RSS titles, links and
-vendor publication times, with every row becoming knowable only at collection completion.
-It records raw feed hashes, clocks and limitations in the existing immutable news snapshot.
-Feed tickers are source associations, not independently verified issuer mentions. Publication
-times are vendor declarations; historical availability remains UNKNOWN. The feed is not exhaustive
-history, and no full article body or sentiment is inferred. Each feed is capped at 2 MiB and a
-10-second wall deadline; malformed, future-dated or missing requested feeds refuse the whole batch.
-No `--as-of` override backdates collection. The existing source-file ingest path remains available.
+Fundamentals and news ingestion (`data fetch-*`, `ingest-*`, `query-*`) was removed pending a
+redesign of context inputs. Existing manifest records still list under `data inspect`, and the
+as-of read path is unchanged.
 
 ## Containerized research-loop runs (local-first)
 

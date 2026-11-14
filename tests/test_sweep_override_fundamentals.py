@@ -1,8 +1,13 @@
 """FIX B: _override preserves fundamentals_signal_fn."""
 from __future__ import annotations
 
+import pytest
+
 from algua.backtest.sweep import _override
 from algua.strategies.loader import load_strategy
+from tests._context_strategies import context_strategies  # noqa: F401
+
+pytestmark = [pytest.mark.serial, pytest.mark.usefixtures("context_strategies")]
 
 
 def test_override_preserves_fundamentals_signal_fn():

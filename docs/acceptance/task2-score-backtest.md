@@ -59,7 +59,7 @@ timestamp, paid acquisition, deployment, merge, trade, or authority-state write.
 - `algua/backtest/sweep.py`, `walkforward.py` -- complete loaded-state reconstruction and pinned
   result provenance; the model-sweep refusal remains unchanged.
 - `tests/test_score_context_backtest.py` -- focused integration and guard acceptance.
-- `scripts/multimodal_context_exercise.py` -- repeatable real-bars pilot evidence.
+- `scripts/multimodal_context_exercise.py` -- repeatable real-bars pilot evidence (script since removed).
 
 ## Tasks & Acceptance
 
@@ -254,4 +254,4 @@ the known unchanged local IPv6-mapped-IPv4 baseline is not suppressed.
   [`test_score_context_backtest.py:191`](../../tests/test_score_context_backtest.py#L191)
 
 - Check the honest real-bars, synthetic-news/model pilot evidence generator.
-  [`multimodal_context_exercise.py:75`](../../scripts/multimodal_context_exercise.py#L75)
+  `multimodal_context_exercise.py:75` (script since removed)

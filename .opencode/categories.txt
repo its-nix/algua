@@ -24,7 +24,7 @@ vol_structure
 liquidity_microstructure
 
 # PARKED UNTIL THE DATA EXISTS -- every idea these produce is auto-parked today.
-# value_quality_proxy      needs `fundamentals`; free sources are restated and survivorship-biased,
+# value_quality_proxy      needs `fundamentals`; ingestion was removed pending redesign, and free sources are restated and survivorship-biased,
 #                          which is exactly what the point-in-time wall rejects. PRD §11 data.
 # event_driven             needs an events/filings dataset; no ingestion path. horizon=event
 # institutional_flow       needs `form_13f` / `options_flow` / `dark_pool`; no free historical

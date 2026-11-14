@@ -4,10 +4,14 @@ from __future__ import annotations
 import json
 
 import pandas as pd
+import pytest
 from typer.testing import CliRunner
 
 from algua.cli.main import app
 from algua.data.store import DataStore
+from tests._context_strategies import context_strategies  # noqa: F401
+
+pytestmark = [pytest.mark.serial, pytest.mark.usefixtures("context_strategies")]
 
 runner = CliRunner()
 
