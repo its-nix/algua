@@ -486,9 +486,8 @@ class HoldoutLedger(Protocol):
         holdout_frac: float,
         holdout_start: str,
         holdout_end: str,
-        allow_reuse: bool,
-    ) -> tuple[int, bool]:
-        """Atomically claim the holdout window; return ``(reservation_id, reused)``.
+    ) -> int:
+        """Atomically claim the holdout window; return the reservation id.
 
         Under ``BEGIN IMMEDIATE`` (write lock held): re-check overlap against ALL rows (pending
         reservation OR committed burn) for this strategy, matching on the OOS INTERVAL
@@ -503,8 +502,8 @@ class HoldoutLedger(Protocol):
         inverted incoming interval (start > end) is rejected (fail closed). ``period_*``/
         ``holdout_frac`` are evidence only.
 
-        Raises ``ValueError`` (fail closed) if an overlapping row exists and not ``allow_reuse``.
-        ``reused`` is True iff an overlapping row existed and the human override let it proceed.
+        Raises ``ValueError`` (fail closed) if an overlapping row exists: the holdout is single-use
+        for every actor (no reuse override; spec 2026-11-13). The ``reused`` column is written 0.
 
         TOP-LEVEL ONLY: must not be called inside an open transaction / ``with self._conn:`` block
         (raises ``RuntimeError`` if ``self._conn.in_transaction``)."""

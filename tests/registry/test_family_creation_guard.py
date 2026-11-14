@@ -81,7 +81,6 @@ def _call_preflight(
     name: str,
     *,
     actor: Actor,
-    new_family_slug: str | None = None,
 ) -> BreadthContext:
     """Call promotion_preflight with all non-clustering I/O patched out."""
     provider = SyntheticProvider(seed=0)
@@ -101,13 +100,9 @@ def _call_preflight(
             repo,
             name,
             actor=actor,
-            declared_combos=None,
-            allow_holdout_reuse=False,
-            allow_non_pit=False,
             provider=provider,
             start=_START,
             end=_END,
-            new_family_slug=new_family_slug,
         )
 
 
@@ -156,20 +151,18 @@ def test_agent_novel_returns_pending_spec_no_family_created(tmp_path) -> None:
     assert n_families_after == n_families_before
 
 
-def test_agent_novel_pending_ignores_slug(tmp_path) -> None:
-    """#524 (R9): an agent NOVEL pending spec auto-names via slug_base f'{name}_family', IGNORING
-    --new-family so naming a family stays a human privilege."""
+def test_agent_novel_pending_auto_names(tmp_path) -> None:
+    """#524 (R9): an agent NOVEL pending spec auto-names via slug_base f'{name}_family' (nobody
+    names a family any more; --new-family is gone)."""
     repo = _make_repo()
     _setup_family_for_clustering(repo, "unrelated_fam2", "unrelated_member2")
     _add_backtested_strategy(repo, "strat_novel_msg")
 
-    ctx = _call_preflight(
-        repo, "strat_novel_msg", actor=Actor.AGENT, new_family_slug="agent_tried_to_name_it"
-    )
+    ctx = _call_preflight(repo, "strat_novel_msg", actor=Actor.AGENT)
 
     assert ctx.family_id is None
     assert ctx.pending_novel_family is not None
-    assert ctx.pending_novel_family.slug_base == "strat_novel_msg_family"  # slug ignored
+    assert ctx.pending_novel_family.slug_base == "strat_novel_msg_family"
 
 
 def test_agent_novel_cold_start_defers_on_empty_registry() -> None:
@@ -253,65 +246,16 @@ def test_agent_novel_seed_zero_rejected_at_preflight_before_holdout() -> None:
 # NOVEL verdict — human path
 # ---------------------------------------------------------------------------
 
-def test_human_novel_without_slug_raises() -> None:
-    """No existing families; actor=human, new_family_slug=None → ValueError."""
+def test_human_novel_refused_before_holdout_no_family_created() -> None:
+    """Spec 2026-11-13: a human-labelled NOVEL is refused in preflight. The fresh 0-prior human
+    family is gone, and the deferred mint is agent-only, so nothing is created."""
     repo = _make_repo()
     _add_backtested_strategy(repo, "strat_human_novel")
 
-    with pytest.raises(ValueError, match="--new-family"):
-        _call_preflight(repo, "strat_human_novel", actor=Actor.HUMAN, new_family_slug=None)
-
-
-def test_human_novel_creates_family() -> None:
-    """No existing families; actor=human, new_family_slug provided → new family created."""
-    repo = _make_repo()
-    _add_backtested_strategy(repo, "strat_novel_new_fam")
-
-    ctx = _call_preflight(
-        repo, "strat_novel_new_fam", actor=Actor.HUMAN, new_family_slug="momentum_v2"
-    )
-
-    fam_id = repo.strategy_family("strat_novel_new_fam")
-    assert fam_id is not None
-    assert ctx.family_id == fam_id
-
-    # The family name should be "momentum_v2"
-    row = repo.connection.execute(
-        "SELECT name FROM families WHERE id=?", (fam_id,)
-    ).fetchone()
-    assert row["name"] == "momentum_v2"
-
-
-def test_human_novel_family_has_zero_seed() -> None:
-    """#524: a human-created NOVEL family is FRESH — seed_lifetime_combos == 0 (the human
-    privilege of a fresh multiple-testing budget, unlike the agent-seeded auto-create)."""
-    repo = _make_repo()
-    _add_backtested_strategy(repo, "strat_human_zero_seed")
-
-    _call_preflight(
-        repo, "strat_human_zero_seed", actor=Actor.HUMAN, new_family_slug="fresh_human_fam"
-    )
-
-    fam_id = repo.strategy_family("strat_human_zero_seed")
-    row = repo.connection.execute(
-        "SELECT seeded_prior_combos FROM families WHERE id=?", (fam_id,)
-    ).fetchone()
-    assert row["seeded_prior_combos"] == 0
-
-
-def test_human_novel_family_event_row_written() -> None:
-    """After human NOVEL create, a family_events row with event_type=family_created exists."""
-    repo = _make_repo()
-    _add_backtested_strategy(repo, "strat_event_check")
-
-    _call_preflight(
-        repo, "strat_event_check", actor=Actor.HUMAN, new_family_slug="my_family"
-    )
-
-    rows = repo.connection.execute(
-        "SELECT event_type FROM family_events WHERE event_type='family_created'"
-    ).fetchall()
-    assert len(rows) >= 1
+    with pytest.raises(ValueError, match="NOVEL"):
+        _call_preflight(repo, "strat_human_novel", actor=Actor.HUMAN)
+    assert repo.strategy_family("strat_human_novel") is None
+    assert repo.connection.execute("SELECT COUNT(*) c FROM families").fetchone()["c"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -449,8 +393,9 @@ def test_agent_parentage_resolves_to_parent_family() -> None:
     assert count == 1
 
 
-def test_human_parentage_creates_child_with_parent_edge() -> None:
-    """PARENTAGE verdict + actor=human → new child family created with parent edge."""
+def test_human_parentage_folds_into_parent_family() -> None:
+    """Spec 2026-11-13: PARENTAGE + human folds into the parent exactly like an agent — no child
+    family, no parent edge."""
     repo = _make_repo()
     fam_id = repo.create_family("fam_parent_h", actor="human")
     _add_backtested_strategy(repo, "strat_parentage_human")
@@ -460,71 +405,12 @@ def test_human_parentage_creates_child_with_parent_edge() -> None:
         "algua.registry.family_assignment.get_all_family_members_for_clustering",
         return_value=[(fam_id, [member_profile])],
     ):
-        ctx = _call_preflight(
-            repo,
-            "strat_parentage_human",
-            actor=Actor.HUMAN,
-            new_family_slug="child_family",
-        )
+        ctx = _call_preflight(repo, "strat_parentage_human", actor=Actor.HUMAN)
 
-    child_fam_id = repo.strategy_family("strat_parentage_human")
-    assert child_fam_id is not None
-    assert child_fam_id != fam_id  # new child family
-    assert ctx.family_id == child_fam_id
-
-    # Parent edge must exist: child's ancestry includes fam_id
-    ancestors = repo.family_ancestry(child_fam_id)
-    assert fam_id in ancestors
-
-
-def test_human_parentage_child_family_uses_slug() -> None:
-    """Human PARENTAGE with new_family_slug → child family name matches slug."""
-    repo = _make_repo()
-    fam_id = repo.create_family("fam_parent_slug", actor="human")
-    _add_backtested_strategy(repo, "strat_slug_check")
-
-    member_profile = _parentage_member_profile()
-    with patch(
-        "algua.registry.family_assignment.get_all_family_members_for_clustering",
-        return_value=[(fam_id, [member_profile])],
-    ):
-        _call_preflight(
-            repo,
-            "strat_slug_check",
-            actor=Actor.HUMAN,
-            new_family_slug="custom_child_slug",
-        )
-
-    child_fam_id = repo.strategy_family("strat_slug_check")
-    row = repo.connection.execute(
-        "SELECT name FROM families WHERE id=?", (child_fam_id,)
-    ).fetchone()
-    assert row["name"] == "custom_child_slug"
-
-
-def test_human_parentage_no_slug_uses_default_name() -> None:
-    """Human PARENTAGE with no slug → child family name is f'{strategy_name}_family'."""
-    repo = _make_repo()
-    fam_id = repo.create_family("fam_default_slug", actor="human")
-    _add_backtested_strategy(repo, "strat_default_name")
-
-    member_profile = _parentage_member_profile()
-    with patch(
-        "algua.registry.family_assignment.get_all_family_members_for_clustering",
-        return_value=[(fam_id, [member_profile])],
-    ):
-        _call_preflight(
-            repo,
-            "strat_default_name",
-            actor=Actor.HUMAN,
-            new_family_slug=None,
-        )
-
-    child_fam_id = repo.strategy_family("strat_default_name")
-    row = repo.connection.execute(
-        "SELECT name FROM families WHERE id=?", (child_fam_id,)
-    ).fetchone()
-    assert row["name"] == "strat_default_name_family"
+    assert repo.strategy_family("strat_parentage_human") == fam_id
+    assert ctx.family_id == fam_id
+    count = repo.connection.execute("SELECT COUNT(*) c FROM families").fetchone()["c"]
+    assert count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -575,27 +461,6 @@ def test_breadth_context_expected_family_id_matches_family_id() -> None:
     ctx = _call_preflight(repo, "strat_expected", actor=Actor.AGENT)
 
     assert ctx.expected_family_id == ctx.family_id
-
-
-# ---------------------------------------------------------------------------
-# family_events clustering_version tracking
-# ---------------------------------------------------------------------------
-
-def test_family_events_row_has_clustering_version_after_novel_create() -> None:
-    """After human NOVEL create + assignment, family_events has a clustering_version."""
-    repo = _make_repo()
-    _add_backtested_strategy(repo, "strat_cv_novel")
-
-    _call_preflight(
-        repo, "strat_cv_novel", actor=Actor.HUMAN, new_family_slug="novel_fam_cv"
-    )
-
-    row = repo.connection.execute(
-        "SELECT clustering_version FROM family_events"
-        " WHERE strategy_name='strat_cv_novel' AND clustering_version IS NOT NULL LIMIT 1"
-    ).fetchone()
-    assert row is not None
-    assert row["clustering_version"] == clustering_version()
 
 
 # ---------------------------------------------------------------------------
@@ -652,7 +517,7 @@ def test_return_match_does_not_displace_blend_match_338():
         patch("algua.registry.family_assignment.factors_used_by", return_value=[factor]),
     ):
         assigned = classify_and_assign_family(
-            repo, "cand", actor=Actor.AGENT, new_family_slug=None)
+            repo, "cand", actor=Actor.AGENT)
 
     assert assigned.family_id == fam_a_id  # stayed in the broad code/factor family, not to B
     # the recorded verdict is PARENTAGE (blend 0.80), NOT a return-escalated MERGE into B
@@ -682,7 +547,7 @@ def test_return_only_clone_is_rescued_from_novel_338():
         patch("algua.registry.family_assignment.factors_used_by", return_value=[factor]),
     ):
         assigned = classify_and_assign_family(
-            repo, "cand", actor=Actor.AGENT, new_family_slug=None)
+            repo, "cand", actor=Actor.AGENT)
 
     assert assigned.family_id == fam_b_id  # rescued into B instead of escaping to a fresh family
     _args, kwargs = repo.assign_strategy_to_family.call_args

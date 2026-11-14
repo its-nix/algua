@@ -10,7 +10,6 @@ from algua.contracts.lifecycle import Actor, Stage, TransitionError
 from algua.registry.db import connect, migrate
 from algua.registry.promotion import (
     BreadthContext,
-    guard_agent_relaxations,
     promotion_preflight,
     resolve_pit_ok,
     run_gate,
@@ -30,21 +29,6 @@ def _repo(tmp_path):
     conn = connect(tmp_path / "p.db")
     migrate(conn)
     return SqliteStrategyRepository(conn)
-
-
-def test_guard_agent_relaxations_refuses_agent():
-    for kw in (dict(declared_combos=9, allow_holdout_reuse=False, allow_non_pit=False),
-               dict(declared_combos=None, allow_holdout_reuse=True, allow_non_pit=False),
-               dict(declared_combos=None, allow_holdout_reuse=False, allow_non_pit=True)):
-        with pytest.raises(ValueError, match="human"):
-            guard_agent_relaxations(Actor.AGENT, **kw)
-
-
-def test_guard_allows_clean_agent_and_any_human():
-    guard_agent_relaxations(Actor.AGENT, declared_combos=None, allow_holdout_reuse=False,
-                            allow_non_pit=False)
-    guard_agent_relaxations(Actor.HUMAN, declared_combos=9, allow_holdout_reuse=True,
-                            allow_non_pit=True)
 
 
 def test_resolve_pit_ok_requires_coverage():
@@ -82,8 +66,7 @@ def test_preflight_refuses_non_backtested_source(tmp_path, stages):
         else:
             rec = repo.apply_transition(rec, s, Actor.HUMAN, "setup")
     with pytest.raises(TransitionError, match="backtested"):
-        promotion_preflight(repo, "alpha", actor=Actor.AGENT, declared_combos=None,
-                            allow_holdout_reuse=False, allow_non_pit=False,
+        promotion_preflight(repo, "alpha", actor=Actor.AGENT,
                             provider=SyntheticProvider(seed=0), start=_START, end=_END)
     # Refused in preflight => no gate row, no holdout burn.
     assert repo._conn.execute("SELECT COUNT(*) c FROM gate_evaluations").fetchone()["c"] == 0
@@ -98,8 +81,7 @@ def test_preflight_refuses_system_actor_before_any_holdout_or_gate_row(tmp_path)
     repo.apply_transition(rec, Stage.BACKTESTED, Actor.AGENT, "bt")
     repo.record_search_trial("alpha", 4, "{}")  # measured breadth present (isolate the actor check)
     with pytest.raises(ValueError, match="agent or human"):
-        promotion_preflight(repo, "alpha", actor=Actor.SYSTEM, declared_combos=None,
-                            allow_holdout_reuse=False, allow_non_pit=False,
+        promotion_preflight(repo, "alpha", actor=Actor.SYSTEM,
                             provider=SyntheticProvider(seed=0), start=_START, end=_END)
     assert repo._conn.execute("SELECT COUNT(*) c FROM gate_evaluations").fetchone()["c"] == 0
     assert repo._conn.execute("SELECT COUNT(*) c FROM holdout_evaluations").fetchone()["c"] == 0
@@ -113,55 +95,25 @@ class _NonReproducibleProvider:
         raise AssertionError("provider must not be read: reproducible guard should fire first")
 
 
-def test_agent_refused_non_reproducible_source(tmp_path):
+@pytest.mark.parametrize("actor", [Actor.AGENT, Actor.HUMAN])
+def test_refused_non_reproducible_source_for_every_actor(tmp_path, actor):
+    # No human exemption (spec 2026-11-13): the guard fires for every actor before any read.
     repo = _repo(tmp_path)
     repo.add("alpha")
     with pytest.raises(ValueError, match="reproducible data source"):
-        promotion_preflight(repo, "alpha", actor=Actor.AGENT, declared_combos=None,
-                            allow_holdout_reuse=False, allow_non_pit=False,
+        promotion_preflight(repo, "alpha", actor=actor,
                             provider=_NonReproducibleProvider(), start=_START, end=_END)
 
 
-def test_reproducible_guard_skipped_for_synthetic_agent_and_any_human(tmp_path):
-    # SyntheticProvider is reproducible -> the guard does NOT fire for an agent (a later stage check
-    # raises instead, since "alpha" is at stage idea). A human is exempt even for a non-reproducible
-    # provider (get_bars is never reached because the stage check short-circuits first).
+def test_reproducible_guard_skipped_for_synthetic_provider(tmp_path):
+    # SyntheticProvider is reproducible -> the guard does NOT fire (a later stage check raises
+    # instead, since "alpha" is at stage idea).
     repo = _repo(tmp_path)
     repo.add("alpha")
     with pytest.raises(Exception) as agent_ei:
-        promotion_preflight(repo, "alpha", actor=Actor.AGENT, declared_combos=None,
-                            allow_holdout_reuse=False, allow_non_pit=False,
+        promotion_preflight(repo, "alpha", actor=Actor.AGENT,
                             provider=SyntheticProvider(seed=0), start=_START, end=_END)
     assert "reproducible data source" not in str(agent_ei.value)
-    with pytest.raises(Exception) as human_ei:
-        promotion_preflight(repo, "alpha", actor=Actor.HUMAN, declared_combos=None,
-                            allow_holdout_reuse=False, allow_non_pit=False,
-                            provider=_NonReproducibleProvider(), start=_START, end=_END)
-    assert "reproducible data source" not in str(human_ei.value)
-
-
-class _NonReproducibleWorkingProvider(SyntheticProvider):
-    """A working (deterministic) provider that deliberately does NOT advertise reproducibility —
-    stands in for a future mutable/live provider for the human-exemption test."""
-
-    reproducible = False
-
-
-def test_human_exempt_from_reproducible_guard_through_preflight(tmp_path):
-    # A human may promote off a non-reproducible source: the guard is agent-only, so preflight runs
-    # to COMPLETION (breadth resolved) rather than refusing — proving the exemption holds all the
-    # way through, not just that it doesn't raise at the guard. ("alpha" is not a bundled module, so
-    # signal-panel parity step is skipped and the provider is never read.)
-    # Task 4 (#222): pass new_family_slug so the NOVEL verdict creates a family for this human.
-    repo = _repo(tmp_path)
-    rec = repo.add("alpha")
-    repo.apply_transition(rec, Stage.BACKTESTED, Actor.HUMAN, "bt")
-    repo.record_search_trial("alpha", 4, "{}")
-    ctx = promotion_preflight(repo, "alpha", actor=Actor.HUMAN, declared_combos=None,
-                              allow_holdout_reuse=False, allow_non_pit=False,
-                              provider=_NonReproducibleWorkingProvider(), start=_START, end=_END,
-                              new_family_slug="alpha_family")
-    assert ctx.own == 4 and ctx.provenance == "measured"
 
 
 def test_preflight_refuses_agent_without_measured_breadth(tmp_path):
@@ -176,8 +128,7 @@ def test_preflight_refuses_agent_without_measured_breadth(tmp_path):
         clustering_version="v0", clustering_config_json="{}", axis_json="{}",
     )
     with pytest.raises(ValueError, match="search breadth"):
-        promotion_preflight(repo, "alpha", actor=Actor.AGENT, declared_combos=None,
-                            allow_holdout_reuse=False, allow_non_pit=False,
+        promotion_preflight(repo, "alpha", actor=Actor.AGENT,
                             provider=SyntheticProvider(seed=0), start=_START, end=_END)
 
 
@@ -193,8 +144,7 @@ def test_preflight_resolves_measured_funnel_breadth(tmp_path):
         "alpha", fam_id, "agent", verdict="NOVEL", similarity_score=0.0,
         clustering_version="v0", clustering_config_json="{}", axis_json="{}",
     )
-    ctx = promotion_preflight(repo, "alpha", actor=Actor.AGENT, declared_combos=None,
-                              allow_holdout_reuse=False, allow_non_pit=False,
+    ctx = promotion_preflight(repo, "alpha", actor=Actor.AGENT,
                               provider=SyntheticProvider(seed=0), start=_START, end=_END)
     assert ctx.own == 4 and ctx.windowed_total == 14 and ctx.n_funnel == 14
     assert ctx.provenance == "measured"
@@ -238,8 +188,7 @@ def test_preflight_refuses_divergent_signal_panel_before_holdout(tmp_path):
         repo.record_search_trial("tmp_divergent_panel", 4, "{}")
         with pytest.raises(BacktestError, match="parity"):
             promotion_preflight(
-                repo, "tmp_divergent_panel", actor=Actor.AGENT, declared_combos=None,
-                allow_holdout_reuse=False, allow_non_pit=False,
+                repo, "tmp_divergent_panel", actor=Actor.AGENT,
                 provider=SyntheticProvider(seed=2), start=_START, end=_END)
         assert repo._conn.execute("SELECT COUNT(*) c FROM gate_evaluations").fetchone()["c"] == 0
         assert repo._conn.execute("SELECT COUNT(*) c FROM holdout_evaluations").fetchone()["c"] == 0
@@ -261,8 +210,7 @@ def test_preflight_passes_parity_for_faithful_bundled_strategy(tmp_path):
         clustering_version="v0", clustering_config_json="{}", axis_json="{}",
     )
     ctx = promotion_preflight(
-        repo, "cross_sectional_momentum", actor=Actor.AGENT, declared_combos=None,
-        allow_holdout_reuse=False, allow_non_pit=False,
+        repo, "cross_sectional_momentum", actor=Actor.AGENT,
         provider=SyntheticProvider(seed=7), start=_START, end=_END)
     assert ctx.own == 4 and ctx.provenance == "measured"
 
@@ -281,8 +229,7 @@ def test_preflight_refuses_config_universe_outside_gated_universe(tmp_path):
     gated = {date(2020, 1, 1): ["AAPL", "MSFT", "AMZN", "GOOGL"]}  # no NVDA, ever
     with pytest.raises(ValueError, match=r"NVDA") as ei:
         promotion_preflight(
-            repo, "cross_sectional_momentum", actor=Actor.AGENT, declared_combos=None,
-            allow_holdout_reuse=False, allow_non_pit=False,
+            repo, "cross_sectional_momentum", actor=Actor.AGENT,
             provider=SyntheticProvider(seed=7), start=_START, end=_END,
             universe_name="liquid4", universe_by_date=gated)
     assert "liquid4" in str(ei.value)
@@ -308,28 +255,29 @@ def test_preflight_accepts_config_universe_subset_of_gated_timeline_union(tmp_pa
         date(2021, 1, 1): ["AAPL", "MSFT", "AMZN", "GOOGL", "TSLA"],  # NVDA dropped; union covers
     }
     ctx = promotion_preflight(
-        repo, "cross_sectional_momentum", actor=Actor.AGENT, declared_combos=None,
-        allow_holdout_reuse=False, allow_non_pit=False,
+        repo, "cross_sectional_momentum", actor=Actor.AGENT,
         provider=SyntheticProvider(seed=7), start=_START, end=_END,
         universe_name="liquid5", universe_by_date=gated)
     assert ctx.own == 4 and ctx.provenance == "measured"
 
 
-def test_human_exempt_from_gated_universe_subset_guard(tmp_path):
-    """The subset guard is agent-only: a HUMAN promote with an uncovered CONFIG symbol still runs
-    preflight to completion (mirrors the other human-accepts-the-cost exemptions)."""
+def test_human_label_refused_config_universe_outside_gated_universe(tmp_path):
+    """The subset guard applies to every actor: no human exemption (spec 2026-11-13)."""
     repo = _repo(tmp_path)
     rec = repo.add("cross_sectional_momentum")
-    repo.apply_transition(rec, Stage.BACKTESTED, Actor.HUMAN, "bt")
+    repo.apply_transition(rec, Stage.BACKTESTED, Actor.AGENT, "bt")
     repo.record_search_trial("cross_sectional_momentum", 4, "{}")
+    fam_id = repo.create_family("csm_family", actor="agent")
+    repo.assign_strategy_to_family(
+        "cross_sectional_momentum", fam_id, "agent", verdict="NOVEL", similarity_score=0.0,
+        clustering_version="v0", clustering_config_json="{}", axis_json="{}",
+    )
     gated = {date(2020, 1, 1): ["AAPL", "MSFT", "AMZN", "GOOGL"]}  # no NVDA
-    ctx = promotion_preflight(
-        repo, "cross_sectional_momentum", actor=Actor.HUMAN, declared_combos=None,
-        allow_holdout_reuse=False, allow_non_pit=False,
-        provider=SyntheticProvider(seed=7), start=_START, end=_END,
-        new_family_slug="csm_family",
-        universe_name="liquid4", universe_by_date=gated)
-    assert ctx.own == 4 and ctx.provenance == "measured"
+    with pytest.raises(ValueError, match=r"NVDA"):
+        promotion_preflight(
+            repo, "cross_sectional_momentum", actor=Actor.HUMAN,
+            provider=SyntheticProvider(seed=7), start=_START, end=_END,
+            universe_name="liquid4", universe_by_date=gated)
 
 
 # --- run_gate DSR binding (#211) ---------------------------------------------------------------
@@ -374,9 +322,10 @@ def _breadth(repo, provenance: str, *, n: int = 5) -> BreadthContext:
 def _run(repo, breadth, wf=None):
     return run_gate(
         repo, wf or _gate_wf(), name=_GATE_NAME, actor=Actor.AGENT, criteria=GateCriteria(),
-        breadth=breadth, universe_name=None, universe_snapshots=None,
+        breadth=breadth, universe_name="pit_u",
+        universe_snapshots=[{"snapshot_id": "u1", "effective_date": "2020-01-01"}],
         period_start=_GATE_START, period_end=_GATE_END, holdout_frac=0.2,
-        data_source="synthetic", snapshot_id=None, allow_non_pit=True, reason_suffix="")
+        data_source="synthetic", snapshot_id=None)
 
 
 def test_run_gate_measured_binds_dsr(tmp_path):
@@ -432,9 +381,10 @@ def _run_measured(repo, *, sharpe: float = 7.0):
     breadth = _breadth(repo, "measured")
     return run_gate(
         repo, _wf_sharpe(sharpe), name=_GATE_NAME, actor=Actor.AGENT, criteria=GateCriteria(),
-        breadth=breadth, universe_name=None, universe_snapshots=None,
+        breadth=breadth, universe_name="pit_u",
+        universe_snapshots=[{"snapshot_id": "u1", "effective_date": "2020-01-01"}],
         period_start=_GATE_START, period_end=_GATE_END, holdout_frac=0.2,
-        data_source="synthetic", snapshot_id=None, allow_non_pit=True, reason_suffix="")
+        data_source="synthetic", snapshot_id=None)
 
 
 def test_run_gate_measured_promote_writes_no_binding_row(tmp_path):
@@ -594,9 +544,10 @@ def test_e2e_all_stats_fail_floor_pass_promotes_with_born_consumed_token(tmp_pat
         stability={"pct_positive_windows": 0.0, "min_sharpe": -2.0})
     outcome = run_gate(
         repo, wf, name=_GATE_NAME, actor=Actor.AGENT, criteria=GateCriteria(),
-        breadth=_breadth(repo, "measured"), universe_name=None, universe_snapshots=None,
+        breadth=_breadth(repo, "measured"), universe_name="pit_u",
+        universe_snapshots=[{"snapshot_id": "u1", "effective_date": "2020-01-01"}],
         period_start=_GATE_START, period_end=_GATE_END, holdout_frac=0.2,
-        data_source="synthetic", snapshot_id=None, allow_non_pit=True, reason_suffix="")
+        data_source="synthetic", snapshot_id=None)
     d = outcome.decision
     failed = [c for c in d.checks if not c["passed"]]
     assert {c["name"] for c in failed} >= {
@@ -624,15 +575,16 @@ def test_e2e_floor_failures_still_fail_closed(tmp_path, holdout_patch, stability
                   stability={**_GATE_STAB, **(stability_patch or {})})
     outcome = run_gate(
         repo, wf, name=_GATE_NAME, actor=Actor.AGENT, criteria=GateCriteria(),
-        breadth=_breadth(repo, "measured"), universe_name=None, universe_snapshots=None,
+        breadth=_breadth(repo, "measured"), universe_name="pit_u",
+        universe_snapshots=[{"snapshot_id": "u1", "effective_date": "2020-01-01"}],
         period_start=_GATE_START, period_end=_GATE_END, holdout_frac=0.2,
-        data_source="synthetic", snapshot_id=None, allow_non_pit=True, reason_suffix="")
+        data_source="synthetic", snapshot_id=None)
     assert outcome.promoted is False
     assert repo.get(_GATE_NAME).stage is Stage.BACKTESTED
 
 
 def test_e2e_pit_failure_still_fails_closed(tmp_path):
-    """No universe + no allow_non_pit → pit_required (binding) vetoes even a stellar holdout."""
+    """No universe → pit_required (binding) vetoes even a stellar holdout (no override exists)."""
     repo = _gate_repo(tmp_path)
     repo.record_search_trial(_GATE_NAME, 5, "{}", trial_sharpe_count=5,
                              trial_sharpe_mean=0.5, trial_sharpe_var_ann=0.04)
@@ -640,7 +592,7 @@ def test_e2e_pit_failure_still_fails_closed(tmp_path):
         repo, _gate_wf(), name=_GATE_NAME, actor=Actor.AGENT, criteria=GateCriteria(),
         breadth=_breadth(repo, "measured"), universe_name=None, universe_snapshots=None,
         period_start=_GATE_START, period_end=_GATE_END, holdout_frac=0.2,
-        data_source="synthetic", snapshot_id=None, allow_non_pit=False, reason_suffix="")
+        data_source="synthetic", snapshot_id=None)
     assert outcome.promoted is False
     pit = next(c for c in outcome.decision.checks if c["name"] == "pit_required")
     assert pit["passed"] is False and not pit.get("advisory")
@@ -664,7 +616,7 @@ def test_forward_gate_reads_holdout_sharpe_value_from_soft_pass_row(tmp_path):
         repo, _wf_sharpe(0.3), name=_GATE_NAME, actor=Actor.AGENT, criteria=GateCriteria(),
         breadth=_breadth(repo, "measured"), universe_name="u", universe_snapshots=snapshots,
         period_start=_GATE_START, period_end=_GATE_END, holdout_frac=0.2,
-        data_source="synthetic", snapshot_id=None, allow_non_pit=False, reason_suffix="")
+        data_source="synthetic", snapshot_id=None)
     assert outcome.promoted is True
     hs = next(c for c in outcome.decision.checks if c["name"] == "holdout_sharpe")
     assert hs["passed"] is False and hs["advisory"] is True   # a genuine soft pass
@@ -705,10 +657,10 @@ def test_run_gate_with_holdout_id_and_returns_writes_row(tmp_path):
     # Reserve and finalize a holdout burn to get a real holdout_evaluation_id.
     sid = repo.get(_GATE_NAME).id
     h_start, h_end = "2024-01-01", "2024-06-01"
-    rid, _ = repo.reserve_holdout(
+    rid = repo.reserve_holdout(
         sid, data_source="synthetic", snapshot_id=None,
         period_start="2024-01-01", period_end="2024-06-01",
-        holdout_frac=0.2, holdout_start=h_start, holdout_end=h_end, allow_reuse=False)
+        holdout_frac=0.2, holdout_start=h_start, holdout_end=h_end)
     repo.finalize_holdout_reservation(rid, config_hash="c", strategy_id=sid)
 
     rets = [0.01, -0.02, 0.005]
@@ -725,9 +677,10 @@ def test_run_gate_with_holdout_id_and_returns_writes_row(tmp_path):
 
     outcome = run_gate(
         repo, wf, name=_GATE_NAME, actor=Actor.AGENT, criteria=GateCriteria(),
-        breadth=_breadth(repo, "measured"), universe_name=None, universe_snapshots=None,
+        breadth=_breadth(repo, "measured"), universe_name="pit_u",
+        universe_snapshots=[{"snapshot_id": "u1", "effective_date": "2020-01-01"}],
         period_start=_GATE_START, period_end=_GATE_END, holdout_frac=0.2,
-        data_source="synthetic", snapshot_id=None, allow_non_pit=True, reason_suffix="",
+        data_source="synthetic", snapshot_id=None,
         holdout_evaluation_id=rid,
     )
 
@@ -760,10 +713,10 @@ def test_run_gate_write_persists_even_on_failed_gate(tmp_path):
 
     sid = repo.get(_GATE_NAME).id
     h_start, h_end = "2024-01-01", "2024-06-01"
-    rid, _ = repo.reserve_holdout(
+    rid = repo.reserve_holdout(
         sid, data_source="synthetic", snapshot_id=None,
         period_start="2024-01-01", period_end="2024-06-01",
-        holdout_frac=0.2, holdout_start=h_start, holdout_end=h_end, allow_reuse=False)
+        holdout_frac=0.2, holdout_start=h_start, holdout_end=h_end)
     repo.finalize_holdout_reservation(rid, config_hash="c", strategy_id=sid)
 
     rets = [0.01, -0.02]
@@ -780,9 +733,10 @@ def test_run_gate_write_persists_even_on_failed_gate(tmp_path):
 
     outcome = run_gate(
         repo, wf, name=_GATE_NAME, actor=Actor.AGENT, criteria=GateCriteria(),
-        breadth=_breadth(repo, "measured"), universe_name=None, universe_snapshots=None,
+        breadth=_breadth(repo, "measured"), universe_name="pit_u",
+        universe_snapshots=[{"snapshot_id": "u1", "effective_date": "2020-01-01"}],
         period_start=_GATE_START, period_end=_GATE_END, holdout_frac=0.2,
-        data_source="synthetic", snapshot_id=None, allow_non_pit=True, reason_suffix="",
+        data_source="synthetic", snapshot_id=None,
         holdout_evaluation_id=rid,
     )
 
@@ -851,9 +805,10 @@ def _run_bootstrap(repo, wf, rid=None):
     """run_gate with measured breadth and holdout_returns wf."""
     return run_gate(
         repo, wf, name=_GATE_NAME, actor=Actor.AGENT, criteria=GateCriteria(),
-        breadth=_breadth(repo, "measured"), universe_name=None, universe_snapshots=None,
+        breadth=_breadth(repo, "measured"), universe_name="pit_u",
+        universe_snapshots=[{"snapshot_id": "u1", "effective_date": "2020-01-01"}],
         period_start=_GATE_START, period_end=_GATE_END, holdout_frac=0.2,
-        data_source="synthetic", snapshot_id=None, allow_non_pit=True, reason_suffix="",
+        data_source="synthetic", snapshot_id=None,
         holdout_evaluation_id=rid,
     )
 
@@ -861,11 +816,10 @@ def _run_bootstrap(repo, wf, rid=None):
 def _reserve_holdout(repo):
     """Reserve and finalize a holdout burn; returns rid."""
     sid = repo.get(_GATE_NAME).id
-    rid, _ = repo.reserve_holdout(
+    rid = repo.reserve_holdout(
         sid, data_source="synthetic", snapshot_id=None,
         period_start="2024-01-01", period_end="2024-06-01",
-        holdout_frac=0.2, holdout_start=_BOOTSTRAP_H_START, holdout_end=_BOOTSTRAP_H_END,
-        allow_reuse=False)
+        holdout_frac=0.2, holdout_start=_BOOTSTRAP_H_START, holdout_end=_BOOTSTRAP_H_END)
     repo.finalize_holdout_reservation(rid, config_hash="c", strategy_id=sid)
     return rid
 
@@ -965,11 +919,10 @@ def _seed_sibling_returns(repo, n_siblings: int, *, h_start: str, h_end: str,
         sib_rec = repo.add(sib_name)
         repo.apply_transition(sib_rec, Stage.BACKTESTED, Actor.AGENT, "bt")
         sib_id = repo.get(sib_name).id
-        rid, _ = repo.reserve_holdout(
+        rid = repo.reserve_holdout(
             sib_id, data_source="synthetic", snapshot_id=None,
             period_start="2024-01-01", period_end="2024-06-01",
-            holdout_frac=0.2, holdout_start=h_start, holdout_end=h_end,
-            allow_reuse=False)
+            holdout_frac=0.2, holdout_start=h_start, holdout_end=h_end)
         repo.finalize_holdout_reservation(rid, config_hash=f"c{k}", strategy_id=sib_id)
         # Small variation per sibling so all pairwise correlations are well-defined (not identical).
         rets = [0.01 * (1 + 0.01 * k) if i % 2 == 0 else -0.005 * (1 + 0.01 * k)
@@ -984,9 +937,10 @@ def _run_bootstrap_neff(repo, rid=None):
     return run_gate(
         repo, _wf_with_holdout_returns(), name=_GATE_NAME, actor=Actor.AGENT,
         criteria=GateCriteria(),
-        breadth=_breadth(repo, "measured"), universe_name=None, universe_snapshots=None,
+        breadth=_breadth(repo, "measured"), universe_name="pit_u",
+        universe_snapshots=[{"snapshot_id": "u1", "effective_date": "2020-01-01"}],
         period_start=_GATE_START, period_end=_GATE_END, holdout_frac=0.2,
-        data_source="synthetic", snapshot_id=None, allow_non_pit=True, reason_suffix="",
+        data_source="synthetic", snapshot_id=None,
         holdout_evaluation_id=rid,
     )
 
@@ -1196,12 +1150,13 @@ def _wf_with_regime(holdout_rets, holdout_dates, market_rets, market_dates,
 
 
 def _run_regime(repo, wf):
-    """run_gate call for regime robustness tests (measured breadth, allow_non_pit)."""
+    """run_gate call for regime robustness tests (measured breadth, PIT-clean)."""
     return run_gate(
         repo, wf, name=_GATE_NAME, actor=Actor.AGENT, criteria=GateCriteria(),
-        breadth=_breadth(repo, "measured"), universe_name=None, universe_snapshots=None,
+        breadth=_breadth(repo, "measured"), universe_name="pit_u",
+        universe_snapshots=[{"snapshot_id": "u1", "effective_date": "2020-01-01"}],
         period_start=_GATE_START, period_end=_GATE_END, holdout_frac=0.2,
-        data_source="synthetic", snapshot_id=None, allow_non_pit=True, reason_suffix="",
+        data_source="synthetic", snapshot_id=None,
     )
 
 

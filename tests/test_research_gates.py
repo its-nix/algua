@@ -317,12 +317,6 @@ def test_pit_required_fails_closed():
     assert pit["passed"] is False and pit["override"] is None and d.passed is False
 
 
-def test_pit_override_passes_and_flags():
-    d = evaluate_gate(_wf(), GateCriteria(**_LAX), n_combos=1, pit_ok=False, allow_non_pit=True)
-    pit = next(c for c in d.checks if c["name"] == "pit_required")
-    assert pit["passed"] is True and pit["override"] == "non_pit" and d.pit_override is True
-
-
 def test_pit_ok_passes_clean():
     d = evaluate_gate(_wf(), GateCriteria(**_LAX), n_combos=1, pit_ok=True)
     pit = next(c for c in d.checks if c["name"] == "pit_required")

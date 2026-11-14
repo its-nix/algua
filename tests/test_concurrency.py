@@ -443,13 +443,13 @@ def test_sequential_reserve_blocks_second_claim(tmp_path):
     SqliteStrategyRepository(c1).reserve_holdout(
         sid, data_source="demo", snapshot_id=None,
         period_start="2022-01-01", period_end="2022-12-31", holdout_frac=0.2,
-        holdout_start="2022-10-01", holdout_end="2022-12-31", allow_reuse=False)
+        holdout_start="2022-10-01", holdout_end="2022-12-31")
     c2 = connect(db)
     with pytest.raises(ValueError, match="holdout already consumed"):
         SqliteStrategyRepository(c2).reserve_holdout(
             sid, data_source="demo", snapshot_id=None,
             period_start="2022-06-01", period_end="2023-06-01", holdout_frac=0.2,
-            holdout_start="2022-12-01", holdout_end="2023-03-01", allow_reuse=False)
+            holdout_start="2022-12-01", holdout_end="2023-03-01")
 
 
 @pytest.mark.slow

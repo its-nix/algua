@@ -271,7 +271,6 @@ def evaluate_gate(
     n_combos: int | None = None,
     breadth_provenance: str | None = None,
     pit_ok: bool,
-    allow_non_pit: bool = False,
     own_lifetime_combos: int | None = None,
     windowed_total_combos: int | None = None,
     funnel_window_days: int | None = None,
@@ -350,12 +349,13 @@ def evaluate_gate(
                        "threshold": 0.0, "op": ">",
                        "passed": bool(raw_holdout_sharpe > 0.0)})
     # PIT precondition (Wall B): boolean, not a metric comparison. pit_ok is computed by the
-    # protected promotion orchestrator (presence + coverage). Non-PIT fails closed unless a human
-    # passed allow_non_pit (recorded as an audited override).
-    pit_passed = bool(pit_ok or allow_non_pit)
-    pit_override = bool((not pit_ok) and allow_non_pit)
+    # protected promotion orchestrator (presence + coverage). Non-PIT fails closed for every actor:
+    # there is no override (spec 2026-11-13). `pit_override` stays in the decision as False so the
+    # recorded schema is unchanged.
+    pit_passed = bool(pit_ok)
+    pit_override = False
     checks.append({"name": "pit_required", "passed": pit_passed,
-                   "pit_ok": bool(pit_ok), "override": "non_pit" if pit_override else None})
+                   "pit_ok": bool(pit_ok), "override": None})
     # DSR evidence (#211): an ADVISORY check, appended ONLY when armed (measured trial dispersion
     # is available). When not armed it is omitted entirely (omit-not-fail).
     # Unit conversion lives here: holdout Sharpe and trial variance are ANNUALIZED; DSR per-period.

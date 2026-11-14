@@ -52,23 +52,21 @@ def classify_and_assign_family(
     name: str,
     *,
     actor: Actor,
-    new_family_slug: str | None,
 ) -> ClassifyResult:
     """Classify ``name`` against all known families and assign it if needed (#524, R9).
 
-    Returns a ``ClassifyResult``: a resolved ``family_id`` (MERGE / PARENTAGE / human-NOVEL /
-    already-assigned) OR a deferred ``pending_novel_family`` spec (agent NOVEL — NO family created
-    here; it is minted at the pass moment inside the atomic promote tx).
+    Returns a ``ClassifyResult``: a resolved ``family_id`` (MERGE / PARENTAGE / already-assigned)
+    OR a deferred ``pending_novel_family`` spec (agent NOVEL — NO family created here; it is minted
+    at the pass moment inside the atomic promote tx).
 
-    Decision tree:
+    Decision tree (no actor creates a family in preflight; spec 2026-11-13):
     - Already assigned: return current family_id, no re-classification.
     - MERGE: assign to best-matching family.
-    - PARENTAGE + agent: fold into best parent family (agents cannot mint child families).
-    - PARENTAGE + human: create a child family with a parent edge, assign there.
+    - PARENTAGE: fold into best parent family (nobody mints a child family).
     - NOVEL + agent: return a PendingNovelFamily spec (deferred create) with a graph-fingerprint
       snapshot captured before==after classification (fail closed on mid-classification drift).
-    - NOVEL + human: create a new root family using new_family_slug (required, fresh 0 prior);
-      assign.
+    - NOVEL + any other actor: refused before the holdout. The deferred, rate-capped mint is an
+      agent-only store capability, and the fresh 0-prior human family is gone.
     """
     # #524 (R9-H3): one-time-materialise any legacy family_members row still carrying a NULL
     # profile BEFORE the classifier reads member profiles, so the profile axis is DB state covered
@@ -191,66 +189,53 @@ def classify_and_assign_family(
 
     if best_verdict == SimVerdict.PARENTAGE:
         assert best_family_id is not None
-        if actor is Actor.AGENT:
-            # Agent cannot mint a child family. Fold into the best parent.
-            _do_assign(best_family_id)
-            return ClassifyResult(family_id=best_family_id)
-        else:
-            # Human: create a child family, add a parent edge, assign.
-            child_name = new_family_slug or f"{name}_family"
-            child_fam_id = repo.create_family(child_name, actor=actor.value,
-                                               created_by_strategy=name)
-            repo.add_parent_edge(child_fam_id, best_family_id)
-            _do_assign(child_fam_id, matched_family_id=best_family_id)
-            return ClassifyResult(family_id=child_fam_id)
+        # Nobody mints a child family: fold into the best parent (the inherited-breadth choice).
+        _do_assign(best_family_id)
+        return ClassifyResult(family_id=best_family_id)
 
     # NOVEL verdict
-    if actor is Actor.AGENT:
-        # #532 (Finding 1): `_has_any_family` (from the clustering rank over ACTIVE members) is
-        # False in TWO distinct states: (a) a true cold-start — the `families` table is genuinely
-        # empty; and (b) families exist but every one has zero active members (all removed).
-        # Only (a) is the "nothing to game" case the issue permits an agent to found #0 in. In
-        # state (b) real (if dead) sibling families are on the graph, so letting an agent silently
-        # found a fresh near-zero-prior family alongside them is exactly the multiplicity evasion
-        # #524 defends against — fail closed, human-only. `family_count()` is fingerprint component
-        # 0 and is read here inside the fp_before/fp_after window, so this branch decision is
-        # covered by the same CAS that guards the NOVEL verdict (a mint bumps the fingerprint).
-        if not _has_any_family and repo.family_count() > 0:
-            raise ValueError(
-                f"strategy {name!r}: the family registry has {repo.family_count()} family(ies) but "
-                "none with an active member. An agent cannot found a new family alongside existing "
-                "(if dormant) families; a human must intervene via "
-                "`research promote --actor human --new-family <slug>`."
-            )
-        # Cold-start (family_count()==0) OR the normal non-empty case both fall through to the #524
-        # deferred PendingNovelFamily mint — no branch on emptiness in the seed or the mint.
-        # #524 (R9): do NOT create here. Defer to the atomic pass-moment. The classification
-        # snapshot is a single graph_fingerprint (member profiles are DB-persisted, so the whole
-        # classifier read-set is one DB digest). It MUST equal the state the NOVEL verdict was
-        # computed on: re-read fp_after and require fp_before == fp_after (R6-CRITICAL) — a mismatch
-        # means the graph mutated DURING classification, so the verdict is already stale.
-        fp_after = repo.family_graph_fingerprint()
-        if fp_after != fp_before:
-            raise FamilyGraphDriftError(
-                f"family graph changed while {name!r} was being classified NOVEL; re-run promote",
-                axis="graph_fingerprint")
-        pending = PendingNovelFamily(
-            slug_base=f"{name}_family", actor=actor.value, verdict=best_verdict.value,
-            similarity_score=best_score, clustering_version=cv,
-            clustering_config_json=clustering_config_json, axis_json=axis_json,
-            graph_fingerprint=fp_after,
-            founder_code_hash=strategy_code_hash,
-            founder_factors_json=member_factors_json,
+    if actor is not Actor.AGENT:
+        # Refused BEFORE the holdout: the deferred mint below is agent-only at the store boundary
+        # (record_gate_with_fdr_and_maybe_promote), so a human-labelled NOVEL would otherwise burn
+        # its holdout and then fail at the pass moment. The human fresh-family privilege is gone.
+        raise ValueError(
+            f"strategy {name!r}: clustering verdict is NOVEL (no matching family). Founding a "
+            "family is the agent's deferred, rate-capped mint; a run labelled "
+            f"--actor {actor.value} cannot found one. Re-run with --actor agent (the gates are "
+            "identical).")
+    # #532 (Finding 1): `_has_any_family` (from the clustering rank over ACTIVE members) is
+    # False in TWO distinct states: (a) a true cold-start — the `families` table is genuinely
+    # empty; and (b) families exist but every one has zero active members (all removed).
+    # Only (a) is the "nothing to game" case the issue permits an agent to found #0 in. In
+    # state (b) real (if dead) sibling families are on the graph, so letting an agent silently
+    # found a fresh near-zero-prior family alongside them is exactly the multiplicity evasion
+    # #524 defends against — fail closed. `family_count()` is fingerprint component
+    # 0 and is read here inside the fp_before/fp_after window, so this branch decision is
+    # covered by the same CAS that guards the NOVEL verdict (a mint bumps the fingerprint).
+    if not _has_any_family and repo.family_count() > 0:
+        raise ValueError(
+            f"strategy {name!r}: the family registry has {repo.family_count()} family(ies) but "
+            "none with an active member. An agent cannot found a new family alongside existing "
+            "(if dormant) families; founding one there needs a reviewed code change."
         )
-        return ClassifyResult(family_id=None, pending_novel_family=pending)
-    else:
-        # Human: create a new root family using the provided slug (fresh zero-prior).
-        if new_family_slug is None:
-            raise ValueError(
-                f"strategy {name!r}: clustering verdict is NOVEL (no matching family). "
-                "Provide --new-family <slug> to create a new family."
-            )
-        new_fam_id = repo.create_family(new_family_slug, actor=actor.value,
-                                         created_by_strategy=name)
-        _do_assign(new_fam_id, matched_family_id=None)
-        return ClassifyResult(family_id=new_fam_id)
+    # Cold-start (family_count()==0) OR the normal non-empty case both fall through to the #524
+    # deferred PendingNovelFamily mint — no branch on emptiness in the seed or the mint.
+    # #524 (R9): do NOT create here. Defer to the atomic pass-moment. The classification
+    # snapshot is a single graph_fingerprint (member profiles are DB-persisted, so the whole
+    # classifier read-set is one DB digest). It MUST equal the state the NOVEL verdict was
+    # computed on: re-read fp_after and require fp_before == fp_after (R6-CRITICAL) — a mismatch
+    # means the graph mutated DURING classification, so the verdict is already stale.
+    fp_after = repo.family_graph_fingerprint()
+    if fp_after != fp_before:
+        raise FamilyGraphDriftError(
+            f"family graph changed while {name!r} was being classified NOVEL; re-run promote",
+            axis="graph_fingerprint")
+    pending = PendingNovelFamily(
+        slug_base=f"{name}_family", actor=actor.value, verdict=best_verdict.value,
+        similarity_score=best_score, clustering_version=cv,
+        clustering_config_json=clustering_config_json, axis_json=axis_json,
+        graph_fingerprint=fp_after,
+        founder_code_hash=strategy_code_hash,
+        founder_factors_json=member_factors_json,
+    )
+    return ClassifyResult(family_id=None, pending_novel_family=pending)

@@ -159,10 +159,10 @@ def repo_with_strategy(repo):
 
 
 def _reserve(repo, sid, *, hs, he, frac=0.2, ps="2022-01-01", pe="2023-12-31",
-             ds="demo", snap=None, allow_reuse=False):
+             ds="demo", snap=None):
     return repo.reserve_holdout(
         sid, data_source=ds, snapshot_id=snap, period_start=ps, period_end=pe,
-        holdout_frac=frac, holdout_start=hs, holdout_end=he, allow_reuse=allow_reuse)
+        holdout_frac=frac, holdout_start=hs, holdout_end=he)
 
 
 def test_overlapping_interval_blocks(repo_with_strategy):
@@ -184,15 +184,8 @@ def test_different_holdout_frac_same_interval_still_blocks(repo_with_strategy):
 def test_non_overlapping_interval_allowed(repo_with_strategy):
     repo, sid = repo_with_strategy
     _reserve(repo, sid, hs="2021-06-01", he="2021-12-31", ps="2020-01-01", pe="2021-12-31")
-    rid, reused = _reserve(repo, sid, hs="2023-06-01", he="2023-12-31")
-    assert rid and reused is False
-
-
-def test_allow_reuse_overrides_overlap(repo_with_strategy):
-    repo, sid = repo_with_strategy
-    _reserve(repo, sid, hs="2023-06-01", he="2023-12-31")
-    rid, reused = _reserve(repo, sid, hs="2023-06-01", he="2023-12-31", allow_reuse=True)
-    assert rid and reused is True
+    rid = _reserve(repo, sid, hs="2023-06-01", he="2023-12-31")
+    assert rid
 
 
 def test_null_interval_row_fails_closed(repo_with_strategy):
@@ -213,14 +206,14 @@ def test_null_interval_row_fails_closed(repo_with_strategy):
 
 def test_finalize_and_release_unchanged(repo_with_strategy):
     repo, sid = repo_with_strategy
-    rid, _ = _reserve(repo, sid, hs="2022-06-01", he="2022-12-31")
+    rid = _reserve(repo, sid, hs="2022-06-01", he="2022-12-31")
     repo.finalize_holdout_reservation(rid, config_hash="real-evidence-hash", strategy_id=sid)
     row = repo._conn.execute(
         "SELECT committed_at, config_hash FROM holdout_evaluations WHERE id = ?", (rid,)
     ).fetchone()
     assert row["committed_at"] and row["config_hash"] == "real-evidence-hash"
 
-    rid2, _ = _reserve(repo, sid, hs="2024-06-01", he="2024-12-31",
+    rid2 = _reserve(repo, sid, hs="2024-06-01", he="2024-12-31",
                        ps="2024-01-01", pe="2024-12-31")
     repo.release_holdout_reservation(rid2)
     gone = repo._conn.execute(
@@ -241,7 +234,7 @@ def test_reserve_inside_open_transaction_raises(repo_with_strategy):
 
 def test_finalize_twice_raises(repo_with_strategy):
     repo, sid = repo_with_strategy
-    rid, _ = _reserve(repo, sid, hs="2022-06-01", he="2022-12-31")
+    rid = _reserve(repo, sid, hs="2022-06-01", he="2022-12-31")
     repo.finalize_holdout_reservation(rid, config_hash="h1", strategy_id=sid)
     with pytest.raises(ValueError):
         repo.finalize_holdout_reservation(rid, config_hash="h2", strategy_id=sid)
@@ -249,7 +242,7 @@ def test_finalize_twice_raises(repo_with_strategy):
 
 def test_release_after_finalize_is_noop(repo_with_strategy):
     repo, sid = repo_with_strategy
-    rid, _ = _reserve(repo, sid, hs="2022-06-01", he="2022-12-31")
+    rid = _reserve(repo, sid, hs="2022-06-01", he="2022-12-31")
     repo.finalize_holdout_reservation(rid, config_hash="h1", strategy_id=sid)
     repo.release_holdout_reservation(rid)  # no-op, no raise
     with pytest.raises(ValueError, match="holdout already consumed"):
@@ -287,20 +280,18 @@ def test_inverted_interval_rejected(repo_with_strategy):
 
 def test_release_then_reserve_same_interval_succeeds(repo_with_strategy):
     repo, sid = repo_with_strategy
-    rid, _ = _reserve(repo, sid, hs="2023-06-01", he="2023-12-31")
+    rid = _reserve(repo, sid, hs="2023-06-01", he="2023-12-31")
     repo.release_holdout_reservation(rid)
-    rid2, reused = _reserve(repo, sid, hs="2023-06-01", he="2023-12-31")
-    assert rid2 and reused is False
+    rid2 = _reserve(repo, sid, hs="2023-06-01", he="2023-12-31")
+    assert rid2
 
 
-def test_allow_reuse_past_orphaned_pending_reservation(repo_with_strategy):
-    # A pending (uncommitted) reservation blocks fail-closed; allow_reuse overrides it too.
+def test_orphaned_pending_reservation_blocks(repo_with_strategy):
+    # A pending (uncommitted) reservation blocks fail-closed; there is no reuse override.
     repo, sid = repo_with_strategy
     _reserve(repo, sid, hs="2023-06-01", he="2023-12-31")  # pending, never finalized (orphan)
     with pytest.raises(ValueError, match="holdout already consumed"):
         _reserve(repo, sid, hs="2023-09-01", he="2024-03-01")
-    rid, reused = _reserve(repo, sid, hs="2023-09-01", he="2024-03-01", allow_reuse=True)
-    assert rid and reused is True
 
 
 def _record_pass(repo, sid, *, actor="agent", code="c0", config="cfg0", dep="dep0"):
