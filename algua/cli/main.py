@@ -30,7 +30,6 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     operator_cmd,
     ops_cmd,
     paper_cmd,
-    paper_mechanics_cmd,
     portfolio_cmd,
     registry_cmd,
     research_batch_cmd,
@@ -54,7 +53,6 @@ from algua.cli.errors import error_envelope, is_retryable
 # those listed command modules free of any sibling import.
 live_cmd.live_app.add_typer(capped_live_cmd.capped_live_app)
 paper_cmd.paper_app.add_typer(handoff_cmd.handoff_app)
-paper_cmd.paper_app.add_typer(paper_mechanics_cmd.mechanics_app, name="mechanics")
 research_cmd.research_app.add_typer(idea_cmd.idea_app, name="idea")
 # idea_ops_cmd carries the driver-facing claim/record-outcome/link/depth/refuted/import/
 # reclassify/scorecard commands (spec 2026-09-08 §7); merged flat (no `name=`) onto idea_app,

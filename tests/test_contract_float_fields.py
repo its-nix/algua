@@ -24,29 +24,11 @@ from algua.strategies.loader import _index
 # (feat/story-1-3c-frozen-paper at 1ed5c22). Strategy modules are additions-only, so a pin only
 # moves if a human deliberately edits that strategy; a strategy added later is simply not pinned.
 _GOLDEN_CONFIG_HASHES = {
-    "cadenced_mad_relative_strength": "70c9a5552628f9e16f482ca1873b0882",
-    "cadenced_sharpe_rank_buffer": "31af862ca18a407cac500d48b226e0ec",
-    "cadenced_tail_risk_relative_strength": "db7ef2d2eb8a445534e42c3bccd2f9d9",
-    "calm_four_day_rebound": "73fa0535642eae8c58b9435f485225a0",
-    "cross_horizon_low_vol_consensus": "1439efc33cbb81bed6b7ac06c4ae4638",
     "cross_sectional_momentum": "5e4f08591d72dcf08117abaa75a87bb0",
-    "distributed_gains_quality_momentum": "53c630572753e26acd0a39f58809a8b3",
-    "distributed_loss_peer_selloff_rebound": "28916e887ddce65677e1f59ed0b83f57",
-    "dual_horizon_skip_month_persistence": "e6542693f13fa1c5889dc2501778906f",
-    "lagged_rank_persistence_momentum": "5239fe88830da81983c274e98b172635",
-    "liquidity_stable_quality_momentum": "fb424c2ba4a23203bc7c66ceed1285a6",
-    "market_residual_low_volatility": "b70b0ed446f574e712845d37e1426e0b",
     "model_linear_scores": "dbee045a0c4652aa1d0b15d378e3370e",
     "model_scaled_linear": "040c2ea4608275eb46a67664b9e60d08",
     "momentum_regime_stop": "c267c3cd0483d963cd734bdd57ac15ba",
-    "orderly_six_day_rebound": "d8d8d4994202bc1a258d874d360eb9c1",
     "path_efficiency_quality_momentum": "61116477f695354c09ac858f26869161",
-    "peer_median_oversold_rebound": "d413e75e50e7113ee2ba3b69ebc9daae",
-    "robust_dispersion_low_volatility": "95e63d9c3490b35303ba045d90d37b5c",
-    "shock_veto_peer_selloff_rebound": "4e0070175e2fd31931327e7365772d00",
-    "thresholded_peer_selloff_conviction": "b718083496d59a6a993a1da583ef1aeb",
-    "trend_fit_quality_momentum": "86ca721f41724b450424001a55ef13f3",
-    "ulcer_quiet_momentum_quality": "80a5029b1d36c0f1d092269773d60224",
 }
 
 _EXECUTION_FLOATS = {

@@ -22,7 +22,7 @@ Its conceptual journey through shadow/paper/experimental/scaled live is not a ch
 current `Stage` enum. Research workers stop at `candidate`; gated operational commands can
 reach `forward_tested`; real-money activation still requires the signed human ceremony.
 
-On the STRICT route the forward gate is the harsh threshold (Sharpe ≥ max(0.5× holdout, 0.3) over 63 broker-clocked sessions). On the CAPPED experimental route the edge is judged only by the research gate's out-of-sample holdout (Sharpe > 0, ≥63 bars). That is a weak bar. The five paper sessions prove mechanics, not edge. The deflated-Sharpe signal recorded by the research gate is the advisory quality measure and the candidate binding bar.
+On the STRICT route the forward gate is the harsh threshold (Sharpe ≥ max(0.5× holdout, 0.3) over 63 broker-clocked sessions). On the CAPPED experimental route the edge is judged only by the research gate's out-of-sample holdout (Sharpe > 0, ≥63 bars). That is a weak bar. The five paper sessions prove mechanics, not edge. The deflated-Sharpe signal recorded by the research gate is advisory — the quality measure, and a candidate for a future binding bar (an owner decision).
 
 ## Current capability versus target
 
