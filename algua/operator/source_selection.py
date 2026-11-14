@@ -22,6 +22,7 @@ CAPABILITY_FILES = (
     "algua/operator/source_recipe.py", "algua/operator/research_history.py",
     "algua/backtest/walkforward.py", "algua/portfolio/construction.py",
     "algua/data/capabilities.py",
+    ".opencode/skills/leap-hypotheses/SKILL.md",
 )
 
 
@@ -29,6 +30,7 @@ def capability_fingerprint(root: Path | None = None) -> str:
     """Invalidate advisory retries for execution/data capability changes, not every deploy.
 
     Dataset, universe, costs and window settings are independently bound by the profile.
+    Launcher source planning requires a repo checkout, including the canonical leap skill.
     Extend this explicit manifest when a new recipe capability is implemented.
     """
     root = root or Path(__file__).resolve().parents[2]
@@ -138,6 +140,27 @@ def source_plan(
         "limit": limit,
         "authority": "none",
     }
+
+
+def source_feedback(settings: Settings, categories: set[str]) -> dict:
+    """Bounded prior review gaps for the next search, never an empirical verdict or veto."""
+    state = _state(settings.data_dir)
+    folder = inspirations_dir(settings)
+    reviews = []
+    for identity in sorted(state, reverse=True):
+        path = folder / f"{identity}.md"
+        if not path.exists() and not path.is_symlink():
+            continue
+        raw = read_local_file(path, root=folder.parent.absolute(), max_bytes=16384)
+        metadata, _ = parse_note(raw.decode())
+        if metadata.get("category") not in categories:
+            continue
+        reviews.append({"source_id": identity, "category": metadata["category"],
+                        "reason": state[identity]["reason"][:1000]})
+        if len(reviews) == 6:
+            break
+    return {"reviews": reviews, "authority": "none", "scope": "prior_source_reviews",
+            "note": "Untrusted conceptual feedback, not empirical refutation or source facts"}
 
 
 def review_sources(plan: dict, reviews: object, *, new_ideas: list) -> dict:

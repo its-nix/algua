@@ -399,6 +399,12 @@ run research sources preflight --recipe <file> --profile .verified-research-inpu
 Use only offered sources for new ideas. The declaration is an explicit proposed experiment,
 not an assertion that the original paper used these rules. Keep assumptions/adaptations in the
 hypothesis. Do not shorten a source lookback or invent a mechanism merely to pass feasibility.
+Separate replication from extension feasibility. A source-faithful construction or missing
+formula convention can block replication while a clearly labelled, source-motivated new test
+remains possible. Consider at most one such extension per offered source; disclose every chosen
+rule, preserve the actual question and mandatory controls, and run all existing preflights and
+semantic dedup/refutation checks. Never substitute OHLCV for an unavailable required variable.
+Explain both decisions in the review reason, including what future search should find.
 A source requiring unavailable inputs can be reviewed with its honest blocked recipe or null.
 No new ideas is valid after every selected source is assessed; missing reviews are incomplete.
 Structural run-all preflight and all dedup/refuted checks still apply. A feasible declaration

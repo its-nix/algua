@@ -74,6 +74,20 @@ assumption. If a computable score and falsification cannot be grounded, reject t
 rather than invent a recipe and attribute it to the source.
 Extensions and new hypotheses can also use these moves:
 
+For each offered source, distinguish **replication feasibility** from **extension feasibility**.
+A failed faithful replication does not finish the assessment. Consider at most one bounded,
+source-motivated extension before returning null. You may choose an explicit formula convention,
+lookback, daily ranking or portfolio construction as a proposed assumption when it still tests
+a clear price-based question. For example, unspecified RSI smoothing can be fixed and disclosed
+in a new daily ranking hypothesis; it cannot be described as the source's tested entry/exit system.
+Use a compatible broad same-universe control for that new question when appropriate; it cannot
+validate a source's unavailable SPY or long-short result. Never fabricate missing inputs, claim
+OHLCV identifies unavailable flow/attention variables, shorten a prescribed formation interval
+just to fit, or repackage an existing/refuted idea. The extension must pass the same preflights,
+semantic history checks and costed falsification as any other proposal. No quota overrides them.
+In each review reason, state the replication gap, the extension considered (or why none is
+grounded), its explicit assumptions/history collision, and what a subsequent search should seek.
+
 | move | what it means | example |
 |---|---|---|
 | **transfer** | the same mechanism, a different market or horizon | an intraday order-flow effect claimed in crypto, tested as a daily effect in us_equities |
