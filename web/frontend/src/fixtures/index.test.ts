@@ -3,6 +3,7 @@ import { FIXTURE_SENTINEL, resolveFixture } from './index'
 import type {
   ApiEnvelope,
   BookPayload,
+  EquityPayload,
   FleetHealth,
   ListPayload,
   StrategyRecord,
@@ -34,6 +35,10 @@ const REAL_ENDPOINT_URLS = [
   '/api/strategy/liquid10_adj_momentum',
   '/api/strategy/liquid10_adj_momentum/series',
   '/api/push/key',
+  '/api/equity',
+  '/api/equity?lane=paper',
+  '/api/equity?lane=live',
+  '/api/inbox',
 ]
 
 describe('resolveFixture', () => {
@@ -49,6 +54,16 @@ describe('resolveFixture', () => {
       expect(gateBoard.data.evidence_schema_version).toBe('strategy-board-evidence/v2')
     },
   )
+  it('serves a different equity curve per lane, combined = paper + live', () => {
+    const get = (url: string) => (resolveFixture(url) as ApiEnvelope<EquityPayload>).data
+    const all = get('/api/equity'), paper = get('/api/equity?lane=paper'), live = get('/api/equity?lane=live')
+    expect(all.lane_filter).toBeNull()
+    expect(paper.lane_filter).toBe('paper')
+    expect(live.points.length).toBeLessThan(paper.points.length)
+    expect(all.current_equity).toBeCloseTo(paper.current_equity + live.current_equity, 1)
+    expect(all.points[0].pnl).toBe(0)
+  })
+
   it('returns undefined for an unknown URL rather than a fabricated payload', () => {
     expect(resolveFixture('/api/nope')).toBeUndefined()
   })

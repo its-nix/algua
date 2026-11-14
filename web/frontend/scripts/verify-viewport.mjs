@@ -19,6 +19,8 @@ import assert from 'node:assert/strict'
 // Optional local production-build acceptance using tests/_gate_comparison_fixture.py.
 // ALGUA_VIEWPORT_BASE_URL=http://127.0.0.1:18796 ALGUA_VIEWPORT_SCREENSHOT_DIR=/owned/path
 // npm run verify:viewport. No fixture generation, API interception, or qualification occurs here.
+// The Leaderboard moved under Strategies (Home took `/`); keep in sync with App.tsx.
+const LEADERBOARD = '/strategies/research/leaderboard'
 const externalBase = process.env.ALGUA_VIEWPORT_BASE_URL
 if (externalBase !== undefined) {
   const url = new URL(externalBase)
@@ -60,7 +62,7 @@ if (externalBase !== undefined) {
     }
     for (const width of [390, 1440, 360]) {
       await page.setViewportSize({ width, height: 900 })
-      await page.goto(url.origin, { waitUntil: 'networkidle' })
+      await page.goto(url.origin + LEADERBOARD, { waitUntil: 'networkidle' })
       await page.getByRole('heading', { name: 'Leaderboard', exact: true }).waitFor()
       await page.getByRole('button', { name: 'Gate OOS', exact: true }).click()
       await page.getByText(/Synthetic fixture evidence is hidden/).waitFor()
@@ -115,7 +117,7 @@ if (externalBase !== undefined) {
       await page.getByRole('heading', { name, exact: true }).waitFor()
       await page.getByRole('region', { name: 'recorded gate comparison', exact: true }).waitFor()
       await layout('detail', width)
-      await page.getByRole('link', { name: 'Research', exact: true }).click()
+      await page.goto(url.origin + '/strategies/research', { waitUntil: 'networkidle' })
       const retained = page.locator('#retained-experiments')
       await retained.getByText('No retained archive references recorded.', { exact: true }).waitFor()
       await retained.getByText('Unverified research', { exact: true }).click()
@@ -133,17 +135,20 @@ if (externalBase !== undefined) {
   process.exit(0)
 }
 
-const ROUTES = ['/', '/now', '/fleet', '/money', '/research', '/strategy/1', '/s/liquid10_adj_momentum']
+const ROUTES = ['/', '/strategies', '/inbox', LEADERBOARD, '/strategies/research', '/now', '/fleet',
+  '/strategy/1', '/s/liquid10_adj_momentum']
 
 // One string per route that only appears if the real fixture data rendered — picked from
 // src/fixtures/steady-state.ts (kept as literals here rather than imported: this script runs
 // as plain Node against the BUILT demo bundle, not through the TS/Vitest module graph).
 const ROUTE_CONTENT = {
-  '/': 'liquid10_adj_momentum', // BOARD.data.rows[0], proving the leaderboard rendered
+  '/': 'as of 2026-08-27', // the equity change line: only drawn once /api/equity points loaded
+  '/strategies': 'Leaderboard', // interim tab (Task 7 replaces it with the strategy list)
+  '/inbox': 'Everything you send feeds the next leap run.', // interim tab (Task 8)
+  [LEADERBOARD]: 'liquid10_adj_momentum', // BOARD.data.rows[0], proving the leaderboard rendered
   '/now': 'cross_horizon_low_vol', // TRIAGE.items[0].title after the worst-first sort
   '/fleet': 'liquid10_adj_momentum', // a real "every strategy" row (FLEET.data.rows)
-  '/money': 'liquid10_adj_momentum', // BOOK.data.slices[0].strategy
-  '/research': 'Turn-of-month seasonal drift, liquid10', // Actual default idea-pool fixture.
+  '/strategies/research': 'Turn-of-month seasonal drift, liquid10', // Actual default idea-pool fixture.
   '/strategy/1': 'Cross-sectional momentum over the liquid10 universe', // ID resolver -> detail
   '/s/liquid10_adj_momentum': 'Cross-sectional momentum over the liquid10 universe', // registry.description
 }
@@ -169,8 +174,11 @@ const failures = []
 
 const cases = [
   ...ROUTES.map((route) => ({ route, width: 390 })),
+  { route: '/', width: 360 },
   { route: '/', width: 860 },
   { route: '/', width: 1440 },
+  { route: LEADERBOARD, width: 860 },
+  { route: LEADERBOARD, width: 1440 },
 ]
 for (const { route, width } of cases) {
   await page.setViewportSize({ width, height: 900 })
@@ -190,12 +198,24 @@ for (const { route, width } of cases) {
   }
 
   if (route === '/') {
+    // Home must draw its curve and the three lane options, not just the number.
+    const home = await page.evaluate(() => ({
+      points: Number(document.querySelector('svg.equity-line')?.getAttribute('data-points') ?? 0),
+      lanes: document.querySelectorAll('select[aria-label="Lane"] option').length,
+      tiles: document.querySelectorAll('.home-step').length,
+    }))
+    if (home.points < 2 || home.lanes !== 3 || home.tiles !== 5) {
+      failures.push(`/ at ${width}px: Home incomplete ${JSON.stringify(home)}`)
+    }
+  }
+
+  if (route === LEADERBOARD) {
     // Public is the default mode. Its demo has no ordinary WF records; do not manufacture
     // gate-backed public windows to satisfy the separate gate-ledger checks below.
     await page.getByText('In-sample research · not independent OOS', { exact: true }).waitFor()
     const publicWidth = await page.evaluate(() => document.documentElement.scrollWidth)
     if (publicWidth > width) failures.push(`${route} public WF: scrollWidth=${publicWidth} vw=${width}`)
-    console.log(`ok   / public WF vw=${width} scrollWidth=${publicWidth}`)
+    console.log(`ok   ${route} public WF vw=${width} scrollWidth=${publicWidth}`)
     await page.getByRole('button', { name: 'Gate OOS', exact: true }).click()
     await page.getByText(/latest gate run each/).waitFor()
     await page.waitForLoadState('networkidle')
@@ -209,7 +229,7 @@ for (const { route, width } of cases) {
     }
   }
 
-  const m = await page.evaluate((currentRoute) => {
+  const m = await page.evaluate(({ currentRoute, leaderboard }) => {
     const vw = window.innerWidth
     // An element clipped by an ancestor's own horizontal scrollport (overflow-x: auto/scroll/
     // hidden) is the INTENDED "scrolls inside its own container" pattern, not page overflow —
@@ -229,17 +249,17 @@ for (const { route, width } of cases) {
         offenders.push(`${el.tagName}.${String(el.className).slice(0, 40)} right=${Math.round(r.right)}`)
       }
     })
-    const shortTargets = [...document.querySelectorAll('.bottom-link, .back-btn')]
+    const shortTargets = [...document.querySelectorAll('.bottom-link, .back-btn, .home-range, .lane-pick, .home-step, .home-alert, .home-seeall')]
       .map((el) => ({ name: el.className, height: el.getBoundingClientRect().height }))
       .filter(({ height }) => height < 44)
-    const ideaDates = currentRoute === '/research'
+    const ideaDates = currentRoute === '/strategies/research'
       ? [...document.querySelectorAll('.idea-date')].map((el) => ({
           text: el.textContent,
           display: getComputedStyle(el).display,
           height: el.getBoundingClientRect().height,
         }))
       : []
-    const evidence = currentRoute === '/'
+    const evidence = currentRoute === leaderboard
       ? [...document.querySelectorAll('.board-evidence')].map((block) => ({
           trustVisible: [...block.querySelectorAll('.board-evidence-trust')].some((el) => {
             const style = getComputedStyle(el)
@@ -265,7 +285,7 @@ for (const { route, width } of cases) {
       ideaDates,
       evidence,
     }
-  }, route)
+  }, { currentRoute: route, leaderboard: LEADERBOARD })
   // scrollWidth is the authoritative signal for "did the PAGE overflow" (the actual /money
   // symptom: the viewport itself widens/zooms out). offenders names the culprit when it does.
   const overflow = m.scrollWidth > m.vw
@@ -274,13 +294,13 @@ for (const { route, width } of cases) {
   if (m.shortTargets.length > 0) {
     failures.push(`${route}: interactive targets below 44px: ${JSON.stringify(m.shortTargets)}`)
   }
-  if (route === '/research' && (
+  if (route === '/strategies/research' && (
     m.ideaDates.length === 0
     || m.ideaDates.some(({ display, height }) => display === 'none' || height === 0)
   )) {
     failures.push(`${route}: idea created_at is not visibly reachable at 390px`)
   }
-  if (route === '/') {
+  if (route === LEADERBOARD) {
     const expectedLimitations = [
       'synthetic_not_market_data',
     ]
@@ -308,16 +328,16 @@ for (const { route, width } of cases) {
 // Native row links are the preserved keyboard seam: focus one, activate it with Enter, and
 // require the stable-ID resolver route rather than a name-derived path.
 await page.setViewportSize({ width: 390, height: 844 })
-await page.goto(base + '/', { waitUntil: 'networkidle' })
+await page.goto(base + LEADERBOARD, { waitUntil: 'networkidle' })
 const firstStrategyLink = page.locator('[data-testid="board-row"]').first()
 await firstStrategyLink.focus()
 const keyboardTarget = await page.evaluate(() => document.activeElement?.getAttribute('href'))
 if (!/^\/strategy\/\d+$/.test(keyboardTarget ?? '')) {
-  failures.push(`/: first strategy row did not receive stable-ID keyboard focus: ${keyboardTarget}`)
+  failures.push(`${LEADERBOARD}: first strategy row did not receive stable-ID keyboard focus: ${keyboardTarget}`)
 } else {
   await page.keyboard.press('Enter')
   await page.waitForURL(new RegExp(`${keyboardTarget.replace('/', '\\/')}$`))
-  console.log(`ok   / keyboard Enter -> ${new URL(page.url()).pathname}`)
+  console.log(`ok   ${LEADERBOARD} keyboard Enter -> ${new URL(page.url()).pathname}`)
 }
 
 await browser.close()
@@ -327,4 +347,4 @@ if (failures.length) {
   console.error(`\nHorizontal overflow:\n  ${failures.join('\n  ')}`)
   process.exit(1)
 }
-console.log(`\nok: ${cases.length} route/viewport cases, no horizontal overflow (390/860/1440px)`)
+console.log(`\nok: ${cases.length} route/viewport cases, no horizontal overflow (360/390/860/1440px)`)

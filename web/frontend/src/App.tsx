@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { formatTimestamp } from './api'
 import Logo from './components/Logo'
 import NavigationIcon from './components/NavigationIcon'
+import { useInboxBadge } from './inboxBadge'
 
 /** Screens publish their fetched_at for the footer. */
 const FetchedAtContext = createContext<(iso: string | null) => void>(() => {})
@@ -12,22 +13,28 @@ export function useSetFetchedAt() {
 }
 
 const PRIMARY_LINKS = [
-  { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
-  { to: '/research', label: 'Research', icon: 'research', end: false },
-  { to: '/money', label: 'Portfolio', icon: 'portfolio', end: false },
+  { to: '/', label: 'Home', icon: 'home', end: true },
+  { to: '/strategies', label: 'Strategies', icon: 'strategies', end: false },
+  { to: '/inbox', label: 'Inbox', icon: 'inbox', end: false },
 ] as const
+
+/** The moved Leaderboard keeps its wide board layout. */
+export const LEADERBOARD_PATH = '/strategies/research/leaderboard'
 
 export default function App() {
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const location = useLocation()
   const navigate = useNavigate()
   const isDetail = location.pathname.startsWith('/s/') || location.pathname.startsWith('/strategy/')
-  const isLeaderboard = location.pathname === '/'
+  const isLeaderboard = location.pathname === LEADERBOARD_PATH
+  const isHome = location.pathname === '/'
+  const inboxBadge = useInboxBadge(location.pathname.startsWith('/inbox'))
 
   return (
     <FetchedAtContext.Provider value={setFetchedAt}>
-      <div className={isLeaderboard ? 'shell leaderboard-shell' : 'shell'}>
-        <header className="shell-header">
+      <div className={isLeaderboard ? 'shell leaderboard-shell' : isHome ? 'shell home-shell' : 'shell'}>
+        {/* Home draws its own mark and lane picker in place of the centered brand. */}
+        {!isHome && <header className="shell-header">
           <div className="topbar">
             {isDetail ? (
               <button
@@ -45,7 +52,7 @@ export default function App() {
             <div className="brand"><Logo /></div>
             <span aria-hidden="true" />
           </div>
-        </header>
+        </header>}
         <main className="content">
           <Outlet />
         </main>
@@ -60,7 +67,12 @@ export default function App() {
               end={end}
               className={({ isActive }) => isActive ? 'bottom-link active' : 'bottom-link'}
             >
-              <NavigationIcon name={icon} />
+              <span className="bottom-icon">
+                <NavigationIcon name={icon} />
+                {to === '/inbox' && inboxBadge > 0 && (
+                  <span className="bottom-badge" data-testid="inbox-badge" aria-hidden="true">{inboxBadge}</span>
+                )}
+              </span>
               <span>{label}</span>
             </NavLink>
           ))}

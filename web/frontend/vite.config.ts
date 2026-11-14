@@ -75,8 +75,8 @@ export default defineConfig(({ command }) => ({
         display: 'standalone',
         start_url: '/',
         scope: '/',
-        theme_color: '#EAF4FB',
-        background_color: '#EAF4FB',
+        theme_color: '#000000',
+        background_color: '#000000',
         icons: [
           { src: '/icon-192.png?v=20261106-wave', sizes: '192x192', type: 'image/png' },
           { src: '/icon-512.png?v=20261106-wave', sizes: '512x512', type: 'image/png' },

@@ -1,0 +1,128 @@
+/* Home, per the approved mockup (docs/superpowers/specs/assets/2026-11-14-dashboard/home.jpg).
+   Sizes follow the iOS-like scale 34/22/20/17/15/13/12; colors come from theme.css tokens. */
+.home {
+  width: 100%; max-width: 560px; margin: 0 auto;
+  display: flex; flex-direction: column; line-height: 1.3;
+}
+.num-tab { font-variant-numeric: tabular-nums; }
+
+.home-top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 20px 0; min-height: 52px;
+}
+.home-mark { width: 26px; height: 26px; display: block; }
+
+/* Lane picker: a 30px pill, with the transparent native select over a 44px tap area. */
+.lane-pick { position: relative; display: inline-flex; align-items: center; min-height: 44px; }
+.lane-pill {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+  border-radius: 999px; background: var(--card-2); color: var(--text);
+  font-size: 13px; font-weight: 700;
+}
+.lane-pill svg { color: var(--text-dim); }
+.lane-pick select {
+  position: absolute; inset: 0; width: 100%; min-height: 44px; opacity: 0; cursor: pointer;
+  font-size: 16px; /* no iOS zoom on focus */
+}
+.lane-pick:focus-within .lane-pill { outline: 2px solid var(--ocean); outline-offset: 2px; }
+
+.home-head { padding: 10px 20px 0; }
+.home-label { color: var(--text-dim); font-size: 15px; }
+.home-big {
+  font-size: 40px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.05; margin-top: 4px;
+}
+.home-big-skeleton { height: 42px; width: 220px; margin-top: 4px; border-radius: 8px; }
+.home-change {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline;
+  font-size: 17px; font-weight: 700; margin-top: 8px;
+}
+.home-change span { color: var(--text-dim); font-weight: 400; font-size: 15px; }
+.home-change .up { color: var(--green); }
+.home-change .down { color: var(--red); }
+
+.home-chart { position: relative; margin-top: 16px; min-height: 140px; }
+.home-chart .equity-line { display: block; overflow: visible; }
+.home-chart-empty {
+  height: 140px; display: grid; place-items: center; color: var(--text-dim); font-size: 15px;
+}
+.equity-base {
+  stroke: rgba(255, 255, 255, .3); stroke-width: 1; stroke-dasharray: 1 4; stroke-linecap: round;
+}
+
+.home-ranges { display: flex; justify-content: space-between; padding: 6px 12px 0; }
+.home-range {
+  min-height: 44px; padding: 0; border: 0; background: none; cursor: pointer;
+  display: grid; place-items: center; color: var(--text-dim);
+}
+.home-range span {
+  height: 30px; min-width: 44px; padding: 0 12px; border-radius: 999px;
+  display: grid; place-items: center; font-size: 15px; font-weight: 700;
+}
+.home-range[aria-pressed='true'][data-tone='up'] span { background: rgba(47, 210, 122, .16); color: var(--green); }
+.home-range[aria-pressed='true'][data-tone='down'] span { background: rgba(255, 90, 82, .14); color: var(--red); }
+.home-range:focus-visible { outline: none; }
+.home-range:focus-visible span { outline: 2px solid var(--ocean); }
+.home-note { color: var(--text-dim); font-size: 13px; padding: 8px 20px 0; }
+
+/* Cards */
+.home-card {
+  background: var(--card); border-radius: 20px; margin: 12px 12px 0; padding: 16px;
+}
+.home-ranges + .home-card, .home-note + .home-card { margin-top: 14px; }
+.home-card-title {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 17px; font-weight: 700; line-height: 1.2; margin-bottom: 12px;
+}
+.home-card-title span { color: var(--text-dim); font-size: 13px; font-weight: 400; }
+.home-seeall {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: -12px 0;
+  color: var(--text-dim); font-size: 13px; font-weight: 400; text-decoration: none;
+}
+
+/* Attention */
+.home-attention { padding: 4px 16px; }
+.home-alert {
+  display: flex; gap: 12px; align-items: center; padding: 12px 0;
+  color: inherit; text-decoration: none; min-height: 44px;
+}
+.home-alert + .home-alert { border-top: 1px solid var(--hair); }
+.home-alert-icon {
+  width: 36px; height: 36px; border-radius: 12px; flex: none;
+  background: rgba(255, 90, 82, .14); color: var(--red); display: grid; place-items: center;
+}
+.home-alert-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.home-alert-title {
+  font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.home-alert-sub { color: var(--text-dim); font-size: 13px; margin-top: 4px; overflow-wrap: anywhere; }
+.home-chev { color: var(--text-fade); flex: none; }
+.home-more {
+  display: flex; align-items: center; min-height: 44px; border-top: 1px solid var(--hair);
+  color: var(--ocean); font-size: 15px; text-decoration: none;
+}
+
+/* Capital */
+.home-meter {
+  height: 8px; border-radius: 999px; background: var(--card-3); overflow: hidden;
+  display: flex; gap: 2px;
+}
+.home-meter i { display: block; height: 100%; border-radius: 999px; }
+.home-kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 14px; gap: 8px; }
+.home-kv div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.home-kv b { font-size: 20px; font-weight: 700; overflow-wrap: anywhere; }
+.home-kv span { color: var(--text-dim); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+.home-sw { width: 8px; height: 8px; border-radius: 3px; display: inline-block; flex: none; }
+
+/* Stage funnel */
+.home-funnel { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.home-step {
+  background: var(--card-2); border-radius: 14px; padding: 11px 0 10px; min-height: 44px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  color: inherit; text-decoration: none;
+}
+.home-step b { font-size: 22px; font-weight: 700; }
+.home-step span {
+  font-size: 12px; color: var(--text-dim); max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.home-step[data-live] b { color: var(--green); }

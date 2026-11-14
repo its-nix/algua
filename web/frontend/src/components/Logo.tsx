@@ -1,10 +1,9 @@
-import wordmark from '../assets/wordmark.png'
 import inverse from '../assets/wordmark-reversed.png'
 
-/** Supplied Drive wave artwork, exported without redrawing the logo. */
+/** Supplied Drive wave artwork, exported without redrawing the logo. The app is black-only, so
+ * the reversed (light-on-dark) lockup is the only one ever shown. */
 export default function Logo() {
   return <picture className="brand-lockup">
-    <source media="(prefers-color-scheme: dark)" srcSet={inverse} />
-    <img src={wordmark} width="120" height="48" alt="Algua" />
+    <img src={inverse} width="120" height="48" alt="Algua" />
   </picture>
 }

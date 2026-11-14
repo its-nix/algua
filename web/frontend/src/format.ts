@@ -42,6 +42,13 @@ export function pct(x: number | null | undefined): string {
   return `${(x * 100).toFixed(1)}%`
 }
 
+/** "$15,734.30" (or "$64,000" with `cents` false). Negative values keep a leading minus. */
+export function money(x: number, cents = true): string {
+  const digits = cents ? 2 : 0
+  const body = Math.abs(x).toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+  return `${x < 0 ? '−' : ''}$${body}`
+}
+
 /** Compact numeric display for tiles/tables. */
 export function num(x: number | null | undefined, digits = 2): string {
   if (x === null || x === undefined || !Number.isFinite(x)) return '—'

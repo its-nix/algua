@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router-dom'
+import { LEADERBOARD_PATH } from '../App'
 import { ApiError, useFetch } from '../api'
 import StaleNotice from '../components/StaleNotice'
 import { isBoardPayload, RefreshError } from '../components/StrategyBoard'
@@ -56,7 +57,7 @@ function ResolverError({ message }: { message: string }) {
     <section className="panel error-panel">
       <span className="micro-label">strategy unavailable</span>
       <div className="error-code">{message}</div>
-      <Link to="/" className="text-link">back to leaderboard</Link>
+      <Link to={LEADERBOARD_PATH} className="text-link">back to leaderboard</Link>
     </section>
   )
 }

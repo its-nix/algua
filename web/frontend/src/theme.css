@@ -2,64 +2,44 @@
 
 /* Adaptive surfaces use the current Drive kit without adding decorative chrome. */
 :root {
-  color-scheme: light dark;
-  --ink: var(--algua-mist);
-  --panel: var(--algua-white);
-  --line: rgba(0, 0, 0, .08);
-  --line-2: rgba(0, 0, 0, .15);
-  --ice: var(--algua-black);
-  --text: var(--algua-black);
-  --text-dim: #5f6065;
-  --text-fade: #6a6b70;
-  --slate: #76767b;
-  --electric: var(--algua-action);
-  --electric-soft: #0057ad;
-  --series-focus: var(--algua-action);
-  --series-context: #76767b;
-  --series-context-fill: rgba(118, 118, 123, .10);
-  --green: #1f7a35;
-  --red: #c62828;
-  --amber: #845700;
-  --amber-soft: #845700;
-  --violet: #7650a6;
+  /* Black-only (spec 2): a true #000 ground, not dark gray, in BOTH color schemes. Green and red
+     mean gains and losses only; ocean is the interface accent. */
+  color-scheme: dark;
+  --ink: #000000;
+  --panel: #111113;
+  --card: #111113;
+  --card-2: #1a1a1d;
+  --card-3: #2c2c2e;
+  --hair: rgba(255, 255, 255, .08);
+  --line: rgba(255, 255, 255, .08);
+  --line-2: rgba(255, 255, 255, .16);
+  --ice: #ffffff;
+  --text: #ffffff;
+  --text-dim: #a1a1a8;
+  --text-fade: #6b6b72;
+  --slate: #8e8e93;
+  --ocean: #00a8ff;
+  --electric: #00a8ff;
+  --electric-soft: #8abfff;
+  --series-focus: #00a8ff;
+  --series-context: #a1a1a6;
+  --series-context-fill: rgba(161, 161, 166, .12);
+  --green: #2fd27a;
+  --red: #ff5a52;
+  --amber: #f5b13d;
+  --amber-soft: #f5b13d;
+  --violet: #c1a2f0;
   --sans: var(--algua-font-sans);
   --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-  --control-bg: #dfedf8;
-  --control-selected: #ffffff;
-  --header-bg: rgba(234, 244, 251, .94);
-  --surface-shadow: 0 2px 12px rgba(0, 0, 0, .025);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ink: var(--algua-black);
-    --panel: #14181d;
-    --line: rgba(255, 255, 255, .08);
-    --line-2: rgba(255, 255, 255, .16);
-    --ice: var(--algua-white);
-    --text: var(--algua-white);
-    --text-dim: #b3b3b8;
-    --text-fade: #a1a1a6;
-    --slate: #8e8e93;
-    --electric: var(--algua-action);
-    --electric-soft: #8abfff;
-    --series-focus: var(--algua-ocean);
-    --series-context: #a1a1a6;
-    --series-context-fill: rgba(161, 161, 166, .12);
-    --green: #65cf84;
-    --red: #ff8585;
-    --amber: #e6bd62;
-    --amber-soft: #e6bd62;
-    --violet: #c1a2f0;
-    --control-bg: #1b2730;
-    --control-selected: #304654;
-    --header-bg: rgba(11, 11, 13, .94);
-    --surface-shadow: none;
-  }
+  --control-bg: #1a1a1d;
+  --control-selected: #2c2c2e;
+  --header-bg: rgba(0, 0, 0, .92);
+  --surface-shadow: none;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { color-scheme: light dark; }
+html { color-scheme: dark; background: #000; }
 
 body {
   background: var(--ink);
@@ -2002,3 +1982,27 @@ a.system-strip { text-decoration: none; min-height: 44px; }
   .retained-evaluation-toolbar { align-items: stretch; }
   .retained-evaluation-toolbar label, .retained-evaluation-toolbar select { max-width: 100%; }
 }
+
+/* ---- black tab bar (spec 2, home.jpg): three tabs, white active, ocean Inbox badge ---------- */
+.bottom-nav {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  padding: 4px 24px calc(4px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--hair); background: var(--header-bg);
+}
+.bottom-link {
+  gap: 4px; color: var(--text-fade); font-size: 12px; font-weight: 700;
+}
+.bottom-link.active { color: var(--text); font-weight: 700; }
+.bottom-link.active svg { stroke-width: 1.9; }
+.bottom-link:hover { background: transparent; color: var(--text-dim); }
+.bottom-link.active:hover { color: var(--text); }
+.bottom-icon { position: relative; height: 26px; display: grid; place-items: center; }
+.bottom-badge {
+  position: absolute; top: -3px; left: 15px; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; background: var(--ocean); color: #000;
+  font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+}
+.shell-header { background: var(--ink); }
+.home-shell .content { padding: 0 0 24px; gap: 0; }
+.soon-links { display: flex; gap: 20px; }
+.soon-links a { min-height: 44px; display: inline-flex; align-items: center; }

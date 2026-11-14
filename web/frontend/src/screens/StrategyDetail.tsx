@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError, formatTimestamp, useFetch } from '../api'
-import { useSetFetchedAt } from '../App'
+import { LEADERBOARD_PATH, useSetFetchedAt } from '../App'
 import EquityChart, { drawableSeriesPointCount } from '../components/EquityChart'
 import EvidenceDisclosure from '../components/EvidenceDisclosure'
 import EvidenceStatus from '../components/EvidenceStatus'
@@ -244,7 +244,7 @@ function IdentityError({ message, onRetry }: { message: string; onRetry: () => v
       <span className="micro-label">strategy unavailable</span>
       <div className="error-code">{message}</div>
       <button type="button" className="retry-btn" onClick={onRetry}>retry</button>
-      <Link to="/" className="text-link">back to leaderboard</Link>
+      <Link to={LEADERBOARD_PATH} className="text-link">back to leaderboard</Link>
     </section>
   )
 }

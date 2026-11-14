@@ -20,6 +20,7 @@ import {
   rng,
   type Seed,
 } from './steady-state'
+import { INBOX, equityFixture } from './equity'
 import type {
   GateCheck,
   GateDecision,
@@ -305,6 +306,8 @@ export function resolveFixture(url: string): unknown | undefined {
     // (holdout_returns.returns_blob is SENSITIVE) — an empty series map is the honest fixture.
     case '/api/runs/series': return envelope<RunSeriesPayload>({ series: {} })
     case '/api/push/key':    return { key: null }
+    case '/api/equity':      return equityFixture(url)
+    case '/api/inbox':       return INBOX
     // Fixture-only: no screen ever fetches this. The dist guard only needs FIXTURE_SENTINEL
     // present somewhere in the bundle, not inside a payload a real screen renders — parking it
     // in, say, a fleet row's `last_tick_error` would eventually print debug text on-screen.

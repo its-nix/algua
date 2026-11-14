@@ -608,3 +608,23 @@ export type RunSeriesEntry =
 export interface RunSeriesPayload {
   series: Record<string, RunSeriesEntry>
 }
+
+/** One session of `fleet equity`: cumulative P&L since the first session, and total equity. */
+export interface EquityPoint {
+  session: string
+  pnl: number
+  equity: number
+}
+
+/** GET /api/equity (`algua fleet equity`) — the Home curve. The curve plots `pnl` (P&L-indexed,
+ * so capital moves never show as gains); `current_equity` is the big number; `change_today` is 0
+ * unless the last point is today (UTC). */
+export interface EquityPayload {
+  ok: boolean
+  lane_filter: 'paper' | 'live' | null
+  points: EquityPoint[]
+  current_equity: number
+  change_today: number
+  last_session: string | null
+  truncated: boolean
+}
