@@ -78,7 +78,7 @@ deploy/systemd/install-user-units.sh --dry-run  # print the rendered units, writ
 
 For each of `algua-research.{service,timer,path}`, `algua-paper.{service,timer}`,
 `algua-mergeback-drain.{service,timer}`, `algua-forage.{service,timer}`,
-`algua-leap.{service,timer}`
+`algua-leap.{service,timer}`, `algua-web.service`
 it renders the `/opt/algua` template to `~/.config/systemd/user/<name>`, replacing `/opt/algua`
 with the actual repo root (resolved from the script's own location; a root containing whitespace
 or any character outside `[A-Za-z0-9/._-]` fails closed — plain substitution can't safely render
