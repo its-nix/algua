@@ -271,6 +271,12 @@ Source retry identities bind content, verified profile and an explicit capabilit
 (`operator/source_selection.py`), so unrelated deployments do not erase retry history. Extend that
 manifest when implementing a new recipe capability. Migration from old commit-based keys resets
 advisory retry counters once; durable criticism and experiment evidence are retained.
+The manifest also binds leap's skill review policy: changing that file legitimately reopens
+advisory source reviews; unrelated deployments still do not. Forage receives up to six prior
+review gaps for its selected categories, each bounded to 1,000 characters, as untrusted search
+context. Missing feedback is visible but does not stop forage. Leap separately assesses faithful
+replication and at most one source-motivated, explicitly labelled extension per offered source;
+the existing feasibility, semantic dedup/refutation and qualification checks remain binding.
 Conceptual `auto:leap_critic` / `CRITIC:untestable` discards without strategy/evaluation links remain
 required context for an unattempted idea's first trial rather than a permanent veto. Current-data
 preflight must recheck them. Actual attempts, empirical/manual and other critic rejections retain

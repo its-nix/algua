@@ -801,3 +801,29 @@ def test_scheduled_forage_idle_check_precedes_network_and_model(tmp_path):
     assert not (tmp_path / "data").exists()
     service = (REPO / "deploy/systemd/algua-forage.service").read_text()
     assert "forage.sh --scheduled" in service
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_forage_search_receives_review_feedback_or_visible_read_error(tmp_path, failed):
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    uv = bindir / "uv"
+    uv.write_text('#!/bin/sh\n' + ('exit 1\n' if failed else
+                  'printf \'{"reviews":[{"reason":"missing estimator FIXTURE"}],'
+                  '"authority":"none"}\\n\'\n'))
+    uv.chmod(0o700)
+    source = FORAGE.read_text()
+    block = source[source.index("# Feed prior specification"):
+                   source.index("# --- Optional verified")]
+    values = dict(REPO_ROOT=str(REPO), DRY_RUN="0", CATEGORIES="momentum",
+                  CATEGORY_LINES="momentum", SOURCES_SLICE_YAML="venues: []", SEEN_COUNT="0",
+                  SEEN_HASHES_JSON="[]", FORAGE_MAX_NOTES="3")
+    command = 'set -euo pipefail\n' + '\n'.join(
+        f'{key}={shlex.quote(value)}' for key, value in values.items()) + '\n'
+    command += block + '\nprintf "%s" "$GOAL"\n'
+    result = subprocess.run(["bash", "-c", command], cwd=REPO, capture_output=True, text=True,
+                            env={**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}"},
+                            timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert "conceptual feedback, not empirical refutations" in result.stdout
+    assert ("read_error" if failed else "missing estimator FIXTURE") in result.stdout
