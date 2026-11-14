@@ -365,3 +365,19 @@ def test_authorization_active_true_until_revoked(tmp_path):
     assert live_gate.authorization_active(conn, auth) is False
     other = LiveAuthorization(1, "OTHER", "cfg", "dep", "lior", "t")
     assert live_gate.authorization_active(conn, other) is False
+
+
+def test_unscoped_anchor_line_fails_closed(tmp_path):
+    """An allowed_signers line with NO namespaces= restriction would authenticate EVERY namespace,
+    so go-live verification refuses the whole anchor (moved from the deleted test_human_actor.py;
+    `_assert_all_lines_namespace_scoped` still guards the go-live verify path)."""
+    import pytest
+
+    key = tmp_path / "id"
+    subprocess.run(["ssh-keygen", "-t", "ed25519", "-N", "", "-C", "t", "-f", str(key)],
+                   check=True, capture_output=True)
+    keytype, keyblob = (tmp_path / "id.pub").read_text().split()[:2]
+    path = tmp_path / "allowed_signers"
+    path.write_text(f"lior {keytype} {keyblob}\n")  # NO namespaces= restriction (unscoped)
+    with pytest.raises(live_gate.SignatureError):
+        live_gate.verify_signature(path, "payload", b"sig", namespace="algua-go-live")

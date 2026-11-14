@@ -141,8 +141,8 @@
 /algua/registry/intake.py             @Lior-Nis   # candidate->paper book admission: capital slice, FIFO order, the atomic intake loop
 /algua/registry/challenges.py         @Lior-Nis   # single-use signed-challenge lifecycle: nonce issuance + consumption for the algua-go-live namespace (was live_gate.py, spec §4.4; the algua-human-actor namespace was removed)
 /algua/cli/_common.py                  @Lior-Nis   # shared CLI JSON-envelope + flag-resolution surface
-/algua/cli/research_cmd.py             @Lior-Nis   # research-promote command surface (the #329 enforcement call moved to registry/promote_run.py in 6a)
-/algua/cli/paper_cmd.py                @Lior-Nis   # paper-promote enforcement call site (#329)
+/algua/cli/research_cmd.py             @Lior-Nis   # research-promote command surface (gates fixed for every actor; the gate body lives in registry/promote_run.py)
+/algua/cli/paper_cmd.py                @Lior-Nis   # paper-promote command surface (tighten-only forward-gate thresholds for every actor)
 /algua/backtest/pit_view.py            @Lior-Nis   # as-of masking IS the anti-look-ahead enforcement (was engine.py, stage 7)
 /algua/backtest/decision_path.py       @Lior-Nis   # canonical/fast dual path + parity guard licensing the fast path (was engine.py, stage 7)
 /algua/backtest/grid.py                @Lior-Nis   # adj_grid: the sim date-index, single source of truth for build_portfolio AND holdout_window (#192 holdout identity)
