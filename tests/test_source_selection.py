@@ -102,7 +102,7 @@ def test_actual_cli_review_and_existing_import_reach_research_queue(tmp_path, mo
     from algua.contracts.idea import Obscurity
     from algua.registry.db import connect, migrate
     from algua.registry.ideas import IdeaRepository, InspirationLink
-    from tests.campaign_fixtures import add_idea
+    from tests.campaign_fixtures import add_idea, invoke_menu
 
     settings = Settings(data_dir=tmp_path / "data", knowledge_dir=tmp_path / "kb")
     a = note(settings, "aaa", recipe())
@@ -178,7 +178,7 @@ def test_actual_cli_review_and_existing_import_reach_research_queue(tmp_path, mo
     assert len(IdeaRepository(conn).list()) == 1
     assert conn.execute("SELECT count(*) FROM idea_attempts").fetchone()[0] == 0
     conn.close()
-    result = runner.invoke(app, ["research", "campaign-menu", "--budget", "1"])
+    result = invoke_menu(1)
     assert result.exit_code == 0, result.stdout
     assert len(json.loads(result.stdout)["choices"]) == 1
 

@@ -121,7 +121,6 @@ unlock `paper intake` and venue ticks.
 | Existing surface | What it can prove |
 | --- | --- |
 | `paper account` (`algua/cli/paper_cmd.py:285`) | Paper credentials/connectivity and balances. It places no order and does not print account ID. |
-| `backtest replay` (`algua/cli/replay_cmd.py:38`) | Historical mechanics through `SimBroker`, without stage, broker API or operational evidence writes. It cannot establish venue acceptance. |
 | `paper run` (`algua/cli/paper_cmd.py:181`) | An admitted paper tenant's simulator run; it is neither an admission bypass nor a venue smoke. |
 | `paper trade-tick` / `paper run-all` (`algua/cli/paper_cmd.py:803`, `:901`) | Real venue execution only for admitted paper/forward-tested tenants. These paths may write operational evidence and must not be used to manufacture pre-qualification credit. |
 | `risk check paper` (`algua/cli/risk_cmd.py:82`) | Existing signed account-risk assessment, cancellation and attributed risk reduction. It does not originate a new strategy position for a smoke. |

@@ -100,7 +100,6 @@ export ALGUA_DB_PATH="$PREP_ROOT/prep.db" ALGUA_DATA_DIR="$PREP_ROOT/data"
 export ALGUA_KNOWLEDGE_DIR="$PREP_ROOT/kb" ALGUA_TRACKING_BACKEND=noop
 uv run algua research idea add --title 'PREPARATION_ONLY midcap persistence' --source-type manual --category momentum --market us_equities --horizon daily --required-data ohlcv --family momentum --hypothesis 'PREPARATION_ONLY; fixed c63d16f44419cb96; no execution' --falsification 'Untested preparation; no economic result'
 uv run algua research idea cycle-start --run midcap-prep --limit 3 --timeout 20m --workers 1 --cpu-seconds 1200 --memory-mb 16384 --file-mb 512 --menu-only
-uv run algua research campaign-menu --budget 3
 ```
 
 On the prepared **Linux** release only, the same isolated environment can inspect the driver with

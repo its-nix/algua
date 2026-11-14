@@ -123,13 +123,11 @@ unless you explicitly point `ALGUA_DB_PATH` at the authoritative DB (or set `ALG
 ## Advisory campaign feedback (Task6)
 
 ```bash
-ALGUA_DB_PATH=/path/to/existing/registry.db uv run algua research campaign-menu \
-  --budget 4 --novelty-min 1 --novelty-max 2
 # Supply a NEW disposable directory; the example refuses reuse and ignores ALGUA_DB_PATH.
 uv run python scripts/examples/campaign_feedback.py --output-dir "$TASK6_SCRATCH/new-demo"
 ```
 
-The command reads lifetime idea attempts and negative-result context, then returns deterministic
+The example reads lifetime idea attempts and negative-result context, then returns deterministic
 `CampaignChoice(category, hypothesis_id, reason, prior_evidence_ids, budget)` options. One budget
 unit is an attempt slot. Set `TASK6_SCRATCH` to an authorized scratch directory for the example.
 Novelty uses unseen pool families (category fallback); an unavailable
