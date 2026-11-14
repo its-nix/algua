@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     drive_credentials: Path | None = None
     steering_dir: Path | None = None
     exchange: str = "XNYS"
+    eodhd_api_key: str | None = None
     alpaca_api_key: str | None = None
     alpaca_api_secret: str | None = None
     alpaca_data_url: str = "https://data.alpaca.markets/v2"

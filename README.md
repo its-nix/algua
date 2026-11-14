@@ -19,6 +19,9 @@ uv run algua doctor
 ```
 
 ## Data snapshots
+
+For EODHD daily US bars, see the [free demo ingestion and backtest recipe](docs/eodhd.md).
+
 ```
 # Register a local file snapshot.
 uv run algua data ingest daily-bars \
