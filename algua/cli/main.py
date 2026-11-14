@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import sys
 
-# Typer vendors a private Click fork (typer._click); its exception classes do NOT inherit from
-# public click.exceptions, so we must import them from the private module.  We pin Typer tightly
-# (see pyproject.toml) so this coupling is version-stable.  The smoke tests in
-# tests/test_cli_main.py (test_bad_option_type_renders_json, test_unknown_option_renders_json)
-# act as the contract-break detector if the Typer version is ever bumped.
+# Typer vendors a private Click fork (typer._click); UsageError lives there and does NOT inherit
+# from public click.exceptions. Exit/Abort are typer's own public classes (typer.exceptions; since
+# 0.28 they are no longer in typer._click.exceptions). We pin Typer tightly (see pyproject.toml);
+# the smoke tests in tests/test_cli_main.py exercise every except branch of main() and act as the
+# contract-break detector if the Typer version is ever bumped.
+from typer import Abort as _TyperAbort
+from typer import Exit as _TyperExit
 from typer._click import exceptions as _click_exc
 from typer.main import get_command
 
@@ -99,9 +101,9 @@ def main(args: list[str] | None = None) -> None:
         code = "usage_error"
         emit({"ok": False, "error": msg, "code": code, "retryable": is_retryable(code)})
         sys.exit(1)
-    except _click_exc.Exit as exc:  # raised by typer.Exit / json_errors (a subclass of this)
+    except _TyperExit as exc:  # raised by typer.Exit / json_errors
         sys.exit(exc.exit_code)
-    except _click_exc.Abort:
+    except _TyperAbort:
         code = "aborted"
         emit({"ok": False, "error": "aborted", "code": code, "retryable": is_retryable(code)})
         sys.exit(1)
