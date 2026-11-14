@@ -141,7 +141,6 @@ def _promote(*, expect_pass: bool) -> None:
     payload = promote_task(
         STRATEGY, start="2022-01-01", end="2023-12-31", demo=True,
         min_holdout_sharpe=-100, min_holdout_return=-100,
-        min_pct_positive=0, min_window_sharpe=-100,
     )
     assert payload["passed"] is False
 

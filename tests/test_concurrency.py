@@ -458,7 +458,6 @@ def test_concurrent_research_promote_single_burn_e2e(tmp_path):
 
     promote_args = [str(ALGUA_BIN), "research", "promote", STRATEGY_E2E, *common,
                     "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                    "--min-pct-positive", "0", "--min-window-sharpe", "-100",
                     "--windows", "2", "--actor", "agent"]
 
     def _launch():

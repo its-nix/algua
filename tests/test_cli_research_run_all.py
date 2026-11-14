@@ -152,8 +152,8 @@ def test_holdout_single_use_preserved_across_warm_batch(tmp_path):
          "start": "2025-01-01", "end": end_iso, "universe": "csm_uni", "windows": 2,
          "param": ["lookback=20,40"], "top": 3},
     ]).exit_code == 0
-    relax = {"min_holdout_sharpe": -100.0, "min_holdout_return": -100.0, "min_pct_positive": 0.0,
-             "min_window_sharpe": -100.0, "windows": 2, "universe": "csm_uni",
+    relax = {"min_holdout_sharpe": -100.0, "min_holdout_return": -100.0,
+             "windows": 2, "universe": "csm_uni",
              "snapshot": bid, "start": "2025-01-01", "end": end_iso}
     # TWO promote tasks on the SAME holdout window in ONE warm process: the 2nd must fail closed
     # exactly as two separate cold processes would (the burn is a committed DB row).

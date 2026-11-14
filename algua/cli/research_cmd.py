@@ -13,14 +13,14 @@ app.add_typer(research_app, name="research")
 # --summary keep-list (#349): the decision essence of a promote — the pass/fail verdict, the
 # per-check breakdown (`checks` carries each gate's name/value/threshold/pass), the breadth and
 # the binding flags, the holdout/stability scalars, and provenance. Keep-list (not drop-list) so
-# the ~25 deep dsr_* internals, per-regime sharpes, and shadow-audit fields are
+# the deep dsr_* internals and shadow-audit fields are
 # excluded-by-default from the operator-facing summary (context-rot defense).
 _PROMOTE_SUMMARY_KEYS = (
     "promoted", "strategy", "passed", "checks", "n_combos", "n_funnel", "breadth_provenance",
     "base_min_holdout_sharpe", "effective_min_holdout_sharpe", "pit_ok", "pit_override",
-    "dsr_binding", "dsr_bootstrap_binding", "regime_robustness_binding",
-    "ir_binding", "returns_available", "holdout", "stability", "config_hash", "snapshot_id",
-    "universe_name", "universe_snapshots", "fundamentals_snapshot", "news_snapshot",
+    "dsr_binding", "dsr_bootstrap_binding", "returns_available", "holdout", "stability",
+    "config_hash", "snapshot_id", "universe_name", "universe_snapshots", "fundamentals_snapshot",
+    "news_snapshot",
 )
 
 
@@ -47,8 +47,6 @@ def promote(
     holdout_frac: float = typer.Option(0.2, "--holdout-frac", help="fraction reserved as holdout"),
     min_holdout_sharpe: float = typer.Option(0.5, "--min-holdout-sharpe"),
     min_holdout_return: float = typer.Option(0.0, "--min-holdout-return"),
-    min_pct_positive: float = typer.Option(0.6, "--min-pct-positive"),
-    min_window_sharpe: float = typer.Option(0.0, "--min-window-sharpe"),
     delistings: str = typer.Option(
         None, "--delistings",
         help="delistings snapshot handle (survivorship-free: realize held delisted names)"),
@@ -57,15 +55,15 @@ def promote(
         help="human | agent: an audit label only; it unlocks nothing (every gate is the same)"),
     summary: bool = typer.Option(
         False, "--summary",
-        help="emit only decision-relevant scalars (drops deep dsr_*/regime diagnostics; "
+        help="emit only decision-relevant scalars (drops deep dsr_* diagnostics; "
              "context-rot defense)"),
 ) -> None:
     """Gate backtested->candidate on the INTEGRITY FLOOR; promote only on pass (factory soft gate).
 
     BINDING (the floor): PIT universe (`--universe`; non-PIT fails closed), holdout >= 63
     observations (underpowered holdouts fail closed), and raw holdout Sharpe > 0. Everything
-    statistical — the breadth-DEFLATED holdout-Sharpe bar, window stability, DSR/bootstrap
-    evidence, regime robustness, idiosyncratic alpha — is computed and recorded as ADVISORY
+    statistical — the breadth-DEFLATED holdout-Sharpe bar and the DSR/bootstrap evidence — is
+    computed and recorded as ADVISORY
     (`"advisory": true` on the check; never vetoes). The FORWARD gate is the harsh threshold (its
     bar is 0.5x the holdout Sharpe recorded here — overfit self-punishes). Breadth is MEASURED as
     the sum of recorded `search_trials` (from `backtest sweep`); no measured trials => refused. The
@@ -77,7 +75,6 @@ def promote(
         fundamentals_snapshot=fundamentals_snapshot, news_snapshot=news_snapshot,
         universe=universe, windows=windows, holdout_frac=holdout_frac,
         min_holdout_sharpe=min_holdout_sharpe, min_holdout_return=min_holdout_return,
-        min_pct_positive=min_pct_positive, min_window_sharpe=min_window_sharpe,
         delistings=delistings, actor=actor,
     )
     out = ok(payload)

@@ -81,7 +81,6 @@ def test_full_research_lifecycle_to_shortlist_and_live_wall(capsys):
     code, payload = _run(capsys, "research", "promote", STRATEGY, "--demo",
                          "--start", "2022-01-01", "--end", "2023-12-31",
                          "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                         "--min-pct-positive", "0", "--min-window-sharpe", "-100",
                          "--universe", "demo_pit")
     assert code == 0, payload
     assert payload["passed"] is True

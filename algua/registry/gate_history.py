@@ -57,17 +57,6 @@ GATE_DECISION_ALLOWLIST: frozenset[str] = frozenset({
     "dsr_n_eff",
     "dsr_rho_bar",
     "dsr_n_siblings",
-    "regime_method",
-    "n_regimes_attempted",
-    "n_regimes_surviving",
-    "regime_robustness_binding",
-    "ir_method",
-    "ir_binding",
-    "ir_overlap_n",
-    "market_beta",
-    "ir_alpha_ann",
-    "ir_residual_vol_ann",
-    "appraisal_ratio",
     "haircut_would_have_blocked",
     "phase3_component_mask",
 })
@@ -94,14 +83,25 @@ GATE_DECISION_HISTORICAL: frozenset[str] = frozenset({
     "fdr_active_cohort_position",
     "fdr_active_cohort_applied_alpha",
     "fdr_expected_false_discoveries_incl_active",
+    # regime robustness + the idiosyncratic-alpha screen (Task 3)
+    "regime_method",
+    "n_regimes_attempted",
+    "n_regimes_surviving",
+    "regime_robustness_binding",
+    "ir_method",
+    "ir_binding",
+    "ir_overlap_n",
+    "market_beta",
+    "ir_alpha_ann",
+    "ir_residual_vol_ann",
+    "appraisal_ratio",
 })
 
-# GateDecision fields deliberately NOT projected. per_regime_sharpes is a bare list of floats —
-# the shape contract carries scalars, dicts-of-scalars, and the checks[] reduction only, and a
-# bare-list carve-out is exactly the aperture a planted returns vector would ride through.
-GATE_DECISION_EXCLUDED: frozenset[str] = frozenset({
-    "per_regime_sharpes",
-})
+# GateDecision fields deliberately NOT projected. Empty since lean trim step 7 removed
+# per_regime_sharpes (a bare float list); an old row's per_regime_sharpes is in neither set, so it
+# is still dropped (the shape contract carries scalars, dicts-of-scalars and the checks[] reduction
+# only — a bare-list carve-out is the aperture a planted returns vector would ride through).
+GATE_DECISION_EXCLUDED: frozenset[str] = frozenset()
 
 # Hand-materialized from the fields of algua.research.forward_gates.ForwardGateDecision.
 FORWARD_DECISION_ALLOWLIST: frozenset[str] = frozenset({

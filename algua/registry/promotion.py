@@ -236,7 +236,6 @@ def run_gate(
         dsr_funnel_floor_n_total_rows=(funnel_floor.n_total_rows if funnel_floor else None),
         bootstrap_binding=bootstrap_binding, bootstrap_lower_confidence=boot_lower,
         bootstrap_seed=boot_seed, bootstrap_b=boot_b, bootstrap_block_len=boot_block,
-        market_returns=wf.market_returns,
     )
     identity = compute_artifact_hashes(name)
     rec = repo.get(name)
@@ -368,7 +367,7 @@ def run_gate(
             },
             "metrics": walk_forward_metrics(wf) | _sample(wf.holdout_metrics, "_oos")
                        | {"n_obs_oos": holdout_n_bars},
-            # The ~40 DSR / IR / regime diagnostics: queryable, but deliberately outside the fixed
+            # The DSR / bootstrap diagnostics: queryable, but deliberately outside the fixed
             # vocabulary. Finite scalars only — decision.to_dict() also carries strings, lists and
             # bools, and `bool` is an `int` subclass so it must be excluded explicitly.
             "extra_metrics": {

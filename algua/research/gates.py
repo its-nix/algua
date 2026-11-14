@@ -8,16 +8,16 @@ happens at the FORWARD gate (the harsh threshold: ≥63 broker-clocked observati
 INTEGRITY FLOOR, not a statistical exam: only the correctness checks BIND —
 ``min_holdout_observations`` (the power floor), ``pit_required`` (Wall B), and
 ``holdout_sharpe_floor`` (raw holdout Sharpe > 0). The entire statistical stack — the
-breadth-deflated ``holdout_sharpe`` bar, ``holdout_return``, window stability, DSR evidence, the
-serial-dependence bootstrap, regime robustness, and the idiosyncratic-alpha screen — still
-COMPUTES exactly as before and is RECORDED on every check (``"advisory": true``) but no longer
-vetoes ``passed``. The recorded holdout Sharpe still parameterizes the forward bar (0.5×holdout),
-so an overfit-inflated holdout self-punishes at the forward gate.
+breadth-deflated ``holdout_sharpe`` bar, ``holdout_return``, DSR evidence and the
+serial-dependence bootstrap — is RECORDED on every check (``"advisory": true``) but never vetoes
+``passed``. (Window stability, regime robustness and the idiosyncratic-alpha screen were removed
+in lean trim step 7; ``wf.stability`` itself stays in walk-forward results.) The recorded holdout
+Sharpe still parameterizes the forward bar (0.5×holdout), so an overfit-inflated holdout
+self-punishes at the forward gate.
 
 The pure-maths responsibilities that ``evaluate_gate`` composes live in cohesive sibling
 modules (mirroring the ``backtest/bootstrap.py`` / ``backtest/neff.py`` precedent):
 
-- ``algua.research.regime``   — volatility-tertile regime robustness + CAPM idiosyncratic-alpha.
 - ``algua.research.dsr``       — DSR SR*/confidence, dispersion floor, effective funnel breadth.
 - ``algua.research.haircut``   — the deflated-Sharpe multiple-testing haircut.
 - ``algua.research._constants`` — the shared holdout-power floor (MIN_HOLDOUT_OBSERVATIONS).
@@ -26,7 +26,7 @@ This module keeps the gate-orchestration surface: ``GateCriteria``, ``GateDecisi
 declarative ``GateSpec``/``GATE_SPECS``, the orchestration-level constants, and ``evaluate_gate``.
 The re-export shim left behind by the #335 extraction was removed in stage 7 task 4: every
 importer of a moved name (promotion.py, store.py, the CLIs, the test suite) now imports it
-directly from its real owner (``algua.research.dsr`` / ``.regime`` / ``.haircut`` /
+directly from its real owner (``algua.research.dsr`` / ``.haircut`` /
 ``._constants``, or ``algua.backtest.walkforward``/``._constants``). ``__all__`` below lists only
 what this module actually defines. ``GateDecision.to_dict()`` delegates to
 ``algua.research.gate_serialization.gate_decision_to_dict`` (also carved out in task 4).
@@ -44,18 +44,6 @@ from algua.research._constants import MIN_HOLDOUT_OBSERVATIONS
 from algua.research.dsr import DSR_ALPHA, dsr_confidence
 from algua.research.gate_serialization import gate_decision_to_dict
 from algua.research.haircut import sharpe_haircut
-from algua.research.regime import (
-    IR_MIN_APPRAISAL_RATIO,
-    IR_MIN_OVERLAP_BARS,
-    MIN_REGIME_OBSERVATIONS,
-    MIN_REGIME_OVERLAP_BARS,
-    MIN_REGIME_SHARPE,
-    N_REGIMES,
-    VOL_ROLLING_WINDOW,
-    information_ratio,
-    regime_robustness_check,
-    regime_splits,
-)
 
 __all__ = [
     "DOMINANCE_AUDIT_MIN_PROMOTIONS",
@@ -101,8 +89,6 @@ class GateCriteria:
 
     min_holdout_sharpe: float = 0.5
     min_holdout_return: float = 0.0       # strict > 0
-    min_pct_positive_windows: float = 0.6
-    min_window_sharpe: float = 0.0        # the worst window's Sharpe must be >= this
     min_holdout_observations: int = MIN_HOLDOUT_OBSERVATIONS  # Wall C: power floor, fails closed
 
 
@@ -149,28 +135,6 @@ class GateDecision:
     dsr_n_eff: int | None = None
     dsr_rho_bar: float | None = None
     dsr_n_siblings: int | None = None
-    # Multi-regime robustness audit (#221 Slice 4). Populated by evaluate_gate when the check is
-    # ARMED/EVALUATED (holdout_returns + market_returns present, overlap >=
-    # MIN_REGIME_OVERLAP_BARS) — the appended check is advisory (veto power removed).
-    # When omitted (unavailable / insufficient overlap): regime_method explains why.
-    regime_method: str | None = None          # "vol_tertile"|"unavailable"|"insufficient_overlap"
-    n_regimes_attempted: int | None = None    # total regime slices fed to robustness_check
-    n_regimes_surviving: int | None = None    # regimes that cleared power + vol floors
-    per_regime_sharpes: list[float | None] | None = None  # per-slice Sharpe; None for dropped
-    regime_robustness_binding: bool = False   # True iff the check was ARMED/EVALUATED (appended)
-    # Market-beta / idiosyncratic-alpha screen (#328). Populated by evaluate_gate when the check is
-    # ARMED/EVALUATED (holdout_returns + market_returns present, overlap >= IR_MIN_OVERLAP_BARS) —
-    # the appended check is advisory (veto power removed). When omitted (unavailable / insufficient
-    # overlap): ir_method explains why and ir_binding is False. market_beta is recorded for AUDIT
-    # ONLY — there is no hard beta cap (it would over-reject legitimate high-alpha/high-beta
-    # strategies); the check scores the appraisal ratio.
-    ir_method: str | None = None              # capm_appraisal | unavailable | insufficient_overlap
-    ir_binding: bool = False                  # True iff the idiosyncratic_alpha check was appended
-    ir_overlap_n: int | None = None           # date-joined holdout bars
-    market_beta: float | None = None          # OLS slope vs the market benchmark (audit only)
-    ir_alpha_ann: float | None = None         # annualized residual alpha (intercept)
-    ir_residual_vol_ann: float | None = None  # annualized idiosyncratic (residual) volatility
-    appraisal_ratio: float | None = None      # annualized alpha / residual vol (the gated value)
     # Dominance-audit shadow fields (#221 Slice 4). SHADOW/AUDIT ONLY — not in checks, not in
     # passed. Recorded on every evaluate_gate call so the Slice 5 retirement audit can accumulate
     # real-traffic statistics with pre-committed thresholds.
@@ -204,7 +168,7 @@ class GateSpec:
     """
 
     name: str
-    source: str  # "holdout" -> wf.holdout_metrics, "stability" -> wf.stability
+    source: str  # "holdout" -> wf.holdout_metrics
     metric_key: str
     threshold_attr: str
     op: str
@@ -214,10 +178,6 @@ class GateSpec:
 GATE_SPECS: tuple[GateSpec, ...] = (
     GateSpec("holdout_sharpe", "holdout", "sharpe", "min_holdout_sharpe", ">=", advisory=True),
     GateSpec("holdout_return", "holdout", "total_return", "min_holdout_return", ">",
-             advisory=True),
-    GateSpec("pct_positive_windows", "stability", "pct_positive_windows",
-             "min_pct_positive_windows", ">=", advisory=True),
-    GateSpec("min_window_sharpe", "stability", "min_sharpe", "min_window_sharpe", ">=",
              advisory=True),
     GateSpec("min_holdout_observations", "holdout", "n_bars", "min_holdout_observations", ">="),
 )
@@ -246,7 +206,6 @@ def evaluate_gate(
     bootstrap_seed: int | None = None,
     bootstrap_b: int | None = None,
     bootstrap_block_len: int | None = None,
-    market_returns: tuple[list[float], list[str]] | None = None,
 ) -> GateDecision:
     """Judge a walk-forward result against the gate criteria. Pure; no side effects.
 
@@ -264,7 +223,7 @@ def evaluate_gate(
     VALUE is read by name by the forward gate (``qualified_holdout_sharpe``) to parameterize the
     forward bar — its name/value/threshold semantics are a stable contract.
     """
-    sources = {"holdout": wf.holdout_metrics, "stability": wf.stability}
+    sources = {"holdout": wf.holdout_metrics}
     base_holdout_sharpe = float(criteria.min_holdout_sharpe)
     haircut = (
         sharpe_haircut(n_combos, int(wf.holdout_metrics["n_bars"]))
@@ -366,88 +325,6 @@ def evaluate_gate(
     else:
         dsr_skip_reason = "no_measured_dispersion"
 
-    # Multi-regime robustness (#221 Slice 4): an ADVISORY check, appended ONLY when the
-    # market series is available AND wf.holdout_returns is present AND overlap is sufficient.
-    # When omitted (unavailable / insufficient_overlap), checks is byte-identical to today so
-    # every existing promotion test (no market_returns) is unchanged.
-    # Arming is INDEPENDENT of dsr_binding — purely a holdout-robustness audit.
-    regime_method: str | None = None
-    n_regimes_attempted: int | None = None
-    n_regimes_surviving: int | None = None
-    per_regime_sharpes_out: list[float | None] | None = None
-    regime_robustness_binding = False
-
-    holdout_ret_vec = wf.holdout_returns  # tuple[list[float], list[str]] | None
-    if holdout_ret_vec is None or market_returns is None:
-        regime_method = "unavailable"
-    else:
-        strat_rets_list, strat_dates_list = holdout_ret_vec
-        mkt_rets_list, mkt_dates_list = market_returns
-        slices, overlap_n = regime_splits(
-            strat_rets_list,
-            strat_dates_list,
-            mkt_rets_list,
-            mkt_dates_list,
-            n_regimes=N_REGIMES,
-            vol_window=VOL_ROLLING_WINDOW,
-        )
-        if overlap_n < MIN_REGIME_OVERLAP_BARS:
-            regime_method = "insufficient_overlap"
-        else:
-            res = regime_robustness_check(slices, min_obs=MIN_REGIME_OBSERVATIONS,
-                                          min_sharpe=MIN_REGIME_SHARPE)
-            checks.append({"name": "regime_robustness", "value": None,
-                           "threshold": MIN_REGIME_SHARPE, "op": ">=",
-                           "passed": bool(res.passed), "advisory": True})
-            regime_method = "vol_tertile"
-            regime_robustness_binding = True
-            n_regimes_attempted = res.n_attempted
-            n_regimes_surviving = res.n_surviving
-            per_regime_sharpes_out = res.per_regime_sharpes
-
-    # Market-beta / idiosyncratic-alpha screen (#328): an ADVISORY check appended ONLY when
-    # holdout_returns + market_returns are present AND the date-join overlap >= IR_MIN_OVERLAP_BARS.
-    # Omit-not-fail otherwise (byte-identical to today for market-less runs) — consistent with the
-    # regime sibling. Armed-but-degenerate (constant mkt, zero residual, non-finite) records a
-    # failed advisory check. Arming is INDEPENDENT of dsr_binding and regime arming — purely a
-    # beta-attribution screen.
-    ir_method: str | None = None
-    ir_binding = False
-    ir_overlap_n: int | None = None
-    market_beta: float | None = None
-    ir_alpha_ann: float | None = None
-    ir_residual_vol_ann: float | None = None
-    appraisal_ratio: float | None = None
-    if holdout_ret_vec is None or market_returns is None:
-        ir_method = "unavailable"
-    else:
-        ir_strat_rets, ir_strat_dates = holdout_ret_vec
-        ir_mkt_rets, ir_mkt_dates = market_returns
-        ir = information_ratio(ir_strat_rets, ir_strat_dates, ir_mkt_rets, ir_mkt_dates)
-        ir_overlap_n = ir.overlap_n
-        if ir.overlap_n < IR_MIN_OVERLAP_BARS:
-            ir_method = "insufficient_overlap"
-        else:
-            market_beta = ir.market_beta
-            ir_alpha_ann = ir.alpha_ann
-            ir_residual_vol_ann = ir.residual_vol_ann
-            appraisal_ratio = ir.appraisal_ratio
-            ir_passed = (
-                (not ir.degenerate)
-                and appraisal_ratio is not None
-                and appraisal_ratio >= IR_MIN_APPRAISAL_RATIO
-            )
-            ir_value = (
-                appraisal_ratio
-                if (appraisal_ratio is not None and math.isfinite(appraisal_ratio))
-                else None
-            )
-            checks.append({"name": "idiosyncratic_alpha", "value": ir_value,
-                           "threshold": IR_MIN_APPRAISAL_RATIO, "op": ">=",
-                           "passed": bool(ir_passed), "advisory": True})
-            ir_method = "capm_appraisal"
-            ir_binding = True
-
     # Dominance-audit shadow field (#221 Slice 4): did the haircut alone block an otherwise-passing
     # holdout? True iff the holdout Sharpe clears the BASE bar but fails the haircut-inflated bar.
     # The haircut is still BINDING (this is shadow recording only). When the effective bar is +inf
@@ -489,18 +366,6 @@ def evaluate_gate(
         dsr_bootstrap_seed=(bootstrap_seed if effective_bootstrap_binding else None),
         dsr_bootstrap_b=(bootstrap_b if effective_bootstrap_binding else None),
         dsr_bootstrap_block_len=(bootstrap_block_len if effective_bootstrap_binding else None),
-        regime_method=regime_method,
-        n_regimes_attempted=n_regimes_attempted,
-        n_regimes_surviving=n_regimes_surviving,
-        per_regime_sharpes=per_regime_sharpes_out,
-        regime_robustness_binding=regime_robustness_binding,
-        ir_method=ir_method,
-        ir_binding=ir_binding,
-        ir_overlap_n=ir_overlap_n,
-        market_beta=market_beta,
-        ir_alpha_ann=ir_alpha_ann,
-        ir_residual_vol_ann=ir_residual_vol_ann,
-        appraisal_ratio=appraisal_ratio,
         haircut_would_have_blocked=haircut_would_have_blocked,
         phase3_component_mask=PHASE3_COMPONENT_MASK,
     )

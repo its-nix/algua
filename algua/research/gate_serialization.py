@@ -72,23 +72,6 @@ def gate_decision_to_dict(decision: GateDecision) -> dict[str, Any]:
         "dsr_n_eff": decision.dsr_n_eff,
         "dsr_rho_bar": _f(decision.dsr_rho_bar),
         "dsr_n_siblings": decision.dsr_n_siblings,
-        "regime_method": decision.regime_method,
-        "n_regimes_attempted": decision.n_regimes_attempted,
-        "n_regimes_surviving": decision.n_regimes_surviving,
-        "per_regime_sharpes": (
-            [None if (x is None or not math.isfinite(x)) else x
-             for x in decision.per_regime_sharpes]
-            if decision.per_regime_sharpes is not None else None
-        ),
-        "regime_robustness_binding": decision.regime_robustness_binding,
-        # Market-beta / idiosyncratic-alpha screen (#328)
-        "ir_method": decision.ir_method,
-        "ir_binding": decision.ir_binding,
-        "ir_overlap_n": decision.ir_overlap_n,
-        "market_beta": _f(decision.market_beta),
-        "ir_alpha_ann": _f(decision.ir_alpha_ann),
-        "ir_residual_vol_ann": _f(decision.ir_residual_vol_ann),
-        "appraisal_ratio": _f(decision.appraisal_ratio),
         # Dominance-audit shadow fields (#221 Slice 4)
         "haircut_would_have_blocked": decision.haircut_would_have_blocked,
         "phase3_component_mask": decision.phase3_component_mask,

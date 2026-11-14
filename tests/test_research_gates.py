@@ -30,8 +30,8 @@ def test_all_thresholds_met_passes():
     assert isinstance(d, GateDecision)
     assert d.passed is True
     assert {c["name"] for c in d.checks} == {
-        "holdout_sharpe", "holdout_return", "pct_positive_windows", "min_window_sharpe",
-        "min_holdout_observations", "holdout_sharpe_floor", "pit_required"}
+        "holdout_sharpe", "holdout_return", "min_holdout_observations", "holdout_sharpe_floor",
+        "pit_required"}
     assert all(c["passed"] for c in d.checks)
     assert d.n_combos == 1
 
@@ -50,8 +50,7 @@ def test_binding_partition_is_floor_only():
     binding = {c["name"] for c in d.checks if not c.get("advisory")}
     assert binding == _BINDING_FLOOR
     advisory = {c["name"] for c in d.checks if c.get("advisory") is True}
-    assert advisory == {"holdout_sharpe", "holdout_return", "pct_positive_windows",
-                        "min_window_sharpe", "dsr_evidence"}
+    assert advisory == {"holdout_sharpe", "holdout_return", "dsr_evidence"}
 
 
 def test_passed_composes_binding_checks_only():
@@ -226,14 +225,6 @@ def test_zero_holdout_return_fails_strict_gt_advisory():
     assert d.passed is True
 
 
-def test_low_pct_positive_and_negative_window_fail_advisory():
-    d = evaluate_gate(_wf(pct_positive=0.4, min_sharpe=-0.5), GateCriteria(), pit_ok=True)
-    failed = [c for c in d.checks if not c["passed"]]
-    assert {c["name"] for c in failed} == {"pct_positive_windows", "min_window_sharpe"}
-    assert all(c["advisory"] is True for c in failed)
-    assert d.passed is True
-
-
 def test_infinite_metric_fails_gate_not_passes():
     # float('inf') trivially satisfies >=/>; it must instead fail the check.
     d = evaluate_gate(_wf(holdout_sharpe=float("inf")), GateCriteria(), pit_ok=True)
@@ -295,8 +286,7 @@ def test_effective_funnel_breadth_is_max():
     assert effective_funnel_breadth(own_lifetime=0, windowed_total=0) == 0
 
 
-_LAX = dict(min_holdout_sharpe=-100, min_holdout_return=-100, min_pct_positive_windows=0,
-            min_window_sharpe=-100)
+_LAX = dict(min_holdout_sharpe=-100, min_holdout_return=-100)
 
 
 def test_min_holdout_observations_fails_closed_below_floor():
@@ -435,3 +425,36 @@ def test_gate_decision_has_no_fdr_fields():
     import dataclasses
     assert not any(f.name.startswith("fdr_") for f in dataclasses.fields(GateDecision))
     assert not any(k.startswith("fdr_") for k in GateDecision(passed=True, checks=[]).to_dict())
+
+
+# ---------------------------------------------------------------------------
+# Lean trim step 7: regime robustness, window stability and idiosyncratic alpha are gone
+# ---------------------------------------------------------------------------
+
+_CORE_CHECKS = ["holdout_sharpe", "holdout_return", "min_holdout_observations",
+                "holdout_sharpe_floor", "pit_required"]
+
+
+def test_gate_checks_are_exactly():
+    d = evaluate_gate(_wf(), GateCriteria(), n_combos=10, pit_ok=True)
+    assert [c["name"] for c in d.checks] == _CORE_CHECKS
+    # DSR and the bootstrap are the only checks that may be appended (when armed).
+    armed = evaluate_gate(_wf(), GateCriteria(), n_combos=10, pit_ok=True,
+                          dsr_binding=True, dsr_trial_var_ann=0.04, bootstrap_binding=True,
+                          bootstrap_lower_confidence=0.5)
+    assert [c["name"] for c in armed.checks] == [*_CORE_CHECKS, "dsr_evidence", "dsr_bootstrap"]
+
+
+def test_regime_ir_and_window_fields_are_gone():
+    import dataclasses
+    import inspect
+
+    removed = {"regime_method", "n_regimes_attempted", "n_regimes_surviving",
+               "per_regime_sharpes", "regime_robustness_binding", "ir_method", "ir_binding",
+               "ir_overlap_n", "market_beta", "ir_alpha_ann", "ir_residual_vol_ann",
+               "appraisal_ratio"}
+    assert not removed & {f.name for f in dataclasses.fields(GateDecision)}
+    assert not removed & set(GateDecision(passed=True, checks=[]).to_dict())
+    assert not {"min_pct_positive_windows", "min_window_sharpe"} & {
+        f.name for f in dataclasses.fields(GateCriteria)}
+    assert "market_returns" not in inspect.signature(evaluate_gate).parameters

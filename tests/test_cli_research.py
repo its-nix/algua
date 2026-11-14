@@ -52,8 +52,7 @@ def test_agent_promote_blocked_without_pit():
     assert _sweep().exit_code == 0
     r = runner.invoke(app, ["research", "promote", "cross_sectional_momentum", "--demo",
                             "--start", "2022-01-01", "--end", "2023-12-31",
-                            "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                            "--min-pct-positive", "0", "--min-window-sharpe", "-100"])
+                            "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100"])
     assert r.exit_code == 0, r.stdout
     p = json.loads(r.stdout)
     assert p["promoted"] is False
@@ -66,7 +65,6 @@ def test_promote_passes_and_shortlists():
     result = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
                                  "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                                 "--min-pct-positive", "0", "--min-window-sharpe", "-100",
                                  "--universe", "demo_pit"])
     assert result.exit_code == 0, result.stdout
     payload = json.loads(result.stdout)
@@ -85,7 +83,6 @@ def test_promote_uses_measured_breadth_from_sweep():
     result = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
                                  "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                                 "--min-pct-positive", "0", "--min-window-sharpe", "-100",
                                  "--universe", "demo_pit"])
     assert result.exit_code == 0, result.stdout
     payload = json.loads(result.stdout)
@@ -100,7 +97,6 @@ def test_two_sweeps_accumulate_breadth():
     result = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
                                  "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                                 "--min-pct-positive", "0", "--min-window-sharpe", "-100",
                                  "--universe", "demo_pit"])
     payload = json.loads(result.stdout)
     assert payload["n_funnel"] == 8  # 4 + 4
@@ -110,8 +106,7 @@ def test_promote_refuses_with_no_breadth():
     assert _backtest_to_backtested().exit_code == 0
     result = runner.invoke(app, ["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
-                                 "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                                 "--min-pct-positive", "0", "--min-window-sharpe", "-100"])
+                                 "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100"])
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
     assert payload["ok"] is False
@@ -137,23 +132,14 @@ def test_promote_from_idea_is_json_error():
     runner.invoke(app, ["registry", "add", "cross_sectional_momentum"])
     result = runner.invoke(app, ["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
-                                 "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                                 "--min-pct-positive", "0", "--min-window-sharpe", "-100"])
-    assert result.exit_code == 1
-    assert json.loads(result.stdout)["ok"] is False
-
-
-def test_promote_rejects_out_of_range_pct_positive():
-    result = runner.invoke(app, ["research", "promote", "cross_sectional_momentum",
-                                 "--demo", "--min-pct-positive", "1.5"])
+                                 "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100"])
     assert result.exit_code == 1
     assert json.loads(result.stdout)["ok"] is False
 
 
 # --- Holdout-reuse (single-use holdout) -------------------------------------
 
-_PASS = ["--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-         "--min-pct-positive", "0", "--min-window-sharpe", "-100"]
+_PASS = ["--min-holdout-sharpe", "-100", "--min-holdout-return", "-100"]
 
 
 def _holdout_rows(tmp_path):
@@ -299,7 +285,6 @@ def test_config_change_alone_does_not_bypass(tmp_path):
     second = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
                                  "--min-holdout-sharpe", "0.1", "--min-holdout-return", "-100",
-                                 "--min-pct-positive", "0", "--min-window-sharpe", "-100",
                                  "--universe", "demo_pit"])
     assert second.exit_code == 1, second.stdout
     assert json.loads(second.stdout)["ok"] is False
@@ -366,13 +351,10 @@ def test_promote_with_universe_threads_pit_provenance(tmp_path, monkeypatch):
                                  *_PASS])
     assert result.exit_code == 0, result.stdout
     payload = json.loads(result.stdout)
-    # cross_sectional_momentum is market-beta (market_beta ~1.0) and fails the idiosyncratic-alpha
-    # check — under the factory soft gate that miss is ADVISORY (recorded, never a veto), so this
-    # PIT-clean run now PASSES on the integrity floor. This test's subject is PIT-provenance
-    # THREADING, recorded on the run regardless of the verdict; ir_binding stays armed/evaluated.
+    # This PIT-clean run PASSES on the integrity floor. This test's subject is PIT-provenance
+    # THREADING, recorded on the run regardless of the verdict.
     assert payload["passed"] is True
     assert payload["promoted"] is True
-    assert payload["ir_binding"] is True
     assert payload["universe_name"] == "pit_core"
     eff = [s["effective_date"] for s in payload["universe_snapshots"]]
     assert eff == ["2022-01-01", "2023-01-01"]

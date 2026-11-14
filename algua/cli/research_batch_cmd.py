@@ -83,8 +83,8 @@ _ALLOWED_KEYS: dict[str, frozenset[str]] = {
     }),
     "promote": frozenset({
         "start", "end", "demo", "snapshot", "fundamentals_snapshot", "news_snapshot", "universe",
-        "windows", "holdout_frac", "min_holdout_sharpe", "min_holdout_return", "min_pct_positive",
-        "min_window_sharpe", "delistings", "actor",
+        "windows", "holdout_frac", "min_holdout_sharpe", "min_holdout_return", "delistings",
+        "actor",
     }),
 }
 
@@ -94,8 +94,7 @@ _PARAMETER_TYPES: dict[str, type] = {
     **dict.fromkeys(("start", "end", "snapshot", "universe", "fundamentals_snapshot",
                     "news_snapshot", "delistings", "emit_series", "rank_by", "actor"), str),
     **dict.fromkeys(("windows", "top"), int),
-    **dict.fromkeys(("holdout_frac", "min_holdout_sharpe", "min_holdout_return",
-                    "min_pct_positive", "min_window_sharpe"), float),
+    **dict.fromkeys(("holdout_frac", "min_holdout_sharpe", "min_holdout_return"), float),
     "param": list,
     "required_window_metrics": list,
     "evaluation_role": str,

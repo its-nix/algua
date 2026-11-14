@@ -97,7 +97,7 @@ def promote_task(  # noqa: PLR0913, PLR0915
     snapshot: str | None = None, fundamentals_snapshot: str | None = None,
     news_snapshot: str | None = None, universe: str | None = None, windows: int = 4,
     holdout_frac: float = 0.2, min_holdout_sharpe: float = 0.5, min_holdout_return: float = 0.0,
-    min_pct_positive: float = 0.6, min_window_sharpe: float = 0.0, delistings: str | None = None,
+    delistings: str | None = None,
     actor: str = "agent", reload: bool = False, attempt_token: str | None = None,
 ) -> dict:
     """Run the backtested->candidate gate and return the (pre-``--summary``) payload dict — the
@@ -109,8 +109,6 @@ def promote_task(  # noqa: PLR0913, PLR0915
     committed-burn overlap and fails closed, identical to two separate cold processes. ``reload``
     force-reloads the strategy module (warm-worker state hygiene)."""
     actor_enum = Actor(actor)  # fail fast on a bad actor before running the walk-forward
-    if not 0.0 <= min_pct_positive <= 1.0:
-        raise ValueError("--min-pct-positive must be in [0, 1]")
     # 1. Resolve inputs. The PIT universe is resolved up front alongside the other inputs (a bad
     # --universe refuses here, before any holdout is peeked at). The universe is intentionally NOT
     # part of the holdout-burn identity below (conservative: the same OOS data window is burned
@@ -156,7 +154,6 @@ def promote_task(  # noqa: PLR0913, PLR0915
     period_end = end_dt.date().isoformat()
     criteria = GateCriteria(
         min_holdout_sharpe=min_holdout_sharpe, min_holdout_return=min_holdout_return,
-        min_pct_positive_windows=min_pct_positive, min_window_sharpe=min_window_sharpe,
     )
 
     experience_log: dict[str, Any] | None = None

@@ -158,6 +158,20 @@ def test_old_and_new_gate_rows_render(conn: sqlite3.Connection) -> None:
         repo, repo.record_run("gate", "alpha", strategy_id=sid, gate_id=old_id))
     assert old_run["gate_decision"]["fdr_p_value"] == 0.01
 
+    # Regime / IR keys (Task 3) stay visible on the old row; per_regime_sharpes was never
+    # projected (a bare float list) and is still dropped. The old row's window-stability and
+    # regime/IR checks still render.
+    regime_ir = {k: v for k, v in OLD_STATS_KEYS.items()
+                 if k.startswith(("regime_", "n_regimes", "ir_")) or k in (
+                     "market_beta", "appraisal_ratio")}
+    for key, value in regime_ir.items():
+        if key == "per_regime_sharpes":
+            continue
+        assert old["decision"][key] == value, key
+    assert old["decision_dropped_keys"] == ["per_regime_sharpes"]
+    assert [c["name"] for c in old["decision"]["checks"]] == [c["name"] for c in OLD_CHECKS]
+    assert old_run["gate_decision"]["appraisal_ratio"] == 0.4
+
 
 def test_historical_keys_are_disjoint_from_current_fields() -> None:
     from algua.registry.gate_history import (

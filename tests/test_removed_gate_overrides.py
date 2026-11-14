@@ -50,6 +50,8 @@ def _assert_unknown_option(result) -> None:
     ["--allow-non-pit"],
     ["--assume-terminal-last-close"],
     ["--new-family", "fam"],
+    ["--min-pct-positive", "0.5"],
+    ["--min-window-sharpe", "0.0"],
 ])
 def test_research_promote_refuses_removed_flag(flag):
     _assert_unknown_option(runner.invoke(app, [*_PROMOTE, *flag]))
@@ -62,6 +64,8 @@ def test_research_promote_refuses_removed_flag(flag):
     ("assume_terminal_last_close", True),
     ("new_family", "fam"),
     ("actor_signature", "x.sig"),
+    ("min_pct_positive", 0.5),
+    ("min_window_sharpe", 0.0),
 ])
 def test_batch_promote_task_refuses_removed_key(key, value):
     from algua.cli.research_batch_cmd import _validate_tasks
