@@ -30,10 +30,18 @@ def require_owner(request: Request) -> None:
         raise Forbidden("only the owner may write")
 
 
-def refuse_cross_site(request: Request) -> None:
-    """A page on another site cannot post into the Inbox with the owner's tailnet identity.
+# The only Sec-Fetch-Site values a write may carry: the app's own fetches (`same-origin`) and a
+# user-initiated navigation such as the Web Share Target (`none`). `same-site` is refused too:
+# every service on the tailnet shares the ts.net site, so it is not proof of this app.
+ALLOWED_FETCH_SITES = frozenset({"none", "same-origin"})
 
-    Browsers send ``Sec-Fetch-Site``; the app's own fetches are ``same-origin``. Absent headers
+
+def refuse_cross_site(request: Request) -> None:
+    """A page elsewhere cannot write into the Inbox with the owner's tailnet identity.
+
+    `tailscale serve` stamps the owner header on every request from the owner's device, so a
+    browser's ``Sec-Fetch-Site`` is what tells the app's own requests apart. Absent headers
     (non-browser clients on the tailnet) still need the owner header above."""
-    if request.headers.get("sec-fetch-site", "").lower() == "cross-site":
-        raise Forbidden("cross-site writes are refused")
+    site = request.headers.get("sec-fetch-site")
+    if site is not None and site.lower() not in ALLOWED_FETCH_SITES:
+        raise Forbidden(f"writes from Sec-Fetch-Site={site[:20]} are refused")

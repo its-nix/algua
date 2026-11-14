@@ -117,6 +117,30 @@ async def test_peer_address_rechecked_after_connect(monkeypatch: pytest.MonkeyPa
     assert await extract.fetch_article("https://example.com/a") == (None, None)
 
 
+async def test_peer_check_fails_closed_on_real_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real (non-mock) transport that hides the peer address is refused, not skipped."""
+    _dns(monkeypatch, {"example.com": [PUBLIC]})
+
+    class HiddenPeer(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            return _html(request)
+
+    monkeypatch.setattr(extract, "_transport", lambda: None)
+    monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda **kw: HiddenPeer())
+    assert await extract.fetch_article("https://example.com/a") == (None, None)
+
+
+async def test_control_chars_stripped_from_fetched_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    _dns(monkeypatch, {"example.com": [PUBLIC]})
+    _serve(monkeypatch, lambda r: httpx.Response(
+        200, headers={"content-type": "text/html"},
+        text="<title>A\x00B</title><body>x\x00y\x07z</body>"))
+    title, text = await extract.fetch_article("https://example.com/a")
+    assert title == "AB" and text == "xyz"
+
+
 @pytest.mark.parametrize("url", [
     "https://x.com/a/status/1", "https://twitter.com/a", "https://www.youtube.com/watch?v=1",
     "https://m.youtube.com/watch?v=1", "https://youtu.be/abc", "https://mobile.twitter.com/a",

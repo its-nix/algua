@@ -36,7 +36,7 @@ from starlette.datastructures import UploadFile
 
 from backend import inbox, push
 from backend.algua_cli import CliError, forget, run_cli
-from backend.extract import extract_pdf_text, fetch_article
+from backend.extract import extract_pdf_text, fetch_article, strip_controls
 from backend.owner import Forbidden, refuse_cross_site, require_owner
 from backend.params import (
     InvalidParam,
@@ -467,7 +467,13 @@ def create_app() -> FastAPI:
     @app.post("/share")
     async def share_target(request: Request) -> RedirectResponse:
         # The PWA's Web Share Target (Android: Share -> Algua). Owner first, as for every write.
+        # One line per share with only the Sec-Fetch-Site value, so what a real device sends
+        # (expected `none`) can be read off the service log.
+        site = request.headers.get("sec-fetch-site")
+        logger.info("share target: Sec-Fetch-Site=%s",
+                    "absent" if site is None else repr(site[:20]).strip("'"))
         require_owner(request)
+        refuse_cross_site(request)
         form = await inbox.read_form(request, max_files=inbox.MAX_SHARE_FILES)
         try:
             title = inbox.check_title(inbox.form_str(form, "title"))
@@ -523,6 +529,8 @@ async def _cli_add(source_args: list[str]) -> dict[str, Any]:
 
 async def _add_link(url: str, *, title: str | None, note: str | None) -> dict[str, Any]:
     fetched_title, text = await fetch_article(url)
+    # Page content is untrusted: a NUL in an argv element would crash the spawn.
+    fetched_title, text = strip_controls(fetched_title), strip_controls(text)
     with inbox.extracted_text_arg(text) as extracted:
         return await _cli_add([f"--url={url}", *extracted,
                                *inbox.optional_args(title=title or fetched_title, note=note)])

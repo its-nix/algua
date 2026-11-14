@@ -39,7 +39,10 @@ The only writes in this app. Each one runs `algua research inbox add` (the Inbox
 
 - **Owner check.** A write is accepted only when the `Tailscale-User-Login` header (stamped by
   `tailscale serve`) equals `ALGUA_WEB_OWNER_LOGIN`. With that env unset or blank every write is
-  refused (403 `forbidden`). `POST /api/inbox` also refuses `Sec-Fetch-Site: cross-site`.
+  refused (403 `forbidden`). Both write routes also require
+  `Sec-Fetch-Site` to be absent, `none` or `same-origin` (`same-site` is refused: every tailnet
+  service shares the ts.net site). `/share` logs the value it saw, one line per share, so the
+  Android share target's real value can be confirmed from the service log.
 - **Uploads** (≤ 20 MB, else 413 `too_large`) are saved to
   `$ALGUA_WEB_INBOX_DIR/<uuid>/<sanitized name>`; unset, that is `<ALGUA_DATA_DIR>/inbox`
   (`ALGUA_DATA_DIR` as the root settings read it, default `data`, relative to the repo). The

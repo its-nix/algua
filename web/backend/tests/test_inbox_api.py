@@ -125,14 +125,56 @@ async def test_unauthenticated_upload_is_refused_before_saving(
     assert not inbox_dir.exists()
 
 
-async def test_cross_site_inbox_post_is_403(
-    owner: dict[str, str], cli_calls: Calls
+@pytest.mark.parametrize("site", ["cross-site", "same-site", "Cross-Site", "bogus"])
+async def test_non_same_origin_writes_are_403(
+    owner: dict[str, str], cli_calls: Calls, site: str
 ) -> None:
     async with _client() as client:
         r = await client.post("/api/inbox", json={"url": "https://example.com/a"},
-                              headers={**owner, "Sec-Fetch-Site": "cross-site"})
+                              headers={**owner, "Sec-Fetch-Site": site})
+        s = await client.post("/share", data={"text": "planted"},
+                              headers={**owner, "Sec-Fetch-Site": site}, follow_redirects=False)
     assert r.status_code == 403 and r.json()["code"] == "forbidden"
+    assert s.status_code == 403 and s.json()["code"] == "forbidden"
     assert cli_calls == []
+
+
+@pytest.mark.parametrize("site", [None, "none", "same-origin"])
+async def test_same_origin_writes_are_accepted(
+    owner: dict[str, str], cli_calls: Calls, site: str | None
+) -> None:
+    headers = dict(owner) if site is None else {**owner, "Sec-Fetch-Site": site}
+    async with _client() as client:
+        r = await client.post("/api/inbox", json={"text": "idea"}, headers=headers)
+        s = await client.post("/share", data={"text": "idea"}, headers=headers,
+                              follow_redirects=False)
+    assert r.status_code == 201
+    assert s.status_code == 303
+
+
+async def test_share_logs_sec_fetch_site(
+    owner: dict[str, str], cli_calls: Calls, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level("INFO", logger="backend.main")
+    async with _client() as client:
+        await client.post("/share", data={"text": "idea"},
+                          headers={**owner, "Sec-Fetch-Site": "none"}, follow_redirects=False)
+    lines = [r.getMessage() for r in caplog.records if "Sec-Fetch-Site" in r.getMessage()]
+    assert lines == ["share target: Sec-Fetch-Site=none"]
+
+
+async def test_nul_in_fetched_title_and_text_is_stripped(
+    owner: dict[str, str], cli_calls: Calls, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_fetch(url: str) -> tuple[str | None, str | None]:
+        return "Ti\x00tle\x07", "Bo\x00dy\n\tok\x1b"
+
+    monkeypatch.setattr(main_mod, "fetch_article", fake_fetch)
+    async with _client() as client:
+        r = await client.post("/api/inbox", json={"url": "https://example.com/a"}, headers=owner)
+    assert r.status_code == 201
+    assert "--title=Title" in cli_calls[-1]
+    assert cli_calls.extracted == ["Body\n\tok"]
 
 
 # --- POST /api/inbox (JSON) ---

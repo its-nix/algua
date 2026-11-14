@@ -63,6 +63,17 @@ def extract_pdf_text(path: Path) -> str | None:
     return text[:MAX_EXTRACTED_CHARS] or None
 
 
+_CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
+
+def strip_controls(value: str | None) -> str | None:
+    """Drop NUL and other C0/DEL control chars (keeping \\n and \\t): a NUL in an argv element
+    makes the subprocess spawn raise, and none of them belong in an Inbox item."""
+    if value is None:
+        return None
+    return _CONTROL_RE.sub("", value) or None
+
+
 def is_unfetched_host(host: str) -> bool:
     host = host.lower().rstrip(".")
     return any(host == d or host.endswith("." + d) for d in UNFETCHED_DOMAINS)
@@ -122,14 +133,20 @@ async def _read_capped(response: httpx.Response) -> bytes:
 
 
 async def _fetch(url: str) -> tuple[str | None, str | None]:
+    substitute = _transport()
+    # Only a test's substitute transport may lack the peer address; the real network must show it.
+    real_network = substitute is None
+    transport = httpx.AsyncHTTPTransport() if substitute is None else substitute
     async with httpx.AsyncClient(
-        transport=_transport(), trust_env=False, follow_redirects=False,
+        transport=transport, trust_env=False, follow_redirects=False,
         timeout=TIMEOUT_S, headers={"User-Agent": "algua-inbox/1"},
     ) as client:
         for _hop in range(MAX_REDIRECTS + 1):
             await _check_url(url)
             async with client.stream("GET", url) as response:
                 peer = _peer_ip(response)
+                if peer is None and real_network:
+                    raise _Refused("peer address not exposed; refusing to read the body")
                 if peer is not None and not _is_public(peer):
                     raise _Refused(f"connected to non-public {peer}")
                 if response.status_code in _REDIRECT_CODES:
@@ -164,7 +181,8 @@ async def fetch_article(url: str) -> tuple[str | None, str | None]:
         return None, None
     try:
         async with asyncio.timeout(TIMEOUT_S):
-            return await _fetch(url)
+            title, text = await _fetch(url)
+        return strip_controls(title), strip_controls(text)
     except _Refused as exc:
         logger.info("article fetch refused: %s", exc)
     except Exception as exc:  # network, TLS, decoding, timeout: all best effort
