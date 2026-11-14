@@ -205,7 +205,7 @@ reference, kind, strategy name, parents, declared model references, provenance, 
 inputs and existing public metrics. No model bytes are resolved. Costs, data limitations and
 negative values survive when recorded. Missing information and unrecorded variant failures
 remain unknown. A cycle's attempt list does not identify which idea produced each evaluation;
-never infer per-family negative alpha or alter gate/search/FDR counts from this view.
+never infer per-family negative alpha or alter gate/search/trial counts from this view.
 
 New captures sample terminal attempt rows across families, including history with no reference
 from a fresh offered choice. New contexts use `recent_completed_windows_first/v1`: inspect the first 64
@@ -308,7 +308,7 @@ an exact credential collision inside an opaque public value refuses the whole op
 
 The old GOAL remains its verbatim prefix. One explicitly untrusted data block labels the snapshot
 `UNVERIFIED_WORKER`, `authority=none`, `cycle_only`, including truthful unavailable coverage.
-It supplies no qualification, trial/FDR count, per-idea evaluation attribution or permission to
+It supplies no qualification, trial count, per-idea evaluation attribution or permission to
 replace the claimed hypothesis. The primary instruction asks existing author/interpret tasks to
 receive the same wrapper unchanged when relevant. Actual author task receipt and use require
 separate real session evidence; fixture prompt tests prove only the deterministic primary input.

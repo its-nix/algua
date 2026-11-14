@@ -14,7 +14,7 @@
 # branch-protection settings for the default branch (a one-time repo setting).
 
 /algua/registry/store/        @Lior-Nis   # the paper->live wall + approvals
-/algua/registry/db/           @Lior-Nis   # schema + migrate(): single-use gate-token DDL, #524 append-only triggers, AGENT_NOVEL_MINT_CAP, SCHEMA_VERSION
+/algua/registry/db/           @Lior-Nis   # schema + migrate(): single-use gate-token DDL, #524 append-only triggers, SCHEMA_VERSION
 /algua/contracts/lifecycle.py   @Lior-Nis   # lifecycle stages + allowed transitions
 /algua/backtest/engine.py       @Lior-Nis   # anti-look-ahead t->t+1 enforcement
 /algua/backtest/context.py      @Lior-Nis   # Task 2 pinned context inputs + canonical dispatch
@@ -23,7 +23,6 @@
 /algua/contracts/strategy_context.py @Lior-Nis   # Task 2 immutable context + score validation
 /algua/research/gates.py        @Lior-Nis   # promotion-gate criteria
 /algua/research/gate_serialization.py @Lior-Nis   # GateDecision.to_dict(): what reaches the persisted decision_json (stage 7 task 4)
-/algua/research/clustering.py   @Lior-Nis   # clustering thresholds + family similarity (#222)
 /approvers/                     @Lior-Nis   # go-live approver public keys (the signature trust anchor)
 /algua/registry/live_gate.py    @Lior-Nis   # the signed paper->live gate
 /algua/registry/transitions.py  @Lior-Nis   # live-gate enforcement
@@ -135,7 +134,6 @@
 # silently removed the guard, which is exactly the "quietly weaken the wall" case this file exists
 # to prevent. Added on discovery during stage 6c.
 /algua/registry/promote_run.py        @Lior-Nis   # backtested->candidate gate body (was research_cmd.py, #6a)
-/algua/registry/family_assignment.py  @Lior-Nis   # #222/#524 family classification + deferred agent mint (was promotion.py)
 /algua/registry/forward_evidence.py   @Lior-Nis   # forward-test tick admissibility + evidence assembly (was forward_promotion.py)
 /algua/registry/live_certificate.py   @Lior-Nis   # forward-certificate verification, the go-live freshness bound (was forward_promotion.py)
 /algua/registry/intake.py             @Lior-Nis   # candidate->paper book admission: capital slice, FIFO order, the atomic intake loop

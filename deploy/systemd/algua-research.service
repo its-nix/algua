@@ -5,7 +5,7 @@ Description=Algua autonomous research cycle (agent-driven, authoritative funnel)
 # seam re-imposes a kernel write wall with bwrap: model-generated writes are confined to the
 # worktree; every path outside it is read-only), against a THROWAWAY COPY of the funnel (scratch registry seeded via a consistent sqlite
 # backup + a per-run COPY of the immutable snapshots, all inside the worktree). So the agent CANNOT
-# write the authoritative registry/FDR ledger/holdouts/snapshots even if it edits gate code. The driver
+# write the authoritative registry/holdouts/snapshots even if it edits gate code. The driver
 # holds a non-blocking flock (data/research-loop.lock) serializing overlapping RESEARCH cycles (NOT the
 # paper operator's operator.lock — the two don't contend, since research writes only scratch; the sole
 # authoritative writer, `paper merge-back`, has its own merge_back.lock + operator policy). This is the

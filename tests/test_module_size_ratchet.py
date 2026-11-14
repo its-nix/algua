@@ -93,17 +93,15 @@ BUDGET: dict[str, int] = {
     # so the client_order_id name rule must be enforced here too or it is decorative on exactly the
     # path that runs unattended.
     "algua/registry/mergeback_intake.py": 471,
-    "algua/registry/promote_run.py": 292,
-    "algua/registry/promotion.py": 509,
-    "algua/registry/repository.py": 964,
+    "algua/registry/promote_run.py": 268,
+    "algua/registry/promotion.py": 406,
+    "algua/registry/repository.py": 690,
     # +7 for #560: the registration-time call to assert_coid_safe_name, plus why the rule lives in
     # a stdlib-only leaf (order_state imports algua.live, which this layer may not reach).
     "algua/registry/store/crud.py": 393,
-    "algua/registry/store/family.py": 470,
-    "algua/registry/store/gate.py": 594,
+    "algua/registry/store/gate.py": 322,
     "algua/research/forward_gates.py": 392,
-    "algua/research/gates.py": 544,
-    "algua/research/regime.py": 365,
+    "algua/research/gates.py": 296,
     # +14 for #560: the gross-utilization step at the shared construction chokepoint. The logic
     # itself lives in portfolio/construction.py; this is the wiring plus why it runs last.
     "algua/strategies/base.py": 394,

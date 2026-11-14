@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -117,33 +117,20 @@ def test_reproducible_guard_skipped_for_synthetic_provider(tmp_path):
 
 
 def test_preflight_refuses_agent_without_measured_breadth(tmp_path):
-    # Task 4 (#222): pre-assign strategy to a family so the clustering guard passes and the test
-    # isolates the breadth check (the ORIGINAL intent of this test).
     repo = _repo(tmp_path)
     rec = repo.add("alpha")
     repo.apply_transition(rec, Stage.BACKTESTED, Actor.AGENT, "bt")
-    fam_id = repo.create_family("alpha_family", actor="agent")
-    repo.assign_strategy_to_family(
-        "alpha", fam_id, "agent", verdict="NOVEL", similarity_score=0.0,
-        clustering_version="v0", clustering_config_json="{}", axis_json="{}",
-    )
     with pytest.raises(ValueError, match="search breadth"):
         promotion_preflight(repo, "alpha", actor=Actor.AGENT,
                             provider=SyntheticProvider(seed=0), start=_START, end=_END)
 
 
 def test_preflight_resolves_measured_funnel_breadth(tmp_path):
-    # Task 4 (#222): pre-assign strategy to a family so the clustering guard passes.
     repo = _repo(tmp_path)
     rec = repo.add("alpha")
     repo.apply_transition(rec, Stage.BACKTESTED, Actor.AGENT, "bt")
     repo.record_search_trial("alpha", 4, "{}")
     repo.record_search_trial("beta", 10, "{}")  # sibling effort raises the funnel bar
-    fam_id = repo.create_family("alpha_family", actor="agent")
-    repo.assign_strategy_to_family(
-        "alpha", fam_id, "agent", verdict="NOVEL", similarity_score=0.0,
-        clustering_version="v0", clustering_config_json="{}", axis_json="{}",
-    )
     ctx = promotion_preflight(repo, "alpha", actor=Actor.AGENT,
                               provider=SyntheticProvider(seed=0), start=_START, end=_END)
     assert ctx.own == 4 and ctx.windowed_total == 14 and ctx.n_funnel == 14
@@ -199,16 +186,10 @@ def test_preflight_refuses_divergent_signal_panel_before_holdout(tmp_path):
 def test_preflight_passes_parity_for_faithful_bundled_strategy(tmp_path):
     """A real bundled strategy with a faithful signal_panel passes the parity gate and preflight
     resolves breadth as usual (no false positive)."""
-    # Task 4 (#222): pre-assign strategy to a family so the clustering guard passes.
     repo = _repo(tmp_path)
     rec = repo.add("cross_sectional_momentum")
     repo.apply_transition(rec, Stage.BACKTESTED, Actor.AGENT, "bt")
     repo.record_search_trial("cross_sectional_momentum", 4, "{}")
-    fam_id = repo.create_family("csm_family", actor="agent")
-    repo.assign_strategy_to_family(
-        "cross_sectional_momentum", fam_id, "agent", verdict="NOVEL", similarity_score=0.0,
-        clustering_version="v0", clustering_config_json="{}", axis_json="{}",
-    )
     ctx = promotion_preflight(
         repo, "cross_sectional_momentum", actor=Actor.AGENT,
         provider=SyntheticProvider(seed=7), start=_START, end=_END)
@@ -245,11 +226,6 @@ def test_preflight_accepts_config_universe_subset_of_gated_timeline_union(tmp_pa
     rec = repo.add("cross_sectional_momentum")
     repo.apply_transition(rec, Stage.BACKTESTED, Actor.AGENT, "bt")
     repo.record_search_trial("cross_sectional_momentum", 4, "{}")
-    fam_id = repo.create_family("csm_family", actor="agent")
-    repo.assign_strategy_to_family(
-        "cross_sectional_momentum", fam_id, "agent", verdict="NOVEL", similarity_score=0.0,
-        clustering_version="v0", clustering_config_json="{}", axis_json="{}",
-    )
     gated = {
         date(2020, 1, 1): ["AAPL", "MSFT", "NVDA"],
         date(2021, 1, 1): ["AAPL", "MSFT", "AMZN", "GOOGL", "TSLA"],  # NVDA dropped; union covers
@@ -267,11 +243,6 @@ def test_human_label_refused_config_universe_outside_gated_universe(tmp_path):
     rec = repo.add("cross_sectional_momentum")
     repo.apply_transition(rec, Stage.BACKTESTED, Actor.AGENT, "bt")
     repo.record_search_trial("cross_sectional_momentum", 4, "{}")
-    fam_id = repo.create_family("csm_family", actor="agent")
-    repo.assign_strategy_to_family(
-        "cross_sectional_momentum", fam_id, "agent", verdict="NOVEL", similarity_score=0.0,
-        clustering_version="v0", clustering_config_json="{}", axis_json="{}",
-    )
     gated = {date(2020, 1, 1): ["AAPL", "MSFT", "AMZN", "GOOGL"]}  # no NVDA
     with pytest.raises(ValueError, match=r"NVDA"):
         promotion_preflight(
@@ -364,12 +335,10 @@ def test_run_gate_measured_but_missing_stats_records_failed_advisory(tmp_path):
     assert outcome.promoted is True
 
 
-# --- run_gate FDR freeze (factory soft gate, 2026-08-10 spec) ----------------------------
-# The statistical stack is advisory, so the promote path NEVER writes a LORD++ binding row:
-# every gate_evaluations row lands with fdr_binding NULL + fdr_skip_reason="stats_advisory",
-# the stream reader and the windowed throttle count see nothing, and final_passed collapses to
-# the provisional integrity-floor verdict. The ledger machinery itself is pinned alive by the
-# direct-store tests in tests/test_registry_store.py.
+# --- run_gate with the FDR ledger removed (lean trim step 7) ------------------------------
+# The statistical stack is advisory and the LORD++ FDR ledger code is gone: every new
+# gate_evaluations row lands with the historical fdr_* columns NULL and no fdr_* decision keys,
+# and final_passed is the provisional integrity-floor verdict.
 
 
 def _wf_sharpe(sharpe: float):
@@ -388,8 +357,8 @@ def _run_measured(repo, *, sharpe: float = 7.0):
 
 
 def test_run_gate_measured_promote_writes_no_binding_row(tmp_path):
-    """A measured promote with full trial stats — the OLD maximal-FDR case — now records
-    fdr_binding NULL + stats_advisory and never consults the stream/throttle."""
+    """A measured promote with full trial stats — the OLD maximal-FDR case — writes the
+    historical fdr_* columns NULL and carries no fdr_* decision keys."""
     import json as _json
     repo = _gate_repo(tmp_path)
     repo.record_search_trial(_GATE_NAME, 5, "{}", trial_sharpe_count=5,
@@ -398,26 +367,23 @@ def test_run_gate_measured_promote_writes_no_binding_row(tmp_path):
     d = outcome.decision
     assert d.dsr_binding is True                       # DSR still armed + recorded
     assert d.dsr_confidence is not None
-    assert d.fdr_binding is False
-    assert d.fdr_skip_reason == "stats_advisory"
-    assert d.fdr_p_value is None and d.fdr_alpha_level is None and d.fdr_test_index is None
+    assert not any(k.startswith("fdr_") for k in d.to_dict())
     assert outcome.promoted is True
     # No fdr_evidence / fdr_throttle checks anywhere — returned decision or stored row.
     assert all(c["name"] not in ("fdr_evidence", "fdr_throttle") for c in d.checks)
     row = repo._conn.execute(
         "SELECT fdr_binding, decision_json FROM gate_evaluations ORDER BY id DESC LIMIT 1"
     ).fetchone()
-    assert row["fdr_binding"] is None                  # NULL, not 0 — invisible to the stream
+    assert row["fdr_binding"] is None                  # historical column, written NULL
     stored = _json.loads(row["decision_json"])
-    assert stored["fdr_binding"] is False
-    assert stored["fdr_skip_reason"] == "stats_advisory"
+    assert not any(k.startswith("fdr_") for k in stored)
     assert all(c["name"] not in ("fdr_evidence", "fdr_throttle")
                for c in stored.get("checks", []))
 
 
 def test_run_gate_stream_sees_zero_binding_rows_across_promotes(tmp_path):
-    """N promotes (pass and fail) advance NEITHER the LORD++ stream nor the (now-deleted)
-    windowed promotion-throttle count — the ledger stays frozen while stats are advisory."""
+    """N promotes (pass and fail) write no fdr_* column values: the historical columns stay
+    NULL on every new row."""
     repo = _gate_repo(tmp_path)
     repo.record_search_trial(_GATE_NAME, 5, "{}", trial_sharpe_count=5,
                              trial_sharpe_mean=0.5, trial_sharpe_var_ann=0.04)
@@ -433,10 +399,11 @@ def test_run_gate_stream_sees_zero_binding_rows_across_promotes(tmp_path):
     assert out3.promoted is False
     n_rows = repo._conn.execute("SELECT COUNT(*) c FROM gate_evaluations").fetchone()["c"]
     assert n_rows == 3                                 # every attempt is still audited
-    # The stream reader sees an untouched (fresh) stream.
-    stream = repo.fdr_stream_state()
-    assert stream is not None
-    assert stream.t == 1 and stream.binding_tests == 0 and stream.discoveries == 0
+    n_fdr = repo._conn.execute(
+        "SELECT COUNT(*) c FROM gate_evaluations WHERE fdr_binding IS NOT NULL"
+        " OR fdr_p_value IS NOT NULL OR fdr_test_index IS NOT NULL OR fdr_cohort IS NOT NULL"
+    ).fetchone()["c"]
+    assert n_fdr == 0
 
 
 def test_run_gate_final_passed_equals_provisional(tmp_path):
@@ -458,38 +425,30 @@ def test_run_gate_weak_evidence_stats_fail_advisory_still_promotes(tmp_path):
     repo.record_search_trial(_GATE_NAME, 5, "{}", trial_sharpe_count=5,
                              trial_sharpe_mean=0.5, trial_sharpe_var_ann=0.04)
     outcome = _run_measured(repo, sharpe=2.3)
-    d = outcome.decision
-    assert d.fdr_binding is False and d.fdr_skip_reason == "stats_advisory"
     assert outcome.promoted is True
     assert repo.get(_GATE_NAME).stage is Stage.CANDIDATE
 
 
 def test_run_gate_declared_breadth_also_stats_advisory(tmp_path):
-    """Declared breadth (no DSR armed) records the SAME stats_advisory skip reason — the FDR
-    freeze is unconditional, not a dsr_binding branch."""
+    """Declared breadth (no DSR armed) records the DSR skip reason and no FDR fields."""
     repo = _gate_repo(tmp_path)
     breadth = _breadth(repo, "declared")
     outcome = _run(repo, breadth)
     d = outcome.decision
     assert d.dsr_binding is False
     assert d.dsr_skip_reason == "no_measured_dispersion"   # the DSR reason is unchanged
-    assert d.fdr_binding is False
-    assert d.fdr_skip_reason == "stats_advisory"
+    assert not any(k.startswith("fdr_") for k in d.to_dict())
     assert all(c["name"] != "fdr_evidence" for c in d.checks)
 
 
-def test_run_gate_fdr_freeze_in_to_dict(tmp_path):
-    """to_dict() carries the frozen-FDR audit state for downstream CLI serialisation."""
+def test_run_gate_to_dict_has_no_fdr_keys(tmp_path):
+    """to_dict() no longer carries any FDR audit state (the ledger code is removed)."""
     repo = _gate_repo(tmp_path)
     repo.record_search_trial(_GATE_NAME, 5, "{}", trial_sharpe_count=5,
                              trial_sharpe_mean=0.5, trial_sharpe_var_ann=0.04)
     outcome = _run_measured(repo, sharpe=7.0)
     d_dict = outcome.decision.to_dict()
-    assert d_dict["fdr_binding"] is False
-    assert d_dict["fdr_skip_reason"] == "stats_advisory"
-    assert d_dict["fdr_rejected"] is None
-    assert d_dict["fdr_test_index"] is None
-    assert d_dict["fdr_p_value"] is None
+    assert not any(k.startswith("fdr_") for k in d_dict)
 
 
 def test_dsr_below_threshold_records_failed_advisory_and_promotes(tmp_path):
@@ -513,21 +472,19 @@ def test_dsr_below_threshold_records_failed_advisory_and_promotes(tmp_path):
     assert d.passed == all(c["passed"] for c in d.checks if not c.get("advisory"))
 
 
-def test_run_gate_non_binding_decision_json_has_fdr_skip_reason(tmp_path):
-    """Every row must store fdr_binding=False and fdr_skip_reason='stats_advisory' in
-    decision_json so the DB audit record matches the returned GateDecision (C3 guard)."""
+def test_run_gate_decision_json_matches_returned_decision(tmp_path):
+    """The stored decision_json matches the returned GateDecision (C3 guard): no fdr_* keys in
+    either."""
     import json as _json
     repo = _gate_repo(tmp_path)
     breadth = _breadth(repo, "declared")
     outcome = _run(repo, breadth)
-    assert outcome.decision.fdr_binding is False
-    assert outcome.decision.fdr_skip_reason == "stats_advisory"
     row = repo._conn.execute(
         "SELECT decision_json FROM gate_evaluations ORDER BY id DESC LIMIT 1"
     ).fetchone()
     stored = _json.loads(row["decision_json"])
-    assert stored.get("fdr_binding") is False
-    assert stored.get("fdr_skip_reason") == "stats_advisory"
+    assert stored == _json.loads(_json.dumps(outcome.decision.to_dict()))
+    assert not any(k.startswith("fdr_") for k in stored)
 
 
 # --- the soft gate end-to-end: floor-only promotion + born-consumed token ----------------------
@@ -550,9 +507,7 @@ def test_e2e_all_stats_fail_floor_pass_promotes_with_born_consumed_token(tmp_pat
         data_source="synthetic", snapshot_id=None)
     d = outcome.decision
     failed = [c for c in d.checks if not c["passed"]]
-    assert {c["name"] for c in failed} >= {
-        "holdout_sharpe", "holdout_return", "pct_positive_windows", "min_window_sharpe",
-        "dsr_evidence"}
+    assert {c["name"] for c in failed} >= {"holdout_sharpe", "holdout_return", "dsr_evidence"}
     assert all(c.get("advisory") is True for c in failed)
     assert outcome.promoted is True
     assert repo.get(_GATE_NAME).stage is Stage.CANDIDATE
@@ -1062,182 +1017,22 @@ def test_n_eff_none_with_insufficient_siblings(tmp_path):
     assert any(c["name"] == "dsr_evidence" for c in d.checks)
 
 
-# --- run_gate regime robustness wiring (#221 Slice 4) ------------------------------------------
-# Task 5 integration tests: verify that passing wf.market_returns into run_gate causes the
-# regime_robustness check to bind (via evaluate_gate receiving market_returns=wf.market_returns).
-#
-# Vector construction:
-#   _REGIME_MKT_DATES: 84 real ISO dates starting 2023-01-02 (step=1 calendar day).
-#   Market series: 84 returns whose trailing-21-bar vol clearly varies by tertile.
-#     - dates 0..20  (warmup, no vol label)
-#     - dates 21..41 (low-vol label)   → market returns near-zero (~0.001)
-#     - dates 42..62 (mid-vol label)   → market returns small (~0.005)
-#     - dates 63..83 (high-vol label)  → market returns large (~0.02)
-#   Holdout covers dates 21..83 = 63 labeled dates (overlap == 63 >= MIN_REGIME_OVERLAP_BARS).
-#   The vol-tertile split of those 63 dates:
-#     - low-vol tertile  (21 dates): 2023-01-23 .. 2023-02-12
-#     - mid-vol tertile  (21 dates): 2023-02-13 .. 2023-03-05
-#     - high-vol tertile (21 dates): 2023-03-06 .. 2023-03-26
-#
-# Regime-passing fixture: holdout returns are +0.01 on all 63 dates → all regimes pass.
-# Regime-failing fixture: holdout returns are -0.05 on the high-vol-tertile dates → high-vol
-#   regime fails (mean<0, negative Sharpe) while aggregate Sharpe stays ≥ gate bar.
-
-# 84 real ISO dates from 2023-01-02 (inclusive) — real calendar days for reliable sorting
-_REGIME_MKT_N = 84
-_REGIME_MKT_DATES = [
-    (date(2023, 1, 2) + timedelta(days=i)).isoformat() for i in range(_REGIME_MKT_N)
-]
-
-# Market returns: low vol for first third (after warmup), stepping up.
-# Window vol is computed over trailing-21 bars.  The first labeled date is index 20.
-# Dates 20..40 → windows of ~0.001 amplitude → low vol
-# Dates 41..61 → windows of ~0.005 amplitude → mid vol
-# Dates 62..83 → windows of ~0.02  amplitude → high vol
-_REGIME_MKT_RETS: list[float] = []
-for _i in range(_REGIME_MKT_N):
-    if _i < 42:          # first two thirds of the full period (includes warmup)
-        _REGIME_MKT_RETS.append(0.001 if _i % 2 == 0 else -0.001)
-    elif _i < 63:
-        _REGIME_MKT_RETS.append(0.005 if _i % 2 == 0 else -0.005)
-    else:
-        _REGIME_MKT_RETS.append(0.02 if _i % 2 == 0 else -0.02)
-
-# Holdout spans dates 21..83 (63 dates): the 63 vol-labeled dates
-_REGIME_HOLDOUT_DATES = _REGIME_MKT_DATES[21:]   # 63 dates, all with vol labels
-_REGIME_HOLDOUT_N = len(_REGIME_HOLDOUT_DATES)    # == 63
-assert _REGIME_HOLDOUT_N == 63
-
-# Regime-passing holdout: alternating +0.01 / +0.005 on every date so all three regimes pass
-# MIN_REGIME_SHARPE (positive mean, non-zero vol so bootstrap doesn't fail due to zero variance).
-_REGIME_PASS_RETS = [0.01 if i % 2 == 0 else 0.005 for i in range(_REGIME_HOLDOUT_N)]
-
-# For the blocking test we need to identify the 21 high-vol-tertile dates.
-# regime_splits ranks by (trailing_vol, date_string) asc; the highest-vol tertile is the last 21.
-# The trailing-21-bar vols over our market series:
-#   - dates 20..41: vol of windows mostly drawn from ±0.001 amplitude → ~annualized ~0.022
-#   - dates 42..62: vol of windows mostly drawn from ±0.005 amplitude → ~annualized ~0.11
-#   - dates 63..83: vol of windows mostly drawn from ±0.02  amplitude → ~annualized ~0.45
-# The 21 highest-vol dates are indices 63..83 of _REGIME_MKT_DATES, i.e. the last 21 holdout dates.
-_REGIME_HIGH_VOL_DATES = set(_REGIME_MKT_DATES[63:])  # the 21 high-vol holdout dates
-
-# Regime-failing holdout: -0.05 on high-vol dates (forces negative regime Sharpe there),
-# +0.015 on low/mid dates (ensures aggregate Sharpe well above the gate bar).
-_REGIME_FAIL_RETS = [
-    -0.05 if d in _REGIME_HIGH_VOL_DATES else 0.015
-    for d in _REGIME_HOLDOUT_DATES
-]
+# --- regime robustness / idiosyncratic alpha removed (lean trim step 7) --------------------------
 
 
-def _wf_with_regime(holdout_rets, holdout_dates, market_rets, market_dates,
-                    h_start=None, h_end=None):
-    """Build a WalkForwardResult carrying both holdout_returns and market_returns."""
-    from algua.backtest.walkforward import WalkForwardResult
-
-    h_start = h_start or holdout_dates[0]
-    h_end = h_end or holdout_dates[-1]
-    return WalkForwardResult(
-        strategy=_GATE_NAME, config_hash="c", data_source="synthetic", snapshot_id=None,
-        timeframe="1d", seed=None,
-        period={"start": "2024-01-01", "end": "2024-06-01"}, windows=4, holdout_frac=0.2,
-        window_metrics=[],
-        holdout_metrics={**_GATE_HOLDOUT, "start": h_start, "end": h_end,
-                         "n_bars": len(holdout_rets)},
-        stability=dict(_GATE_STAB),
-        holdout_returns=(holdout_rets, holdout_dates),
-        market_returns=(market_rets, market_dates),
-    )
-
-
-def _run_regime(repo, wf):
-    """run_gate call for regime robustness tests (measured breadth, PIT-clean)."""
-    return run_gate(
-        repo, wf, name=_GATE_NAME, actor=Actor.AGENT, criteria=GateCriteria(),
-        breadth=_breadth(repo, "measured"), universe_name="pit_u",
-        universe_snapshots=[{"snapshot_id": "u1", "effective_date": "2020-01-01"}],
-        period_start=_GATE_START, period_end=_GATE_END, holdout_frac=0.2,
-        data_source="synthetic", snapshot_id=None,
-    )
-
-
-def test_regime_robustness_binds_when_market_returns_present(tmp_path):
-    """Measured promote with wf carrying holdout_returns + market_returns with real vol structure
-    and >=63 overlap: regime_robustness binds, vol_tertile method, audit fields populated."""
-    repo = _gate_repo_with_stats(tmp_path)
-    wf = _wf_with_regime(
-        _REGIME_PASS_RETS, _REGIME_HOLDOUT_DATES,
-        _REGIME_MKT_RETS, _REGIME_MKT_DATES,
-    )
-    outcome = _run_regime(repo, wf)
-    d = outcome.decision
-
-    # Regime check must bind
-    assert d.regime_robustness_binding is True, (
-        "regime_robustness_binding should be True when market_returns present with >=63 overlap")
-    # A regime_robustness check must appear in the checks list
-    assert any(c["name"] == "regime_robustness" for c in d.checks), (
-        "regime_robustness check must be in decision.checks when binding")
-    # Method must be vol_tertile
-    assert d.regime_method == "vol_tertile", f"expected vol_tertile, got {d.regime_method}"
-    # Audit counts must be populated
-    assert d.n_regimes_attempted is not None and d.n_regimes_attempted == 3
-    assert d.n_regimes_surviving is not None and d.n_regimes_surviving >= 2
-    assert d.per_regime_sharpes is not None and len(d.per_regime_sharpes) == 3
-
-    # Regime fields must appear in to_dict / decision_json
-    d_dict = d.to_dict()
-    assert "regime_robustness_binding" in d_dict
-    assert d_dict["regime_robustness_binding"] is True
-    assert "regime_method" in d_dict and d_dict["regime_method"] == "vol_tertile"
-
-    # Shadow fields must also flow through a real run_gate (Task 4)
-    # 0b11111 = bits 0-4 = Phase 3 slices 0-4 all active (dispersion-floor, persistence,
-    # bootstrap, n_eff, multi-regime)
-    assert d.phase3_component_mask == 0b11111
-    assert "haircut_would_have_blocked" in d_dict
-
-    # Promoted: regime passes, DSR+FDR pass at sharpe=7.0
+def test_run_gate_ignores_market_returns(tmp_path):
+    """wf.market_returns still comes out of walk_forward, but the gate no longer arms a regime or
+    idiosyncratic-alpha check from it: the recorded checks are the core set plus DSR/bootstrap."""
+    import dataclasses
+    repo = _gate_repo(tmp_path)
+    repo.record_search_trial(_GATE_NAME, 5, "{}", trial_sharpe_count=5,
+                             trial_sharpe_mean=0.5, trial_sharpe_var_ann=0.04)
+    dates = [f"2024-0{1 + i // 28}-{1 + i % 28:02d}" for i in range(84)]
+    holdout = {**_GATE_HOLDOUT, "start": dates[0], "end": dates[-1]}
+    wf = dataclasses.replace(_gate_wf(holdout=holdout), market_returns=([0.001] * 84, dates),
+                             holdout_returns=([0.01 + 0.001 * (i % 3) for i in range(84)], dates))
+    outcome = _run(repo, _breadth(repo, "measured"), wf=wf)
+    names = {c["name"] for c in outcome.decision.checks}
+    assert not names & {"regime_robustness", "idiosyncratic_alpha", "pct_positive_windows",
+                        "min_window_sharpe"}
     assert outcome.promoted is True
-
-
-def test_regime_robustness_omits_when_no_market_returns(tmp_path):
-    """Promote with no market_returns: regime check omits, regime_method=unavailable,
-    existing pass/fail outcome UNCHANGED."""
-    repo = _gate_repo_with_stats(tmp_path)
-    # _gate_wf() has no holdout_returns nor market_returns → regime check must omit
-    outcome = _run(repo, _breadth(repo, "measured"))
-    d = outcome.decision
-
-    assert d.regime_robustness_binding is False
-    assert d.regime_method == "unavailable"
-    assert all(c["name"] != "regime_robustness" for c in d.checks)
-    # Existing outcome must be unchanged: measured breadth + sharpe=7.0 → promotes
-    assert outcome.promoted is True
-
-
-def test_regime_robustness_failure_recorded_advisory_still_promotes(tmp_path):
-    """Strategy that passes aggregate holdout Sharpe but fails the high-vol regime records the
-    FAILED regime_robustness check as an advisory flag — the soft gate still promotes on the
-    integrity floor (the forward gate is the blocker)."""
-    repo = _gate_repo_with_stats(tmp_path)
-    wf = _wf_with_regime(
-        _REGIME_FAIL_RETS, _REGIME_HOLDOUT_DATES,
-        _REGIME_MKT_RETS, _REGIME_MKT_DATES,
-    )
-    outcome = _run_regime(repo, wf)
-    d = outcome.decision
-
-    # Regime check must be armed and present
-    assert d.regime_robustness_binding is True
-    regime_check = next(c for c in d.checks if c["name"] == "regime_robustness")
-    # High-vol regime returns are negative → regime_robustness check FAILS (advisory)
-    assert regime_check["passed"] is False, (
-        "high-vol regime has negative returns; regime_robustness check must fail")
-    assert regime_check["advisory"] is True
-    assert d.passed is True
-    assert outcome.promoted is True
-
-    # decision_json must carry regime fields
-    d_dict = d.to_dict()
-    assert d_dict.get("regime_robustness_binding") is True
-    assert d_dict.get("regime_method") == "vol_tertile"

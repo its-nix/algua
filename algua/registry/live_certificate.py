@@ -2,7 +2,7 @@
 ``paper/forward_tested -> live``.
 
 Split out of ``registry/forward_promotion.py`` (mirroring ``registry/promotion.py`` /
-``family_assignment.py`` for the shortlist gate). ``verify_forward_certificate`` re-checks that an
+``promote_run.py`` for the shortlist gate). ``verify_forward_certificate`` re-checks that an
 EARNED forward-gate pass is still valid at go-live time — freshness, a clean record since
 certification, kill-switch/global-halt state, account continuity, and account hygiene — reusing
 the same tick-parsing (``_parse_dt``) and activity-classification (``_classify_activities``) rules

@@ -88,7 +88,6 @@ def _measure_breadth(name, combos=9):
 
 
 _RELAX = ["--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-          "--min-pct-positive", "0", "--min-window-sharpe", "-100",
           "--windows", "2", "--universe", "ctx_pit"]
 _END = (pd.Timestamp("2025-01-01", tz="UTC") + pd.Timedelta(days=329)).date().isoformat()
 _WINDOW = ["--start", "2025-01-01", "--end", _END]
@@ -151,7 +150,7 @@ def test_news_lane_unblocked_through_funnel(tmp_path):
     # records it in provenance. Reaching `candidate` ALSO requires clearing the integrity floor,
     # which this flat synthetic fixture cannot (zero raw holdout Sharpe fails the strict-positive
     # holdout_sharpe_floor). So we prove the PIT lane is unblocked THROUGH the funnel — blocked
-    # only by the PIT-unrelated floor, with the regime/IR misses recorded as advisory flags.
+    # only by the PIT-unrelated floor, with any statistical misses recorded as advisory flags.
     bid, nid, _fid = _seed(tmp_path)
     assert _backtest_to_backtested(
         "news_coverage_tilt", "--snapshot", bid, "--news-snapshot", nid).exit_code == 0
@@ -172,12 +171,12 @@ def test_news_lane_unblocked_through_funnel(tmp_path):
     assert payload["promoted"] is False
     checks = payload.get("checks", [])
     failing = [c["name"] for c in checks if not c["passed"]]
-    # The flat fixture fails the strict-positive floor (binding) plus the two PIT-unrelated
-    # holdout-robustness stats (recorded as ADVISORY flags under the soft gate); all prove the
+    # The flat fixture fails the strict-positive floor (binding) plus PIT-unrelated advisory stats
+    # (recorded as ADVISORY flags under the soft gate); all prove the
     # funnel reached the gate evaluation. The PIT lane itself is unblocked (holdout burned above).
     assert "holdout_sharpe_floor" in failing, failing
     assert set(failing) <= {
-        "holdout_sharpe_floor", "regime_robustness", "idiosyncratic_alpha",
+        "holdout_sharpe_floor", "holdout_sharpe", "holdout_return",
         # measured breadth arms the (advisory) DSR evidence checks
         "dsr_evidence", "dsr_bootstrap"}, failing
     assert all(c.get("advisory") is True for c in checks
@@ -274,11 +273,11 @@ def test_fundamentals_lane_unblocked_through_funnel(tmp_path):
     assert _holdout_count(tmp_path) >= 1
     assert payload["promoted"] is False
     failing = [c["name"] for c in payload.get("checks", []) if not c["passed"]]
-    # The flat fixture fails the strict-positive floor (binding) plus the two PIT-unrelated
-    # holdout-robustness stats (advisory under the soft gate); all prove the funnel reached the
+    # The flat fixture fails the strict-positive floor (binding) plus PIT-unrelated advisory stats
+    # (advisory under the soft gate); all prove the funnel reached the
     # gate evaluation. The PIT lane itself is unblocked (holdout reserved/burned above).
     assert "holdout_sharpe_floor" in failing, failing
     assert set(failing) <= {
-        "holdout_sharpe_floor", "regime_robustness", "idiosyncratic_alpha",
+        "holdout_sharpe_floor", "holdout_sharpe", "holdout_return",
         # measured breadth arms the (advisory) DSR evidence checks
         "dsr_evidence", "dsr_bootstrap"}, failing
