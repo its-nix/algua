@@ -393,7 +393,7 @@ OpenAI Codex (GPT-5)
 ### Debug Log References
 
 - Implemented against baseline `68c5081` on `feat/deployment-epochs`.
-- BMAD adversarial review produced 11 patch findings; all were applied and independently
+- adversarial review produced 11 patch findings; all were applied and independently
   regression-tested before completion.
 - Full gate: `4044 passed, 171 warnings in 546.50s`; Ruff clean; mypy clean across 301 source
   files; import-linter 28 kept / 0 broken; `git diff --check` clean.
@@ -431,4 +431,4 @@ OpenAI Codex (GPT-5)
 ## Change Log
 
 - 2026-09-24: Implemented explicit working-tree deployment epochs and exact-epoch evidence.
-- 2026-09-24: Applied all 11 BMAD review patches and completed the full repository gate.
+- 2026-09-24: Applied all 11 review patches and completed the full repository gate.

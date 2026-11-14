@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # THE AGENT-RUNTIME SEAM. The four loop drivers (research, leap, forage, and any future one) call
-# this and nothing else; it is the only file in the repo that names the runtime or a model.
+# this and nothing else; runtime invocation stays here and model defaults live in opencode.json.
 #
 # Usage:
 #   run_agent.sh --mode research|leap|forage|chooser --workdir DIR --prompt-file FILE
@@ -121,8 +121,9 @@ CMD+=(--print-logs --log-level INFO)
 # Measured, not assumed: the first form failed every invocation until a live smoke test caught it.
 CMD+=("Follow the instructions in the attached file." -f "$PROMPT_FILE")
 
-# KERNEL WRITE WALL. Confine writes to the worktree plus the runtime's own state, so a model that
-# talks its way past a tool permission still cannot reach the authoritative DB or the real checkout.
+# Optional kernel write boundary: bwrap limits writable paths to the worktree and runtime state.
+# auto selects none when bwrap is unavailable. No mode here isolates network access or hides all
+# readable host paths; tool permissions and scratch configuration are separate controls.
 SANDBOX="${ALGUA_AGENT_SANDBOX:-auto}"
 if [ "$SANDBOX" = "auto" ]; then
   SANDBOX=none

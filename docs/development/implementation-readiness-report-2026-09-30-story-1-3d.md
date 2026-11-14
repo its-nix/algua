@@ -19,7 +19,7 @@ baseline: ae7e3ff (main after PR #680; 1.3d-relevant code identical to df0662e, 
 # Implementation Readiness Assessment Report
 
 **Date:** 2026-09-30 · **Project:** Algua — Story 1.3d · **Assessor:** independent reviewer (Claude),
-BMAD method, non-interactive defaults. Code claims checked at `ae7e3ff`. The experiments ran in a
+Code claims checked at `ae7e3ff`. The experiments ran in a
 scratch copy: the §2 DDL was applied to a DB built by the repo's `migrate()`, a trade-tick/run-all
 transaction probe was run, 17 tick, promotion and live test files were run on v48, and a replay
 byte-determinism probe was run.

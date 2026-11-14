@@ -2,10 +2,10 @@
 
 Date: 2026-10-04. Epic window: 2026-09-24 (canonical vision, PR #665) to 2026-10-03 (Story 1.4,
 PR #686). Participants: Lior (owner), Claude (implementation, coordination, fallback review), Codex
-(implementation of Stories 1.1-1.2, review until its quota ran out on 2026-09-29), and BMAD reviewer
+(implementation of Stories 1.1-1.2, review until its quota ran out on 2026-09-29), and reviewer
 subagents (Blind Hunter, Edge Case Hunter, Acceptance Auditor).
 
-Method: the `bmad-retrospective` structure, run non-interactively. Sources are the story records,
+Method: a retrospective of delivery evidence, run non-interactively. Sources are the story records,
 normative specs and readiness reports in `docs/development/`, merged PRs #665-#686, issues #624,
 #643, #662, #677, #682 and #685, a read-only query of the production registry on 2026-10-04, and
 facts recorded by the delivery session. This is the first retrospective of the Phase 1 cycle, so
@@ -96,7 +96,7 @@ in production (action A3). That depends on the research funnel, not on Epic 1 co
 
 Between 09-27 and 09-30 the story record shows about 31 review rounds: an initial 18-patch round,
 rounds 2-15 on the strategy-closure refresh seam, two publication rounds, eleven commit-pinned
-rounds, two rescue rounds and the final BMAD review of the rescope.
+rounds, two rescue rounds and the final review of the rescope.
 
 A test-only guard ("no direct `bounded_walk` call") grew from a regex into an AST guard, then into
 a ~3,400-line Python flow analyzer. Each round found new static evasions. The rescope superseded
@@ -165,7 +165,7 @@ beside the expensive one before the contract was written.
 ### 4.6 Review independence dropped mid-epic
 
 Codex was out of quota from 2026-09-29 until 2026-10-04. The reviews of 1.3b's rescope, 1.3c,
-1.3d and 1.4 therefore used the BMAD fallback: Claude subagents reviewing Claude's code. It found
+1.3d and 1.4 therefore used the review fallback: Claude subagents reviewing Claude's code. It found
 substantive defects in every one of those stories (the trusted child result kind, the forward-gate
 identity, the global-halt path), so it worked, but it is one model family checking itself.
 
@@ -217,7 +217,7 @@ identity, the global-halt path), so it worked, but it is one model family checki
   implementation starts (1.3a onward).
 - 09-28: `docs/agent/story-delivery.md` sets the model: Claude implements, Codex reviews, and work
   is mirrored to Todoist.
-- 09-29: when Codex is unavailable, the BMAD fallback runs: a Blind Hunter and an Edge Case Hunter
+- 09-29: when Codex is unavailable, the fallback review runs: a Blind Hunter and an Edge Case Hunter
   per bounded file group, plus an Acceptance Auditor over the whole story.
 - 09-30: non-converging review loops are cut. Invariants are enforced by construction against a
   stated threat model (1.3b).

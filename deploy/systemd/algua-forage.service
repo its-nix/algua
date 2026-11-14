@@ -1,22 +1,21 @@
 [Unit]
-Description=Algua forage — web inspiration foraging (sandboxed agent, no registry)
-# Fired by algua-forage.timer. An agent, sandboxed by the run_agent.sh seam, with
+Description=Algua forage — web inspiration foraging (agent, scratch worktree)
+# Fired by algua-forage.timer. An agent, with optional bwrap containment through run_agent.sh,
 # bash denied outright (it runs no algua command at all) and the runtime's
-# `web_search=live` as its only web tool, writes inspiration notes under kb/inspirations/ inside
+# configured web tools, writes inspiration notes under kb/inspirations/ inside
 # a throwaway worktree (.runs/forage-<stamp>). The agent has NO registry path (no ALGUA_DB_PATH)
 # and is told never to run an `algua` command — it can only write markdown files. The TRUSTED
 # DRIVER (this unit's ExecStart, after the agent exits) validates and lands the survivors into the
 # vault via `algua research inspirations accept`, parses the agent's proposed-venue list into
-# `research inspirations propose`, and appends one digest line to data/forage-runs.jsonl. MCP
-# tools (paper-search) are opt-in only (FORAGE_MCP=1) and drop the sandbox entirely — see
-# .opencode/scripts/forage.sh for the full privilege story.
+# `research inspirations propose`, and appends one digest line to data/forage-runs.jsonl.
+# MCP tools use declarative runtime configuration; no FORAGE_MCP bypass exists. Filesystem
+# sandboxing is mode-dependent and does not isolate networking or all readable host data.
 
 [Service]
 Type=oneshot
 EnvironmentFile=/etc/algua/algua.env
-# Scrub broker credentials — foraging never needs them, and the sandboxed agent's shell has no
-# network access anyway; this closes needless exfiltration surface the same way algua-research
-# already does.
+# Scrub broker credentials — foraging never needs them. Shell tool denial and optional bwrap
+# containment do not establish a network or complete host-data isolation boundary.
 UnsetEnvironment=ALGUA_ALPACA_API_KEY ALGUA_ALPACA_API_SECRET ALGUA_ALPACA_LIVE_API_KEY ALGUA_ALPACA_LIVE_API_SECRET
 WorkingDirectory=/opt/algua
 # The driver bounds the agent run itself (FORAGE_TIMEOUT, default 20m) and the env pre-warm

@@ -340,4 +340,4 @@ This assessment found one minor stylistic observation and no critical or major i
 coverage, UX applicability, dependency direction, story quality, authority and testability. Story
 1.3b may proceed to implementation; READY does not authorize deployment, trading or capital use.
 
-**Assessor:** Codex using BMAD implementation-readiness workflow
+**Assessor:** Codex using the recorded readiness criteria

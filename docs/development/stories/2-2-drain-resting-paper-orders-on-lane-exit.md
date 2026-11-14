@@ -212,7 +212,7 @@ Claude Opus 5.5 (implementation, readiness, acceptance audit); Codex (independen
 ### Review Findings
 
 Review round 1 (2026-10-05): Codex independent review (restored per Epic 1 retrospective action A12;
-the first attempt hit "model at capacity", the retry completed) plus a BMAD Acceptance Auditor. No
+the first attempt hit "model at capacity", the retry completed) plus an Acceptance Auditor. No
 blocker or major from the auditor; all eight ACs met.
 
 - [x] [Review][Patch] An HTTP-200 empty JSON object iterated as "no open orders", letting the scoped

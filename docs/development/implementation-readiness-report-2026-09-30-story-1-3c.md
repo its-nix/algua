@@ -20,7 +20,7 @@ baseline: 216c8ec
 # Implementation Readiness Assessment Report
 
 **Date:** 2026-09-30 · **Project:** Algua — Story 1.3c · **Assessor:** independent reviewer (Claude),
-BMAD method, non-interactive defaults. Code claims checked at `216c8ec`; experiments ran in scratch.
+Code claims checked at `216c8ec`; experiments ran in scratch.
 
 **Discovery:** inputs as listed above, with no duplicates. UX does not apply (JSON of existing
 commands). PRD/epic coverage is as in the 1.3b report (FR4, FR6, FR9–FR10, NFR1–NFR8).

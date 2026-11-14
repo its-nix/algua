@@ -1,25 +1,22 @@
 #!/usr/bin/env bash
 #
-# Launch an autonomous algua research cycle, driven by a SANDBOXED Codex agent, in the
+# Launch an autonomous algua research cycle, driven by an agent, in the
 # EXPLORE-ISOLATED topology.
 #
 # The agent ideates -> authors -> backtests / walk-forwards / sweeps -> gates (preview
-# `research promote`) up to 'candidate'. Two independent walls keep it off the real funnel:
+# `research promote`) up to 'candidate'. Controls separating preview from authoritative writes:
 #
-#   1. FILESYSTEM CONTAINMENT (the real wall), imposed by the run_agent.sh seam with bwrap:
-#      everything outside the throwaway worktree is mounted read-only and /tmp is a private
-#      tmpfs, so model-generated shell commands can only WRITE inside the worktree. The authoritative registry (data/algua.db), snapshot
-#      tree, kb vault, and main's .git all live OUTSIDE the worktree and are therefore not
-#      writable by the agent — even though it is otherwise autonomous. Env-var path routing
-#      alone is NOT containment (an unsandboxed agent can write any absolute path); the sandbox
-#      is what makes "isolated" true.
-#   2. NO AUTHORITATIVE PROMOTE PATH. Everything the agent touches is scratch: a per-run copy
+#   1. OPTIONAL FILESYSTEM CONTAINMENT through run_agent.sh. In bwrap mode most host paths are
+#      read-only and /tmp is private; worktree and runtime-state paths remain writable. auto
+#      falls back to none without bwrap. Host reads and networking are not isolated.
+#      Env-var path routing alone does not prevent access to authoritative files.
+#   2. SCRATCH PROMOTE PATH. The configured exploration paths use a per-run copy
 #      of the registry (seeded from the real one via sqlite's consistent online backup) and a
 #      per-run copy of the immutable snapshots, both INSIDE the worktree. So its `research
 #      promote` is a realistic pass/fail PREVIEW (it sees real accumulated breadth/families/
-#      burned holdouts) that can never mutate the real funnel or burn a real holdout. The
-#      authoritative promote + code-merge is a separate, human-run `paper merge-back` (trusted
-#      code; its diff-policy rejects gate-core edits before the merge) — the only real reconciler.
+#      burned holdouts). The authoritative promote + code-merge is a separate `paper merge-back`
+#      run by the trusted drainer when enabled, or an authorized operator; its diff policy rejects
+#      gate-core edits before the merge. Scratch configuration is not an access-control guarantee.
 #
 # The agent does NOT commit — it just authors files in the worktree; the DRIVER (trusted, after
 # the agent exits) commits them on research-run/<stamp>, so the agent needs no git-dir write access.
@@ -33,7 +30,7 @@
 # digest, as untrusted anti-dup context) into the prompt; and after
 # EVERY firing — completed run (success, failure, or timeout), lock-skip, or setup failure — it
 # appends ONE JSON line to the durable authority-side digest (data/research-runs.jsonl by default;
-# ALGUA_RESEARCH_DIGEST_PATH overrides), built from the run-report's machine-readable trailer. Codex output also tees to an
+# ALGUA_RESEARCH_DIGEST_PATH overrides), built from the run-report's machine-readable trailer. Agent output also tees to an
 # in-worktree research-loop.log for rate-limit detection (only the boolean goes durable); the log
 # is archived to .runs/logs/<branch>.log before any worktree removal.
 #
@@ -45,7 +42,8 @@
 #
 # Bounds: an OS-level `timeout` hard-kills the run; a repo-root flock serializes research cycles;
 # the agent exit code propagates (a timeout/failure fails the systemd unit, never a false success).
-# Safety: the agent CANNOT go live (human-signed wall) and CANNOT reach the real funnel.
+# Safety: the CLI requires signed human live approval. Filesystem protection depends on sandbox
+# mode and deployment permissions, not merely on the configured scratch paths.
 #
 # Usage:
 #   .opencode/scripts/run-research-loop.sh [--hypotheses N] [--timeout DUR] [--category SLUG] [--dry-run]
@@ -1152,11 +1150,11 @@ fi
 
 # The runtime, the sandbox posture and the model choice all live behind ONE seam
 # (.opencode/scripts/run_agent.sh) so this driver never names a vendor or a model. The seam
-# re-imposes a kernel write wall with bwrap (verified: a write to any path outside the worktree
-# fails "read-only file system"), runs headless with no `ask`
+# adds a filesystem write boundary in bwrap mode (auto falls back to none when unavailable),
+# runs headless with no `ask`
 # permission that could block, and kills the run early on a terminal provider error instead of
-# burning the whole TIMEOUT. The threat model is unchanged: FUNNEL-WRITE CORRUPTION, closed by
-# write-confinement — not network egress (the agent's own API traffic is unsandboxed regardless).
+# burning the whole TIMEOUT. Neither scratch path routing nor tool permissions establish
+# filesystem or network isolation; verify the selected sandbox mode and deployment permissions.
 PROMPT_FILE="${WORKTREE}/.agent-prompt.md"
 AGENT_CMD=("${REPO_ROOT}/.opencode/scripts/run_agent.sh"
   --mode research

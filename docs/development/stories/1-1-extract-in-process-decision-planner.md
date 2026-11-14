@@ -227,7 +227,7 @@ Focused gate: 107 passed, including the existing live/paper/lane/sizing/size sui
 checks. Ruff passed; mypy passed for 293 files; import-linter kept 28 contracts with 0 broken.
 Full regression: 4,016 passed, 171 warnings in 541.94 seconds. The review changed only a test
 fixture while that run was active; the final 107-test focused suite passed afterward (2.47 seconds),
-followed by clean ruff, mypy and all 28 import contracts. Three independent BMAD review layers
+followed by clean ruff, mypy and all 28 import contracts. Three independent review layers
 completed: one minor fixture correction applied and independently rechecked, two pre-existing
 input-validation issues deferred. Focused suite passed again after the review patch.
 
@@ -239,7 +239,7 @@ checked on runtime edges. No production exemption or boundary was introduced.
 ### Completion Notes List
 
 - Owner approved the artifact-freeze-first scope, both epic outcomes and preparation of this story.
-- Story context prepared using BMAD create-story; current code and regression hazards inspected.
+- Story context prepared using repository inspection; current code and regression hazards inspected.
 - Definition of done passed for this bounded story; independent review completed with its patch
   resolved. `done` records implementation and review only: no main merge, deployment, frozen
   execution or full-epic readiness is implied. No sprint-status file exists; tracking is here.

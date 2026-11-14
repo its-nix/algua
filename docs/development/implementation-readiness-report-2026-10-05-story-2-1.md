@@ -19,7 +19,6 @@ baseline: 047d6d0 (contracts commit; the code is identical to e875b6d, where the
 # Implementation Readiness Assessment Report
 
 **Date:** 2026-10-05 · **Project:** Algua, Story 2.1 · **Assessor:** independent reviewer (Claude),
-BMAD method, non-interactive defaults.
 
 Code claims were checked at `047d6d0`. All experiments ran in scratch, and the repository was not
 modified:

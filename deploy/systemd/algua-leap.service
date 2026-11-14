@@ -1,9 +1,9 @@
 [Unit]
-Description=Algua leap — inspirations → structured hypotheses (sandboxed agent, scratch pool; trusted import)
+Description=Algua leap — inspirations → structured hypotheses (agent, scratch pool; trusted import)
 # Fired by algua-leap.timer. The driver first asks `algua research idea depth` whether the idea
 # pool is BELOW its refill trigger and exits 0 immediately if it is not — leaping is refill, not a
-# treadmill. When it does run, an agent (sandboxed by the run_agent.sh seam, with
-# `sandbox_workspace_write.network_access=false`, `web_search=disabled` and no MCP servers) leaps
+# treadmill. When it does run, an agent (filesystem sandbox mode selected by run_agent.sh,
+# web tools denied by its profile, shell networking not isolated) leaps
 # from the fresh inspiration notes forage brought home to structured, falsifiable hypotheses. Its
 # ALGUA_DB_PATH points at a THROWAWAY SCRATCH COPY of the registry inside the run worktree
 # (.runs/leap-<stamp>/.leap-scratch), so its `research idea dedup-check` / `add` see the real
@@ -16,8 +16,8 @@ Description=Algua leap — inspirations → structured hypotheses (sandboxed age
 [Service]
 Type=oneshot
 EnvironmentFile=/etc/algua/algua.env
-# Scrub broker credentials — leaping never trades and never needs them; the sandboxed agent has no
-# network anyway. Same closure as algua-research / algua-forage.
+# Scrub broker credentials — leaping never trades and never needs them. The agent can use shell
+# networking; do not treat the tool profile as a network boundary.
 UnsetEnvironment=ALGUA_ALPACA_API_KEY ALGUA_ALPACA_API_SECRET ALGUA_ALPACA_LIVE_API_KEY ALGUA_ALPACA_LIVE_API_SECRET
 WorkingDirectory=/opt/algua
 # The driver bounds the agent run itself (LEAP_TIMEOUT, default 25m) and the env pre-warm

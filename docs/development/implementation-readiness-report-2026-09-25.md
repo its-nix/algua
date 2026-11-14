@@ -445,7 +445,7 @@ paper behavior; it must not silently become an infrastructure-only promise.
 ### Quality gate result
 
 The two-epic structure is sound, but Story 1.3 is **not implementation-ready as one story**. It must
-be decomposed and the five major contract gaps resolved before `bmad-dev-story` begins. This is a
+be decomposed and the five major contract gaps resolved before implementation begins. This is a
 planning correction, not a rejection of the approved frozen-execution design.
 
 ## Summary and Recommendations
@@ -473,7 +473,7 @@ security/runtime parameters ambiguous.
 
 ### Recommended Next Steps
 
-1. Use BMAD course correction to replace the single ready-for-dev Story 1.3 with the approved parent
+1. Revise the delivery breakdown to replace the single ready-for-dev Story 1.3 with the approved parent
    outcome plus Stories 1.3a–1.3d, preserving every existing requirement and non-goal.
 2. Run targeted architecture elicitation on the five major decisions and record the answers in the
    appropriate child story rather than adding another broad design document.
@@ -490,4 +490,4 @@ No Phase 1 requirement, authority rule or UX dependency is missing. Correct the 
 before implementation; proceeding as-is would increase the likelihood of hidden authority,
 reproducibility and failure-order defects at exactly the boundary this work is meant to harden.
 
-**Assessor:** OpenAI Codex using BMAD Implementation Readiness workflow, 2026-09-25.
+**Assessor:** OpenAI Codex using the recorded readiness criteria, 2026-09-25.

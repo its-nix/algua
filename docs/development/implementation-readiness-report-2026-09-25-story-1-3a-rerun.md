@@ -456,7 +456,7 @@ resolved in the normative contract before this verdict.
    tracking with only Story 1.3a ready; Stories 1.3b–1.3d remain backlog.
 2. Execute Story 1.3a test-first from its story plus normative SPEC/companion. Begin with red tests
    for the field schemas, logical binding vectors, phase mismatch and parity matrix.
-3. Run BMAD independent code review and the full sequential repository gate before marking the
+3. Run independent code review and the full sequential repository gate before marking the
    story done. No merge or deployment follows merely from readiness.
 
 ### Final Note
@@ -466,4 +466,4 @@ category and verified that none changes runtime code, schema, capital, deploymen
 Epic 2 still requires detailed stories before its own implementation begins, but that future work
 does not block Story 1.3a.
 
-**Assessed:** 2026-09-25 by the BMAD Implementation Readiness workflow (Codex).
+**Assessed:** 2026-09-25 by Codex.

@@ -19,7 +19,7 @@ drive the system through the **same** CLI. Every data command emits JSON on stdo
   Dated plans preserve earlier decisions; the current roadmap is PRD §25.
 - **Why the rules exist (detail):** `docs/agent/operating.md`
 - **Delivering changes:** `docs/agent/story-delivery.md` — small runnable slices, focused checks
-  and a bounded review proportional to the change. BMAD planning and Todoist mirroring are optional.
+  and a bounded review proportional to the change. No planning framework or Todoist mirror is required.
 - **How this foundation was built (task plan):** `docs/superpowers/plans/2026-05-29-foundation-command-surface.md`
 - **Reviewing/fixing the system?** Read `AGENTS.md` first (review mandate + invariants + deferred scope).
 - **Data contract:** `docs/contracts/bar-schema.md` — the shape of bars crossing the
@@ -121,10 +121,9 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   handling). The whole statistical stack — the breadth-DEFLATED holdout-Sharpe bar, window
   stability, DSR evidence + bootstrap, regime robustness, idiosyncratic alpha — still computes and
   is RECORDED on every run as **ADVISORY** (`"advisory": true` on the check; `*_binding` fields
-  mean armed/evaluated, NOT veto). The **LORD++ FDR ledger is FROZEN**: rows land with
-  `fdr_binding` NULL + skip reason `stats_advisory`, the throttle is no longer consulted, and
-  `--fdr-throttle-override` is REMOVED (the ledger machinery is preserved for re-tightening — FDR
-  mechanics live in the #529 spec). The **FORWARD gate is the harsh threshold** (its Sharpe bar is
+  mean armed/evaluated, NOT veto). FDR has no promotion veto or throttle; legacy accounting is
+  inactive (`fdr_binding` NULL, skip reason `stats_advisory`). Historical FDR designs are not
+  operating requirements. The **FORWARD gate is the harsh threshold** (its Sharpe bar is
   0.5× the holdout Sharpe recorded here, so overfit inflation self-punishes).
   A passing run is the ONLY way an agent reaches `candidate`
   — `registry transition`
@@ -196,10 +195,12 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   `kb/inspirations/` notes). A human steers the engine through two files: `.opencode/categories.txt`
   (the ideation category list) and `kb/inspirations/_sources.yaml` (the venue registry).
 - **The agent runtime is OpenCode, reached through ONE seam.** `.opencode/scripts/run_agent.sh` is
-  the only file in the repo that names a runtime, a model or a sandbox flag. Models live in
+  the only invocation seam for the loop drivers. Models live in
   `.opencode/opencode.json`; agent definitions (research / leap / forage, plus the `author` and `interpret`
-  subagents) live in `.opencode/agents/`. The seam re-imposes a kernel write wall with bwrap,
-  forbids every `ask` permission so an unattended run cannot block, and kills a run early on a
+  subagents) live in `.opencode/agents/`. With `ALGUA_AGENT_SANDBOX=bwrap`, the seam adds a
+  kernel write boundary; `auto` falls back to `none` when bwrap is unavailable. It does not
+  isolate the network. The seam forbids every `ask` permission so an unattended run cannot
+  block, and kills a run early on a
   terminal provider error instead of burning the whole timeout. Changing how an agent is launched
   means changing the seam, never a driver.
 ## Lifecycle stages

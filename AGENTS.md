@@ -62,8 +62,8 @@ today's allowlists or approvals. Document conflicts as implementation gaps, neve
 to bypass a control.
 
 **Agent runtime.** The autonomous loops (research, leap, forage) run on **OpenCode**, invoked
-through the single seam `.opencode/scripts/run_agent.sh`. That script is the only place in the repo
-that names a runtime, a model or a sandbox flag — model choices live in `.opencode/opencode.json`, agent
+through the single seam `.opencode/scripts/run_agent.sh`. That script is the only invocation seam
+for the loop drivers — model choices live in `.opencode/opencode.json`, agent
 definitions in `.opencode/agents/`. If you are changing how an agent is launched, change the seam,
 not a driver. Work on a branch, not directly on `main`.
 

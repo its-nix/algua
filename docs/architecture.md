@@ -457,11 +457,12 @@ both key on the slug.
 
 ---
 
-## Before you commit
+## Verification
 
-```
-uv run pytest -q && uv run ruff check . && uv run mypy algua && uv run lint-imports
-```
+Follow [the delivery policy](agent/story-delivery.md): run focused regression or smoke checks
+for the changed behavior, plus relevant lint, type and import-boundary checks. Use the full suite
+for broad integration changes or when requested. Existing automated merge-back gates still apply.
+Report the checks actually run; a full-suite run is not required before every small commit.
 
 Touching `web/`? Also `uv run --project web pytest web/backend/tests -q` and
 `cd web/frontend && npm run check && npm run build`. The root `uv.lock` is `dependency_hash`

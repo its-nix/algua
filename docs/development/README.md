@@ -1,27 +1,16 @@
 # Development cycle
 
-Product authority is [the canonical vision](../PRD.md). Current scope is the artifact-freeze-first
-Phase 1 approved by Lior on 2026-09-24; [epics.md](epics.md) contains extracted requirements and
-the approved delivery outcomes. This is the working location for BMAD planning artifacts in
-this brownfield repository; existing design/spec history stays under `docs/superpowers/`.
+Product authority is [the canonical vision](../PRD.md); current implementation is mapped in
+[architecture](../architecture.md). Follow [the delivery policy](../agent/story-delivery.md) for
+small runnable changes, proportional checks and bounded review. No planning framework, readiness
+report, separate specification PR or sprint ceremony is required for routine work.
 
-Use a bounded cycle for each independently reviewable delivery:
-
-1. `bmad-create-epics-and-stories`: confirm requirements and user outcomes, then create stories
-   with testable acceptance criteria, dependencies and PRD references.
-2. `bmad-create-story`: inspect current code and tests; prepare the next story with exact paths,
-   required behavior, safety boundaries, verification and recovery considerations.
-3. `bmad-check-implementation-readiness`: validate that the scoped requirements, architecture
-   and story agree. Resolve relevant policy/authority questions before implementation.
-4. `bmad-sprint-planning`: record eligible stories in `sprint-status.yaml`. Future/blocked work
-   stays backlog; evidence, not file creation alone, determines readiness.
-5. `bmad-dev-story`: implement test-first on a branch, preserving contracts and existing behavior
-   unless a reviewed story explicitly changes it. Run the full repository quality gate.
-6. `bmad-code-review`: review acceptance coverage, correctness, failure paths and boundary
-   preservation; fix findings and verify. Protected changes require human review before merge.
-7. Validate the permitted release in paper/shadow, record deployment/verification evidence and
-   update story status. A code merge is not authorization to deploy, trade or allocate capital.
-8. `bmad-retrospective`: capture reusable lessons after the epic and feed the next cycle.
+This directory retains technical contracts, story acceptance criteria and dated delivery evidence.
+The [epics](epics.md) capture the September artifact-freeze-first breakdown, not a replacement for
+the current PRD or later owner decisions. Readiness reports and retrospectives record their dated
+assessments; their process instructions do not override the current delivery policy. Existing
+technical safety contracts and protected-review requirements remain binding. A code merge is not
+authorization to deploy, trade or allocate capital.
 
 GitHub issues track implementation work and reviews. Repository artifacts retain specifications
 and acceptance evidence. The [Algua Todoist board](https://app.todoist.com/app/project/algua-6hGjQph9JgcgpC2G)
@@ -31,28 +20,27 @@ the human board. Respect existing tasks and assignments; do not infer completion
 The 72-hour exercise and actual live sign-off are later acceptance events. Until they occur,
 reports must distinguish tests passing, code merged, deployment verified and capital authorized.
 
-## Current handoff
+## Artifact-freeze delivery record
 
 [Story 1.1 — planner extraction](stories/1-1-extract-in-process-decision-planner.md),
 [Story 1.2 — explicit deployment epochs](stories/1-2-record-working-tree-deployments.md) and
 [Story 1.3a — two-phase planner boundary](stories/1-3a-complete-two-phase-planner-boundary-in-process.md)
 are implemented, independently reviewed and merged. None of those merges is a deployment.
 [Story 1.3 — frozen planner artifacts](stories/1-3-materialize-and-execute-frozen-planner-artifacts.md)
-is the `decomposed` parent outcome. The
+is complete as an aggregate parent outcome, delivered through its child stories. The
 [2026-09-25 readiness assessment](implementation-readiness-report-2026-09-25.md) found it too large
 for one implementation/review cycle, and the approved
 [Sprint Change Proposal](sprint-change-proposal-2026-09-25.md) divides it into Stories 1.3a–1.3d.
 [Story 1.3b](stories/1-3b-materialize-and-verify-recoverable-planner-artifacts.md) is done
 (PR #676). [Story 1.3c](stories/1-3c-execute-frozen-planners-in-paper.md) is done (PR #680).
-[Story 1.3d](stories/1-3d-bind-operational-evidence-and-qualification.md) is `ready-for-dev` after its
-[targeted readiness review](implementation-readiness-report-2026-09-30-story-1-3d.md) and adopted
-[normative evidence contract](specs/spec-story-1-3d-frozen-evidence-and-qualification/SPEC.md). The older
+[Story 1.3d](stories/1-3d-bind-operational-evidence-and-qualification.md) is done (PR #683), with
+deployment-bound invocation evidence and frozen qualification implemented under its
+[normative evidence contract](specs/spec-story-1-3d-frozen-evidence-and-qualification/SPEC.md).
+The [readiness review](implementation-readiness-report-2026-09-30-story-1-3d.md) is historical. The older
 [readiness assessment](implementation-readiness-report-2026-09-24.md) covers only Story 1.1, not
 either whole epic. [Deferred findings](stories/deferred-work.md) retain pre-existing issues outside
 the active story boundary.
 
-Workflow path bindings: `planning_artifacts = docs/development`,
-`implementation_artifacts = docs/development/stories`; use `docs/PRD.md` and
-`docs/architecture.md` directly rather than copying them into the planning folder. There is no
-repository `_bmad` configuration at preparation time; installed skill defaults apply. Sprint
-tracking is `docs/development/sprint-status.yaml`.
+Use `docs/PRD.md` and `docs/architecture.md` directly rather than copying them here.
+`sprint-status.yaml` is retained as a delivery record; it is not a required development workflow
+or proof of merge, deployment, qualification or trading authority.
