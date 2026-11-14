@@ -266,10 +266,6 @@ Two of those enforce structure, not style, and are worth knowing before you figh
   the change where it belongs, or carving; raising a pin is the last option and is meant to be
   visible in review.
 
-When a change touches `web/` (the monitor PWA — a STANDALONE uv project; NEVER add web deps to
-the root project, the root `uv.lock` is dependency_hash identity), also run:
-`uv run --project web pytest web/backend/tests -q` and `cd web/frontend && npm run check && npm run build`.
-
 ## Company context
 
 Business context for this project — what Nix is, who the client is, what the

@@ -314,7 +314,7 @@ strategy load/evaluation, with typed validated output. Hostile-code tests must r
 boundary, not just an authoring worktree. Missing kernel isolation must fail closed. This is an
 acceptance blocker; source hashes, prompts, allowlists and fresh processes do not satisfy it.
 
-Root and standalone web CI are implemented in `.github/workflows/ci.yml` (including PR #720).
+Root CI is implemented in `.github/workflows/ci.yml` (including PR #720).
 The target release chain additionally needs independent review and CI bound to the exact reviewed
 and integrated source, immutable artifact digests, isolated untrusted PR execution, serialized safe
 paper release, smoke/health verification and known-good recovery. A green CI run or an ordinary
@@ -483,9 +483,7 @@ both key on the slug.
 uv run pytest -q -m "" && uv run ruff check . && uv run mypy algua && uv run lint-imports
 ```
 
-Touching `web/`? Also `uv run --project web pytest web/backend/tests -q` and
-`cd web/frontend && npm run check && npm run build`. The root `uv.lock` is `dependency_hash`
-identity — never add web deps to it.
+The root `uv.lock` is `dependency_hash` identity.
 
 ### Frozen model mechanics (version 2; reviewed-code paper execution)
 

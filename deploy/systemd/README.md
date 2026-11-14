@@ -78,7 +78,7 @@ deploy/systemd/install-user-units.sh --dry-run  # print the rendered units, writ
 
 For each of `algua-research.{service,timer,path}`, `algua-paper.{service,timer}`,
 `algua-mergeback-drain.{service,timer}`, `algua-forage.{service,timer}`,
-`algua-leap.{service,timer}`, `algua-web.service`
+`algua-leap.{service,timer}`
 it renders the `/opt/algua` template to `~/.config/systemd/user/<name>`, replacing `/opt/algua`
 with the actual repo root (resolved from the script's own location; a root containing whitespace
 or any character outside `[A-Za-z0-9/._-]` fails closed — plain substitution can't safely render
@@ -594,8 +594,7 @@ promote-failed / gate-failed-exhausted — never retried) | `promoted_allocated`
 (status update) — mutate it ONLY under `mergeback-queue.lock` (a dedicated, non-blocking flock with
 a short bounded retry; queue mutations are sub-second), via
 `.opencode/scripts/mergeback_queue.py`'s atomic tmp+fsync+`os.replace` read-modify-write (the same
-idiom `web/backend/push.py` uses for its subscription store, ported to this bash-driven side of the
-system since that module is FastAPI-process-local). The research driver only enqueues (idempotent
+standard idiom, in this bash-driven side of the system). The research driver only enqueues (idempotent
 on the `(strategy, branch)` key — a re-enqueue of an existing key is a no-op, since a branch is
 produced exactly once per research-run stamp); it never runs merge-back itself, so queue depth can
 never extend a research cycle past its own `TIMEOUT` budget.

@@ -32,18 +32,6 @@ tracking: checkout `mlruns.db` and `mlruns.artifacts/` (configured prefix `mlrun
 pinned pilot data: `/home/algua/datasets/pilot-2026-11-03/data`.
 Preserve these stores, retained research branches and runtime archives during maintenance.
 
-## Localhost read-only monitor
-
-Separately, the enabled, root-owned `algua-web.service` runs as `algua` (UID 1001), listening
-only on `127.0.0.1:8787`. Nine health/static/API checks passed with fresh responses and all
-73 production assets verified; no fixture content was installed. This adds no Tailscale/public
-exposure, firewall, auth or trading changes. From the viewer's machine:
-
-```bash
-ssh -N -L 127.0.0.1:18797:127.0.0.1:8787 vps
-```
-
-Open `http://localhost:18797`. The VPS service runs independently of that client tunnel.
 The retained list has seven **attempt references**, not seven completed cycles; the selected
 fourth-cycle archive has seven evaluations. [Acceptance scope](../../docs/acceptance/2026-10-30-algua-machine-acceptance.md).
 

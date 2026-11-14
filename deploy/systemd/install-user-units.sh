@@ -68,7 +68,6 @@ UNITS=(
   algua-forage.timer
   algua-leap.service
   algua-leap.timer
-  algua-web.service
 )
 
 # Keep EnvironmentFile= only when the file exists AND is readable — a present-but-unreadable
@@ -195,7 +194,6 @@ echo "  systemctl --user enable --now algua-paper.timer             # paper tick
 echo "  systemctl --user enable --now algua-mergeback-drain.timer   # merge-back consumer, every 30m"
 echo "  systemctl --user enable --now algua-forage.timer            # web inspiration foraging, daily 03:00 UTC"
 echo "  systemctl --user enable --now algua-leap.timer               # inspirations -> hypotheses, every 2h at :30 (depth-gated)"
-echo "  systemctl --user enable --now algua-web.service             # read-only monitor on 127.0.0.1:8787"
 echo "(algua-research.service / algua-paper.service / algua-mergeback-drain.service / algua-forage.service /"
 echo " algua-leap.service are oneshot units fired by their timers — do not enable them directly.)"
 echo "Consider 'loginctl enable-linger ${USER:-$(id -un)}' so user timers run without an active login."
