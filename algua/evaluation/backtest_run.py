@@ -110,7 +110,8 @@ def run_backtest_task(  # noqa: PLR0913
         # Re-sync the kb doc to the new `backtested` stage (#331): best-effort, out-of-transaction.
         sync_kb_doc(name)
 
-    # Persist return series for the return-correlation clustering axis (#222, Task 7).
+    # Persist the backtest return series (run views' series_backtest_id; the merge-back intake's
+    # evidence precondition). Originally added for #222 family clustering, since removed.
     # Only persists for registered strategies (pre-existing or just-registered above); silently
     # skips otherwise. Persisted BEFORE the run row so the run row can point at it
     # (series_backtest_id, v44) — a not-yet-registered strategy still gets series_id=None.

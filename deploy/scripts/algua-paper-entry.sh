@@ -6,8 +6,8 @@ if [[ $EUID != 0 ]]; then
   exit 1
 fi
 case "${1-} ${2-} ${3-}" in
-  'paper mechanics '*|'risk configure paper'|'risk restore paper'|'risk status '|'registry list '|'version  '|'doctor  ') ;;
-  *) printf '%s\n' '{"ok":false,"error":"only isolated paper mechanics and paper policy commands are allowed"}'; exit 1 ;;
+  'risk configure paper'|'risk restore paper'|'risk status '|'registry list '|'version  '|'doctor  ') ;;
+  *) printf '%s\n' '{"ok":false,"error":"only paper policy commands are allowed"}'; exit 1 ;;
 esac
 release=$(readlink -e /opt/algua/paper-current)
 # The selector and release directories are installed root-owned and runtime-unwritable.

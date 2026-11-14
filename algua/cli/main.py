@@ -13,15 +13,11 @@ from typer.main import get_command
 from algua.cli import (  # noqa: F401 - imports register subcommands
     audit_cmd,
     backtest_cmd,
-    campaign_cmd,
     capped_live_cmd,
     data_cmd,
-    data_context_cmd,
     data_refresh_cmd,
     deployment_cmd,
-    eval_cmd,
     fleet_cmd,
-    governance_cmd,
     handoff_cmd,
     idea_cmd,
     idea_ops_cmd,
@@ -33,10 +29,8 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     operator_cmd,
     ops_cmd,
     paper_cmd,
-    paper_mechanics_cmd,
     portfolio_cmd,
     registry_cmd,
-    replay_cmd,
     research_batch_cmd,
     research_cmd,
     research_memory_cmd,
@@ -45,6 +39,7 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     runs_cmd,
     source_cmd,
     strategy_cmd,
+    vendor_check_cmd,
 )
 from algua.cli.app import app, emit
 from algua.cli.errors import error_envelope, is_retryable
@@ -57,9 +52,7 @@ from algua.cli.errors import error_envelope, is_retryable
 # those listed command modules free of any sibling import.
 live_cmd.live_app.add_typer(capped_live_cmd.capped_live_app)
 paper_cmd.paper_app.add_typer(handoff_cmd.handoff_app)
-paper_cmd.paper_app.add_typer(paper_mechanics_cmd.mechanics_app, name="mechanics")
 research_cmd.research_app.add_typer(idea_cmd.idea_app, name="idea")
-research_cmd.research_app.add_typer(campaign_cmd.campaign_app)
 # idea_ops_cmd carries the driver-facing claim/record-outcome/link/depth/refuted/import/
 # reclassify/scorecard commands (spec 2026-09-08 §7); merged flat (no `name=`) onto idea_app,
 # the same idiom data_refresh_cmd.refresh_app uses onto data_app below, so idea_cmd never
@@ -76,9 +69,8 @@ research_cmd.research_app.add_typer(source_cmd.source_app, name="sources")
 # data_app so `algua data refresh-bars ...` is unchanged while data_refresh_cmd never imports
 # data_cmd (#556 review finding 2).
 data_cmd.data_app.add_typer(data_refresh_cmd.refresh_app)
-data_cmd.data_app.add_typer(data_context_cmd.context_data_app)
+data_cmd.data_app.add_typer(vendor_check_cmd.vendor_check_app)
 backtest_cmd.backtest_app.add_typer(portfolio_cmd.portfolio_app)
-backtest_cmd.backtest_app.add_typer(replay_cmd.replay_app)
 app.add_typer(deployment_cmd.deployment_app, name="deployment")
 app.add_typer(model_cmd.model_app, name="model")
 

@@ -261,7 +261,7 @@ def build_gate_fail_record(
         "advisory_flags": advisory_flags,
         "n_funnel": decision.get("n_combos"),
         "breadth_provenance": decision.get("breadth_provenance"),
-        "effective_min_holdout_sharpe": decision.get("effective_min_holdout_sharpe"),
+        "min_holdout_sharpe": decision.get("base_min_holdout_sharpe"),
         "dsr_confidence": decision.get("dsr_confidence"),
         "holdout": holdout,
         "stability": stability,

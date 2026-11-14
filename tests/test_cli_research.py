@@ -1,88 +1,34 @@
 import json
-import os
 import sqlite3
 
 import pytest
 from typer.testing import CliRunner
 
 from algua.cli.main import app
-from tests._human_actor_helpers import install_human_actor_anchor, promote_signed
 
 runner = CliRunner()
 
-# Set by the autouse fixture so the module-level `_promote` helper can run the signed challenge
-# dance without threading (key, tmp_path) through every call site (#329).
-_HUMAN_KEY = None
-_TMP_PATH = None
-
 
 def _promote(args):
-    """Invoke a gated promote as an AUTHENTICATED human when `args` asks for `--actor human`,
-    otherwise a plain invoke. Drop-in for `runner.invoke(app, args)` at the promote call sites."""
-    if "human" in args:
-        return promote_signed(runner, app, args, _HUMAN_KEY, _TMP_PATH)
     return runner.invoke(app, args)
 
 
 @pytest.fixture(autouse=True)
 def _tmp(monkeypatch, tmp_path):
-    global _HUMAN_KEY, _TMP_PATH
     monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "r.db"))
     monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path))
-    _HUMAN_KEY = install_human_actor_anchor(monkeypatch, tmp_path)
-    _TMP_PATH = tmp_path
+    _ingest_demo_universe(tmp_path)
 
 
-def _ensure_family(strategy_name: str = "cross_sectional_momentum",
-                   family_name: str = "csm_family") -> None:
-    """Pre-assign a strategy to a family in the DB.
+def _ingest_demo_universe(data_dir):
+    """A PIT universe `demo_pit` covering cross_sectional_momentum's whole CONFIG.universe from
+    before every test window: the gates have no non-PIT override any more (spec 2026-11-13), so a
+    passing promote needs a real PIT universe."""
+    from algua.data.store import DataStore
 
-    Task 4 (#222) adds family classification to promotion_preflight. Tests that probe
-    non-family behavior (breadth, holdout, PIT) need the strategy already assigned so the
-    clustering guard passes. Call this after the strategy is registered (e.g., after
-    _backtest_to_backtested()).
-    """
-    from datetime import UTC, datetime
-    db_path = os.environ["ALGUA_DB_PATH"]
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    now = datetime.now(UTC).isoformat()
-    try:
-        # Check if already assigned.
-        row = conn.execute(
-            "SELECT family_id FROM family_members WHERE strategy_name=? AND removed_at IS NULL",
-            (strategy_name,),
-        ).fetchone()
-        if row is not None:
-            return  # already assigned
-        with conn:
-            cur = conn.execute(
-                "INSERT INTO families(name, created_at, created_by_actor, created_by_strategy)"
-                " VALUES (?,?,?,?)",
-                (family_name, now, "agent", strategy_name),
-            )
-            fam_id = cur.lastrowid
-            conn.execute(
-                "INSERT INTO family_events(event_type, family_id, actor, created_at)"
-                " VALUES (?,?,?,?)",
-                ("family_created", fam_id, "agent", now),
-            )
-            conn.execute(
-                "INSERT INTO family_members(family_id, strategy_name, joined_at, joined_by_actor)"
-                " VALUES (?,?,?,?)",
-                (fam_id, strategy_name, now, "agent"),
-            )
-            conn.execute(
-                "INSERT INTO family_events"
-                "(event_type, family_id, strategy_name, actor,"
-                " clustering_verdict, similarity_score, clustering_version,"
-                " clustering_config_json, axis_json, matched_family_id, created_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                ("strategy_assigned", fam_id, strategy_name, "agent",
-                 "NOVEL", 0.0, "v0", "{}", "{}", None, now),
-            )
-    finally:
-        conn.close()
+    DataStore(data_dir).ingest_universe(
+        universe="demo_pit", symbols=["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL"],
+        effective_date="2021-01-01", as_of="2021-01-02T00:00:00+00:00", source="test")
 
 
 def _stage(name="cross_sectional_momentum"):
@@ -101,36 +47,12 @@ def _sweep():
                                "--param", "lookback=20,40", "--param", "construction.top_k=1,3"])
 
 
-def test_agent_promote_demo_refuses_relaxation():
-    assert _backtest_to_backtested().exit_code == 0
-    r = runner.invoke(app, ["research", "promote", "cross_sectional_momentum", "--demo",
-                            "--start", "2022-01-01", "--end", "2023-12-31", "--n-combos", "9"])
-    assert r.exit_code != 0
-    assert "human" in r.stdout.lower()
-
-
-def test_human_promote_demo_overrides_shortlists():
-    assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
-    r = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
-                            "--start", "2022-01-01", "--end", "2023-12-31",
-                            "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                            "--min-pct-positive", "0", "--min-window-sharpe", "-100",
-                            "--n-combos", "9", "--allow-non-pit", "--actor", "human"])
-    assert r.exit_code == 0, r.stdout
-    p = json.loads(r.stdout)
-    assert p["promoted"] is True and p["n_funnel"] == 9 and p["pit_override"] is True
-    assert _stage() == "candidate"
-
-
 def test_agent_promote_blocked_without_pit():
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0
     r = runner.invoke(app, ["research", "promote", "cross_sectional_momentum", "--demo",
                             "--start", "2022-01-01", "--end", "2023-12-31",
-                            "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                            "--min-pct-positive", "0", "--min-window-sharpe", "-100"])
+                            "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100"])
     assert r.exit_code == 0, r.stdout
     p = json.loads(r.stdout)
     assert p["promoted"] is False
@@ -139,49 +61,30 @@ def test_agent_promote_blocked_without_pit():
 
 def test_promote_passes_and_shortlists():
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
-    # No sweep recorded yet, so declare breadth explicitly via --n-combos.
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     result = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
                                  "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                                 "--min-pct-positive", "0", "--min-window-sharpe", "-100",
-                                 "--n-combos", "9", "--allow-non-pit", "--actor", "human"])
+                                 "--universe", "demo_pit"])
     assert result.exit_code == 0, result.stdout
     payload = json.loads(result.stdout)
     assert payload["passed"] is True
     assert payload["promoted"] is True
-    assert payload["n_funnel"] == 9
-    assert payload["breadth_provenance"] == "declared"
-    # A declared breadth still raises the bar: effective > base.
-    assert payload["effective_min_holdout_sharpe"] > payload["base_min_holdout_sharpe"]
+    assert payload["n_funnel"] == 4
+    assert payload["breadth_provenance"] == "measured"
+    # The measured breadth is the DSR trial count (no haircut on the holdout-Sharpe bar).
+    assert payload["dsr_n_trials"] == payload["n_funnel"]
+    assert "effective_min_holdout_sharpe" not in payload
     assert _stage() == "candidate"
 
 
 def test_promote_uses_measured_breadth_from_sweep():
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # records a 4-combo search_trial
     result = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
                                  "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                                 "--min-pct-positive", "0", "--min-window-sharpe", "-100",
-                                 "--allow-non-pit", "--actor", "human"])
-    assert result.exit_code == 0, result.stdout
-    payload = json.loads(result.stdout)
-    assert payload["breadth_provenance"] == "measured"
-    assert payload["n_funnel"] == 4
-
-
-def test_measured_breadth_wins_over_declaration():
-    assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
-    assert _sweep().exit_code == 0  # 4 combos measured
-    result = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
-                                 "--start", "2022-01-01", "--end", "2023-12-31",
-                                 "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                                 "--min-pct-positive", "0", "--min-window-sharpe", "-100",
-                                 "--n-combos", "999",  # declaration ignored
-                                 "--allow-non-pit", "--actor", "human"])
+                                 "--universe", "demo_pit"])
     assert result.exit_code == 0, result.stdout
     payload = json.loads(result.stdout)
     assert payload["breadth_provenance"] == "measured"
@@ -190,25 +93,21 @@ def test_measured_breadth_wins_over_declaration():
 
 def test_two_sweeps_accumulate_breadth():
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0
     assert _sweep().exit_code == 0  # second sweep accumulates
     result = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
                                  "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                                 "--min-pct-positive", "0", "--min-window-sharpe", "-100",
-                                 "--allow-non-pit", "--actor", "human"])
+                                 "--universe", "demo_pit"])
     payload = json.loads(result.stdout)
     assert payload["n_funnel"] == 8  # 4 + 4
 
 
 def test_promote_refuses_with_no_breadth():
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     result = runner.invoke(app, ["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
-                                 "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                                 "--min-pct-positive", "0", "--min-window-sharpe", "-100"])
+                                 "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100"])
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
     assert payload["ok"] is False
@@ -217,13 +116,12 @@ def test_promote_refuses_with_no_breadth():
 
 
 def test_promote_fails_does_not_transition():
-    # Soft gate: force a BINDING failure via pit_required (no --universe and no --allow-non-pit
-    # fails closed); a raised holdout-Sharpe bar is advisory now and cannot fail the gate.
+    # Soft gate: force a BINDING failure via pit_required (no --universe fails closed); a raised
+    # holdout-Sharpe bar is advisory now and cannot fail the gate.
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     result = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
-                                 "--start", "2022-01-01", "--end", "2023-12-31",
-                                 "--n-combos", "1", "--actor", "human"])
+                                 "--start", "2022-01-01", "--end", "2023-12-31"])
     assert result.exit_code == 0, result.stdout
     payload = json.loads(result.stdout)
     assert payload["passed"] is False
@@ -235,34 +133,17 @@ def test_promote_from_idea_is_json_error():
     runner.invoke(app, ["registry", "add", "cross_sectional_momentum"])
     result = runner.invoke(app, ["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
-                                 "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                                 "--min-pct-positive", "0", "--min-window-sharpe", "-100"])
-    assert result.exit_code == 1
-    assert json.loads(result.stdout)["ok"] is False
-
-
-def test_promote_rejects_bad_n_combos():
-    result = runner.invoke(app, ["research", "promote", "cross_sectional_momentum",
-                                 "--demo", "--n-combos", "0"])
-    assert result.exit_code == 1
-    assert json.loads(result.stdout)["ok"] is False
-
-
-def test_promote_rejects_out_of_range_pct_positive():
-    result = runner.invoke(app, ["research", "promote", "cross_sectional_momentum",
-                                 "--demo", "--min-pct-positive", "1.5"])
+                                 "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100"])
     assert result.exit_code == 1
     assert json.loads(result.stdout)["ok"] is False
 
 
 # --- Holdout-reuse (single-use holdout) -------------------------------------
 
-_PASS = ["--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-         "--min-pct-positive", "0", "--min-window-sharpe", "-100"]
+_PASS = ["--min-holdout-sharpe", "-100", "--min-holdout-return", "-100"]
 
 
 def _holdout_rows(tmp_path):
-    import sqlite3
     conn = sqlite3.connect(tmp_path / "r.db")
     try:
         return conn.execute(
@@ -274,7 +155,6 @@ def _holdout_rows(tmp_path):
 
 
 def _gate_rows(tmp_path):
-    import sqlite3
     conn = sqlite3.connect(tmp_path / "r.db")
     try:
         return conn.execute("SELECT passed FROM gate_evaluations ORDER BY id").fetchall()
@@ -287,7 +167,7 @@ def test_promote_system_actor_refused_before_holdout_and_gate_row(tmp_path):
     assert _sweep().exit_code == 0  # measured breadth, so the actor check is the refusal
     result = runner.invoke(app, ["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
-                                 *_PASS, "--allow-non-pit", "--actor", "system"])
+                                 *_PASS, "--universe", "demo_pit", "--actor", "system"])
     assert result.exit_code == 1, result.stdout
     payload = json.loads(result.stdout)
     assert payload["ok"] is False
@@ -299,14 +179,13 @@ def test_promote_system_actor_refused_before_holdout_and_gate_row(tmp_path):
 
 
 def test_gate_row_written_on_both_pass_and_fail(tmp_path):
-    # A FAILING gate (binding pit_required fail: no universe, no --allow-non-pit) still records an
+    # A FAILING gate (binding pit_required fail: no universe) still records an
     # audit row with passed=0; a PASSING gate records one with passed=1. The strategy stays
     # `backtested` after the fail so the second (passing) promote on the same lifecycle is legal.
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     fail = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
-                               "--start", "2022-01-01", "--end", "2023-12-31",
-                               "--n-combos", "9", "--actor", "human"])
+                               "--start", "2022-01-01", "--end", "2023-12-31"])
     assert fail.exit_code == 0, fail.stdout
     assert json.loads(fail.stdout)["passed"] is False
     rows = _gate_rows(tmp_path)
@@ -315,9 +194,8 @@ def test_gate_row_written_on_both_pass_and_fail(tmp_path):
 
     # Passing promote on a DISJOINT window (avoids the burned-holdout refusal) records passed=1.
     ok = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
-                             "--start", "2022-01-01", "--end", "2023-12-31",
-                             *_PASS, "--n-combos", "9", "--allow-holdout-reuse",
-                             "--allow-non-pit", "--actor", "human"])
+                             "--start", "2024-01-01", "--end", "2025-12-31",
+                             *_PASS, "--universe", "demo_pit"])
     assert ok.exit_code == 0, ok.stdout
     assert json.loads(ok.stdout)["passed"] is True
     rows = _gate_rows(tmp_path)
@@ -327,10 +205,10 @@ def test_gate_row_written_on_both_pass_and_fail(tmp_path):
 
 def test_first_promote_records_holdout_evaluation(tmp_path):
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     result = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
-                                 *_PASS, "--n-combos", "9", "--allow-non-pit", "--actor", "human"])
+                                 *_PASS, "--universe", "demo_pit"])
     assert result.exit_code == 0, result.stdout
     rows = _holdout_rows(tmp_path)
     assert len(rows) == 1
@@ -340,18 +218,17 @@ def test_first_promote_records_holdout_evaluation(tmp_path):
 
 def test_second_promote_same_window_refused(tmp_path):
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
-    # First promote FAILS the gate (binding pit_required fail: no --allow-non-pit) so the strategy
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
+    # First promote FAILS the gate (binding pit_required fail: no universe) so the strategy
     # stays `backtested`; this isolates the holdout-reuse refusal on the second run from the
     # stage-legality preflight check.
     first = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
-                                "--start", "2022-01-01", "--end", "2023-12-31",
-                                "--n-combos", "9", "--actor", "human"])
+                                "--start", "2022-01-01", "--end", "2023-12-31"])
     assert first.exit_code == 0, first.stdout
     assert json.loads(first.stdout)["passed"] is False
     second = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
-                                 *_PASS, "--n-combos", "9", "--allow-non-pit", "--actor", "human"])
+                                 *_PASS, "--universe", "demo_pit"])
     assert second.exit_code == 1, second.stdout
     payload = json.loads(second.stdout)
     assert payload["ok"] is False
@@ -362,83 +239,54 @@ def test_second_promote_same_window_refused(tmp_path):
 
 def test_failing_first_promote_still_burns_holdout(tmp_path):
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
-    # Binding pit_required fail (no --allow-non-pit) -> gate fails, but the holdout was looked at
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
+    # Binding pit_required fail (no universe) -> gate fails, but the holdout was looked at
     # and is now burned.
     first = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
-                                "--start", "2022-01-01", "--end", "2023-12-31",
-                                "--n-combos", "1", "--actor", "human"])
+                                "--start", "2022-01-01", "--end", "2023-12-31"])
     assert first.exit_code == 0, first.stdout
     assert json.loads(first.stdout)["passed"] is False
     assert len(_holdout_rows(tmp_path)) == 1
     second = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
-                                 *_PASS, "--n-combos", "1", "--allow-non-pit", "--actor", "human"])
+                                 *_PASS, "--universe", "demo_pit"])
     assert second.exit_code == 1, second.stdout
     assert json.loads(second.stdout)["ok"] is False
     assert len(_holdout_rows(tmp_path)) == 1
 
 
-def test_allow_holdout_reuse_overrides(tmp_path):
-    assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
-    # First promote FAILS the gate (binding pit_required fail: no --allow-non-pit) so the strategy
-    # stays `backtested`, but the holdout is burned. The override then re-evaluates the same
-    # window and promotes on the merits.
-    first = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
-                                "--start", "2022-01-01", "--end", "2023-12-31",
-                                "--n-combos", "9", "--actor", "human"])
-    assert first.exit_code == 0, first.stdout
-    assert json.loads(first.stdout)["passed"] is False
-    second = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
-                                 "--start", "2022-01-01", "--end", "2023-12-31",
-                                 *_PASS, "--n-combos", "9", "--allow-holdout-reuse",
-                                 "--allow-non-pit", "--actor", "human"])
-    assert second.exit_code == 0, second.stdout
-    payload = json.loads(second.stdout)
-    assert payload["holdout_reuse"] == "override"
-    rows = _holdout_rows(tmp_path)
-    assert len(rows) == 2
-    assert rows[1][3] == 1  # second row reused == 1
-    # The override is recorded in the transition reason.
-    show = runner.invoke(app, ["registry", "show", "cross_sectional_momentum"])
-    history = json.loads(show.stdout)["transitions"]
-    assert any("override" in (t.get("reason") or "") for t in history)
-
-
 def test_non_overlapping_window_allowed(tmp_path):
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     # Both gates fail (impossible Sharpe) so the strategy stays `backtested` and neither call
     # attempts a same-stage transition -- this isolates the holdout pre-check from the lifecycle.
     first = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                 "--start", "2022-01-01", "--end", "2022-12-31",
-                                "--min-holdout-sharpe", "999", "--n-combos", "1",
-                                "--allow-non-pit", "--actor", "human"])
+                                "--min-holdout-sharpe", "999",
+                                "--universe", "demo_pit"])
     assert first.exit_code == 0, first.stdout
     # Disjoint period -> allowed without override (no refusal), records a second row.
     second = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2023-01-01", "--end", "2023-12-31",
-                                 "--min-holdout-sharpe", "999", "--n-combos", "1",
-                                 "--allow-non-pit", "--actor", "human"])
+                                 "--min-holdout-sharpe", "999",
+                                 "--universe", "demo_pit"])
     assert second.exit_code == 0, second.stdout
     assert len(_holdout_rows(tmp_path)) == 2
 
 
 def test_config_change_alone_does_not_bypass(tmp_path):
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     first = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                 "--start", "2022-01-01", "--end", "2023-12-31",
-                                *_PASS, "--n-combos", "9", "--allow-non-pit", "--actor", "human"])
+                                *_PASS, "--universe", "demo_pit"])
     assert first.exit_code == 0, first.stdout
     # Same window + holdout_frac, tweaked gate params (config_hash unchanged here, but the rule
     # matches on the WINDOW regardless of config): still refused.
     second = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
                                  "--min-holdout-sharpe", "0.1", "--min-holdout-return", "-100",
-                                 "--min-pct-positive", "0", "--min-window-sharpe", "-100",
-                                 "--n-combos", "9", "--allow-non-pit", "--actor", "human"])
+                                 "--universe", "demo_pit"])
     assert second.exit_code == 1, second.stdout
     assert json.loads(second.stdout)["ok"] is False
 
@@ -465,7 +313,9 @@ def _ingest_snapshot(tmp_path):
 
 
 def _ingest_pit_universe(tmp_path):
-    """Ingest a time-varying universe `pit_core`: AAPL/MSFT from 2022, NVDA added 2023.
+    """Ingest a time-varying universe `pit_core`: all five CONFIG symbols from 2022, narrowed to
+    AAPL/MSFT from 2023. The timeline union covers CONFIG.universe (the #559 subset guard applies
+    to every actor), while the 2023 holdout trades only AAPL/MSFT.
 
     Returns the two snapshot ids in effective-date order.
     """
@@ -473,11 +323,11 @@ def _ingest_pit_universe(tmp_path):
 
     store = DataStore(tmp_path)
     first = store.ingest_universe(
-        universe="pit_core", symbols=["AAPL", "MSFT"], effective_date="2022-01-01",
-        as_of="2022-01-02T00:00:00+00:00", source="test",
+        universe="pit_core", symbols=["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL"],
+        effective_date="2022-01-01", as_of="2022-01-02T00:00:00+00:00", source="test",
     )
     second = store.ingest_universe(
-        universe="pit_core", symbols=["AAPL", "MSFT", "NVDA"], effective_date="2023-01-01",
+        universe="pit_core", symbols=["AAPL", "MSFT"], effective_date="2023-01-01",
         as_of="2023-01-02T00:00:00+00:00", source="test",
     )
     return first.snapshot_id, second.snapshot_id
@@ -495,20 +345,17 @@ def test_promote_with_universe_threads_pit_provenance(tmp_path, monkeypatch):
     snap = _ingest_snapshot(tmp_path)
     first_u, second_u = _ingest_pit_universe(tmp_path)
     assert _register_backtested_on_snapshot(snap).exit_code == 0
-    _ensure_family()
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     result = _promote(["research", "promote", "cross_sectional_momentum",
                                  "--snapshot", snap, "--universe", "pit_core",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
-                                 *_PASS, "--n-combos", "9", "--actor", "human"])
+                                 *_PASS])
     assert result.exit_code == 0, result.stdout
     payload = json.loads(result.stdout)
-    # cross_sectional_momentum is market-beta (market_beta ~1.0) and fails the idiosyncratic-alpha
-    # check — under the factory soft gate that miss is ADVISORY (recorded, never a veto), so this
-    # PIT-clean run now PASSES on the integrity floor. This test's subject is PIT-provenance
-    # THREADING, recorded on the run regardless of the verdict; ir_binding stays armed/evaluated.
+    # This PIT-clean run PASSES on the integrity floor. This test's subject is PIT-provenance
+    # THREADING, recorded on the run regardless of the verdict.
     assert payload["passed"] is True
     assert payload["promoted"] is True
-    assert payload["ir_binding"] is True
     assert payload["universe_name"] == "pit_core"
     eff = [s["effective_date"] for s in payload["universe_snapshots"]]
     assert eff == ["2022-01-01", "2023-01-01"]
@@ -524,28 +371,32 @@ def test_promote_pit_membership_changes_holdout_outcome(tmp_path, monkeypatch):
     monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "r.db"))
     snap = _ingest_snapshot(tmp_path)
-    _ingest_pit_universe(tmp_path)  # AAPL/MSFT then +NVDA — excludes AMZN/GOOGL always
-    assert _register_backtested_on_snapshot(snap).exit_code == 0
-    _ensure_family()
+    _ingest_pit_universe(tmp_path)  # all five, then only AAPL/MSFT from 2023 (the holdout)
 
-    # The static run FAILS on binding pit_required (no universe, no --allow-non-pit) so the stage
-    # stays `backtested` for the PIT run below; its holdout metrics are still computed + emitted.
+    def _ready():
+        assert _register_backtested_on_snapshot(snap).exit_code == 0
+        assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
+
+    _ready()
+    # The static run FAILS on binding pit_required (no universe); its holdout metrics are still
+    # computed + emitted, and its holdout is burned.
     static = _promote(["research", "promote", "cross_sectional_momentum",
                                  "--snapshot", snap,
-                                 "--start", "2022-01-01", "--end", "2023-12-31",
-                                 "--n-combos", "9", "--actor", "human"])
+                                 "--start", "2022-01-01", "--end", "2023-12-31"])
     assert static.exit_code == 0, static.stdout
     static_holdout = json.loads(static.stdout)["holdout"]
 
+    # The holdout is single-use (no reuse override), so the PIT run uses a fresh registry.
+    monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "r2.db"))
+    _ready()
     pit = _promote(["research", "promote", "cross_sectional_momentum",
                               "--snapshot", snap, "--universe", "pit_core",
                               "--start", "2022-01-01", "--end", "2023-12-31",
-                              "--min-holdout-sharpe", "999", "--n-combos", "9",
-                              "--allow-holdout-reuse", "--actor", "human"])
+                              "--min-holdout-sharpe", "999"])
     assert pit.exit_code == 0, pit.stdout
     pit_payload = json.loads(pit.stdout)
     assert pit_payload["universe_name"] == "pit_core"
-    # PIT membership excludes AMZN/GOOGL the static run includes -> different holdout metrics.
+    # PIT membership excludes AMZN/GOOGL/NVDA in the holdout -> different holdout metrics.
     assert pit_payload["holdout"]["total_return"] != static_holdout["total_return"]
 
 
@@ -553,12 +404,12 @@ def test_promote_without_universe_has_null_universe_provenance(tmp_path, monkeyp
     monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "r.db"))
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     result = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
-                                 "--start", "2022-01-01", "--end", "2023-12-31",
-                                 *_PASS, "--n-combos", "9", "--allow-non-pit", "--actor", "human"])
+                                 "--start", "2022-01-01", "--end", "2023-12-31", *_PASS])
     assert result.exit_code == 0, result.stdout
     payload = json.loads(result.stdout)
+    assert payload["passed"] is False  # no universe => binding pit_required fail
     assert payload["universe_name"] is None
     assert payload["universe_snapshots"] is None
 
@@ -571,7 +422,7 @@ def test_promote_unknown_universe_is_json_error(tmp_path, monkeypatch):
     result = _promote(["research", "promote", "cross_sectional_momentum",
                                  "--snapshot", snap, "--universe", "does_not_exist",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
-                                 *_PASS, "--n-combos", "9", "--actor", "human"])
+                                 *_PASS])
     assert result.exit_code == 1
     assert json.loads(result.stdout)["ok"] is False
 
@@ -584,21 +435,20 @@ def test_promote_universe_burn_keyed_on_window_not_universe(tmp_path, monkeypatc
     snap = _ingest_snapshot(tmp_path)
     _ingest_pit_universe(tmp_path)
     assert _register_backtested_on_snapshot(snap).exit_code == 0
-    _ensure_family()
-    # First promote FAILS the gate (binding pit_required fail: no universe, no --allow-non-pit) so
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
+    # First promote FAILS the gate (binding pit_required fail: no universe) so
     # the strategy stays `backtested`; this isolates the holdout-burn refusal on the second run
     # from the stage-legality preflight check.
     first = _promote(["research", "promote", "cross_sectional_momentum",
                                 "--snapshot", snap,
-                                "--start", "2022-01-01", "--end", "2023-12-31",
-                                "--n-combos", "9", "--actor", "human"])
+                                "--start", "2022-01-01", "--end", "2023-12-31"])
     assert first.exit_code == 0, first.stdout
     assert json.loads(first.stdout)["passed"] is False
     # Same window/snapshot, now WITH a universe -> still refused (universe not in burn identity).
     second = _promote(["research", "promote", "cross_sectional_momentum",
                                  "--snapshot", snap, "--universe", "pit_core",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
-                                 *_PASS, "--n-combos", "9", "--actor", "human"])
+                                 *_PASS])
     assert second.exit_code == 1, second.stdout
     assert "holdout" in json.loads(second.stdout)["error"].lower()
 
@@ -607,7 +457,7 @@ def test_walk_forward_does_not_burn_holdout_then_promote_succeeds(tmp_path):
     """`backtest walk-forward` must NOT consume the holdout: it records no holdout_evaluations row,
     and a later `promote` on the SAME window still succeeds (walk-forward didn't burn it)."""
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     wf = runner.invoke(app, ["backtest", "walk-forward", "cross_sectional_momentum", "--demo",
                              "--start", "2022-01-01", "--end", "2023-12-31"])
     assert wf.exit_code == 0, wf.stdout
@@ -616,7 +466,7 @@ def test_walk_forward_does_not_burn_holdout_then_promote_succeeds(tmp_path):
 
     promote = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                   "--start", "2022-01-01", "--end", "2023-12-31",
-                                  *_PASS, "--n-combos", "9", "--allow-non-pit", "--actor", "human"])
+                                  *_PASS, "--universe", "demo_pit"])
     assert promote.exit_code == 0, promote.stdout  # not refused — holdout was still fresh
     payload = json.loads(promote.stdout)
     assert payload["promoted"] is True
@@ -631,7 +481,6 @@ def test_promote_with_universe_refuses_with_no_breadth_before_walkforward(tmp_pa
     snap = _ingest_snapshot(tmp_path)
     _ingest_pit_universe(tmp_path)
     assert _register_backtested_on_snapshot(snap).exit_code == 0
-    _ensure_family()
     result = runner.invoke(app, ["research", "promote", "cross_sectional_momentum",
                                  "--snapshot", snap, "--universe", "pit_core",
                                  "--start", "2022-01-01", "--end", "2023-12-31", *_PASS])
@@ -645,7 +494,6 @@ def test_promote_with_universe_refuses_with_no_breadth_before_walkforward(tmp_pa
 
 def _holdout_committed(tmp_path):
     """(id, committed_at) for every holdout_evaluations row — committed_at is None while pending."""
-    import sqlite3
     conn = sqlite3.connect(tmp_path / "r.db")
     try:
         return conn.execute(
@@ -658,14 +506,14 @@ def test_pre_burn_failure_frees_window(tmp_path, monkeypatch):
     # A failure BEFORE the burn boundary (provenance runs before on_peek) must release the
     # reservation, so the window is reusable: no row left behind, and a clean retry succeeds.
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     import algua.backtest.walkforward as wfmod
     with monkeypatch.context() as m:
         m.setattr(wfmod, "provenance",
                   lambda *a, **k: (_ for _ in ()).throw(ValueError("provenance boom")))
         bad = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                   "--start", "2022-01-01", "--end", "2023-12-31",
-                                  *_PASS, "--n-combos", "9", "--allow-non-pit", "--actor", "human"])
+                                  *_PASS, "--universe", "demo_pit"])
     assert bad.exit_code == 1, bad.stdout
     assert json.loads(bad.stdout)["ok"] is False
     assert _holdout_committed(tmp_path) == []  # reservation released, window free
@@ -675,7 +523,7 @@ def test_pre_burn_failure_frees_window(tmp_path, monkeypatch):
     # (proves it was genuinely freed).
     good = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                "--start", "2022-01-01", "--end", "2023-12-31",
-                               *_PASS, "--n-combos", "9", "--allow-non-pit", "--actor", "human"])
+                               *_PASS, "--universe", "demo_pit"])
     assert good.exit_code == 0, good.stdout
     assert json.loads(good.stdout)["promoted"] is True
     assert _stage() == "candidate"
@@ -687,7 +535,7 @@ def test_post_peek_failure_keeps_burn(tmp_path, monkeypatch):
     # case uses a ValueError (in promote's @json_errors set) so the JSON envelope is also exercised;
     # test_post_peek_unhandled_failure_keeps_burn proves burn-survival does NOT depend on that.
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     import algua.backtest.walkforward as wfmod
 
     def boom(*a, **k):
@@ -697,7 +545,7 @@ def test_post_peek_failure_keeps_burn(tmp_path, monkeypatch):
         m.setattr(wfmod, "WalkForwardResult", boom)
         bad = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                   "--start", "2022-01-01", "--end", "2023-12-31",
-                                  *_PASS, "--n-combos", "9", "--allow-non-pit", "--actor", "human"])
+                                  *_PASS, "--universe", "demo_pit"])
     assert bad.exit_code == 1, bad.stdout
     assert json.loads(bad.stdout)["ok"] is False
     rows = _holdout_committed(tmp_path)
@@ -707,7 +555,7 @@ def test_post_peek_failure_keeps_burn(tmp_path, monkeypatch):
     # The burned window is refused on retry (single-use holdout held).
     retry = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                 "--start", "2022-01-01", "--end", "2023-12-31",
-                                *_PASS, "--n-combos", "9", "--allow-non-pit", "--actor", "human"])
+                                *_PASS, "--universe", "demo_pit"])
     assert retry.exit_code == 1, retry.stdout
     assert "already consumed" in json.loads(retry.stdout)["error"]
 
@@ -720,7 +568,7 @@ def test_post_peek_unhandled_failure_keeps_burn(tmp_path, monkeypatch):
     # release inside walk_forward stays a no-op on the already-committed row, so burn-survival is
     # independent of whether the error is JSON-wrapped (the real invariant behind #193).
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     import algua.backtest.walkforward as wfmod
 
     def boom(*a, **k):
@@ -730,7 +578,7 @@ def test_post_peek_unhandled_failure_keeps_burn(tmp_path, monkeypatch):
         m.setattr(wfmod, "WalkForwardResult", boom)
         bad = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                   "--start", "2022-01-01", "--end", "2023-12-31",
-                                  *_PASS, "--n-combos", "9", "--allow-non-pit", "--actor", "human"])
+                                  *_PASS, "--universe", "demo_pit"])
     # The unanticipated RuntimeError is now caught by the json_errors catch-all: nonzero exit, a
     # well-formed JSON envelope (never a raw traceback), code "internal".
     assert bad.exit_code != 0
@@ -746,7 +594,7 @@ def test_post_peek_holdout_eval_failure_keeps_burn(tmp_path, monkeypatch):
     # on_peek already committed the burn. The burn (committed on entry to the peek) must survive —
     # the conservative over-burn direction of "no computed holdout metric is ever released".
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     import algua.backtest.walkforward as wfmod
     orig = wfmod._segment_record
 
@@ -761,7 +609,7 @@ def test_post_peek_holdout_eval_failure_keeps_burn(tmp_path, monkeypatch):
         m.setattr(wfmod, "_segment_record", failing)
         bad = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                   "--start", "2022-01-01", "--end", "2023-12-31",
-                                  *_PASS, "--n-combos", "9", "--allow-non-pit", "--actor", "human"])
+                                  *_PASS, "--universe", "demo_pit"])
     assert bad.exit_code != 0
     rows = _holdout_committed(tmp_path)
     assert len(rows) == 1 and rows[0][1] is not None  # burn committed before the failing peek
@@ -777,14 +625,13 @@ def test_promote_different_holdout_frac_is_refused_as_reburn(tmp_path):
     holdout_frac parameter differs — the guard matches on the ACTUAL bar interval, not the fraction.
     """
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
-    # First promote: binding pit_required fail (no --allow-non-pit) -> gate fails, strategy stays
+    assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
+    # First promote: binding pit_required fail (no universe) -> gate fails, strategy stays
     # `backtested`. But the holdout IS peeked (walk_forward ran), so the burn is committed before
     # the gate check.
     first = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                 "--start", "2022-01-01", "--end", "2023-12-31",
-                                "--holdout-frac", "0.2",
-                                "--n-combos", "1", "--actor", "human"])
+                                "--holdout-frac", "0.2"])
     assert first.exit_code == 0, first.stdout
     first_payload = json.loads(first.stdout)
     # The first call must NOT itself be a "holdout already consumed" refusal.
@@ -798,8 +645,8 @@ def test_promote_different_holdout_frac_is_refused_as_reburn(tmp_path):
     second = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
                                  "--holdout-frac", "0.4",
-                                 *_PASS, "--n-combos", "1",
-                                 "--allow-non-pit", "--actor", "human"])
+                                 *_PASS,
+                                 "--universe", "demo_pit"])
     assert second.exit_code == 1, second.stdout
     payload = json.loads(second.stdout)
     assert payload["ok"] is False

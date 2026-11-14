@@ -23,6 +23,8 @@ from algua.data.store import DataStore
 from algua.models import register
 from algua.strategies.ml import model_linear_scores as linear
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 
 @pytest.fixture
 def inputs(tmp_path, monkeypatch):

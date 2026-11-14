@@ -159,7 +159,7 @@ requires a fresh successful frozen invocation, reconciled broker-clocked tick an
 account and snapshot identity. Sibling failures do not erase successful tenants' observations.
 Paper Sharpe is not retested by this profile.
 
-`--actor human` uses the existing single-use SSH challenge/signature mechanism to record the exact
-qualification. The record is append-only and separate from strict forward certificates: it does
+`--actor` is a reported author label only: it supplies no authority and no signature is involved
+(the signed `--actor human` path was removed, spec 2026-11-13). The record is append-only and separate from strict forward certificates: it does
 not advance the strategy stage or authorize live execution. Capped frozen-live execution and the
 new layered drawdown controller remain separate implementation work.

@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     # `<knowledge_dir>/strategies/`; other domains (research, news, …) are added as they arrive.
     knowledge_dir: Path = Path("kb")
     exchange: str = "XNYS"
+    eodhd_api_key: str | None = None
     alpaca_api_key: str | None = None
     alpaca_api_secret: str | None = None
     alpaca_data_url: str = "https://data.alpaca.markets/v2"

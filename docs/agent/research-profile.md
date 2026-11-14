@@ -58,7 +58,7 @@ qualification-ineligible, and its report/merge-back refusal boundaries are uncha
 
 ### Empirical assessment and qualification
 
-`research campaign-menu` retains the authoritative attempt `outcome` and separately projects
+The campaign scorecard (read by `--choose-campaign`) retains the authoritative attempt `outcome` and separately projects
 `reported_falsification_assessment` (`refuted`, `survived`, `untested`, or `unknown`). The completed
 worker report in the existing operational `research-runs.jsonl` supplies this advisory field only
 when cycle, idea, terminal ledger outcomes and controller counts match. It is **UNVERIFIED_WORKER**,

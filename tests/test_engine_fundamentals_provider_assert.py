@@ -11,6 +11,9 @@ from algua.backtest.errors import BacktestError
 from algua.data.serve import StoreBackedProvider
 from algua.data.store import DataStore
 from algua.strategies.loader import load_strategy
+from tests._context_strategies import context_strategies  # noqa: F401
+
+pytestmark = [pytest.mark.serial, pytest.mark.usefixtures("context_strategies")]
 
 
 def _toy_bars_raw():

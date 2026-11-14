@@ -4,9 +4,8 @@
 Two writers touch this ONE JSON file with NO natural ordering between them: the research driver
 (``run-research-loop.sh``) enqueues a validated merge-back candidate once its trailer has been
 parsed, and the drainer (``drain-mergeback-queue.sh``) updates an item's status after every
-attempt. An atomic tmp+fsync+os.replace write (mirroring ``web/backend/push.py``'s
-``_write_atomic`` idiom) prevents a TORN write, but not a LOST update between two concurrent
-read-modify-writes — that needs a real mutual-exclusion lock around the whole
+attempt. An atomic tmp+fsync+os.replace write prevents a TORN write, but not a LOST update
+between two concurrent read-modify-writes — that needs a real mutual-exclusion lock around the whole
 read-modify-write, not just the write. Every read-modify-write in this module therefore happens
 under a dedicated, non-blocking ``flock`` on a SEPARATE lock file (``data/mergeback-queue.lock``),
 with a short bounded retry (queue mutations are sub-second, so contention is rare and brief; a
@@ -181,10 +180,8 @@ def _release_lock(handle: Any) -> None:
 
 
 def _write_atomic(path: Path, data: dict) -> None:
-    """tmp file (same dir) + fsync + ``os.replace`` + parent-dir fsync — mirrors
-    ``web/backend/push.py``'s ``_write_atomic`` idiom, ported to this bash-driven Python side of
-    the system (that module is FastAPI-process-local; this one is invoked as a one-shot script from
-    bash, so it is reimplemented here rather than imported across that boundary)."""
+    """tmp file (same dir) + fsync + ``os.replace`` + parent-dir fsync — the
+    standard idiom; this module is invoked as a one-shot script from bash."""
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(data, indent=2, sort_keys=True).encode("utf-8")
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")

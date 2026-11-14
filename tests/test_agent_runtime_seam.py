@@ -270,16 +270,19 @@ def _run_seam(
     )
 
 
+@pytest.mark.slow
 def test_a_rejected_primary_stream_fails_the_run_even_when_the_runtime_exits_zero(tmp_path: Path):
     proc = _run_seam(tmp_path, _REJECTED, runtime_rc=0)
     assert proc.returncode == 3, proc.stdout + proc.stderr
 
 
+@pytest.mark.slow
 def test_a_clean_run_still_exits_zero(tmp_path: Path):
     proc = _run_seam(tmp_path, "did the work\n", runtime_rc=0)
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
+@pytest.mark.slow
 def test_a_title_agent_error_alone_does_not_fail_the_run(tmp_path: Path):
     proc = _run_seam(tmp_path, _TITLE_ONLY, runtime_rc=0)
     assert proc.returncode == 0, proc.stdout + proc.stderr

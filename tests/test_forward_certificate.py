@@ -19,7 +19,7 @@ from algua.registry.transitions import transition_strategy
 from algua.research.forward_gates import CERTIFICATE_FRESH_SESSIONS
 from algua.risk import global_halt, kill_switch
 from tests._deployment_helpers import force_legacy_strategy
-from tests._human_actor_helpers import scaffold_transition
+from tests._scaffold_helpers import scaffold_transition
 
 # Friday 2026-06-12 (June 2026 weekdays: Jun 1-5 and Jun 8-12).
 NOW = datetime(2026, 6, 12, 21, 0, tzinfo=UTC)

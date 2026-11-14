@@ -88,7 +88,7 @@ from algua.observability import (
 from algua.operator.journal import JsonlJournal
 from algua.operator.mergeback import RealGitOps, merge_back_lock, run_merge_back
 from algua.primitives.timeparse import utc
-from algua.registry import allocations, approvals
+from algua.registry import allocations
 from algua.registry.allocations import active_allocation
 from algua.registry.approvals import compute_artifact_hashes
 from algua.registry.db import registry_conn
@@ -107,7 +107,6 @@ from algua.registry.frozen_runtime import (
     resolve_paper_tenant,
 )
 from algua.registry.gating import load_gated_strategy
-from algua.registry.human_actor import authenticate_actor, canonical_run_context
 from algua.registry.intake import run_intake
 from algua.registry.kb_sync import sync_admitted, sync_kb_doc
 from algua.registry.paper_runtime import still_paper_allocated as _still_paper_allocated
@@ -544,11 +543,10 @@ def merge_back(
             # via a legal static `from algua.registry.promote_run import promote_task` at module
             # scope — the cli-independence import-linter contract (#165) forbids a
             # paper_cmd<->research_cmd sibling edge, but neither command module imports the other
-            # here; both import the same shared registry module. Strict-agent inputs ONLY — no
-            # relaxation flags reach the seam, so a human-only relaxation is impossible by
-            # construction. The per-attempt ``attempt_token`` is stamped on the gate row so the
-            # driver reads the outcome authoritatively (finding #5). promote_task opens+closes its
-            # OWN registry_conn (per its contract).
+            # here; both import the same shared registry module. Strict-agent inputs ONLY (and no
+            # relaxation exists for any actor any more). The per-attempt ``attempt_token`` is
+            # stamped on the gate row so the driver reads the outcome authoritatively (finding #5).
+            # promote_task opens+closes its OWN registry_conn (per its contract).
             return promote_task(
                 name=strategy, universe=universe, start=start, end=end,
                 demo=demo, snapshot=snapshot, fundamentals_snapshot=fundamentals_snapshot,
@@ -1144,50 +1142,46 @@ def run_all(
 @json_errors
 def promote(
     name: str,
-    actor: str = typer.Option("agent", "--actor", help="human | agent"),
-    actor_signature: str = typer.Option(
-        None, "--actor-signature",
-        help="path to the SSH signature over the printed human-actor challenge (#329). Required to "
-             "authenticate --actor human: a bare --actor human unlocks NO threshold relaxation — "
-             "run once without this to print a challenge, sign it with your enrolled "
-             "algua-human-actor key (ssh-keygen -Y sign -n algua-human-actor), then re-run with "
-             "--actor-signature."),
+    actor: str = typer.Option(
+        "agent", "--actor",
+        help="human | agent: an audit label only; it unlocks nothing (every gate is the same)"),
     degradation_factor: float = typer.Option(
         DEGRADATION_FACTOR, "--degradation-factor",
         help="realized Sharpe must beat this fraction of the qualified holdout Sharpe "
-             "(raising it is stricter; lowering is human-only)"),
+             "(raising it is stricter; lowering is refused)"),
     sharpe_floor: float = typer.Option(
         SHARPE_FLOOR, "--sharpe-floor",
-        help="absolute realized-Sharpe floor (raising is stricter; lowering is human-only)"),
+        help="absolute realized-Sharpe floor (raising is stricter; lowering is refused)"),
     min_observations: int = typer.Option(
         MIN_FORWARD_OBSERVATIONS, "--min-observations",
         help="minimum daily return observations in the forward window "
-             "(raising is stricter; lowering is human-only)"),
+             "(raising is stricter; lowering is refused)"),
     min_coverage: float = typer.Option(
         MIN_SESSION_COVERAGE, "--min-coverage",
         help="minimum decided-sessions / trading-sessions coverage "
-             "(raising is stricter; lowering is human-only)"),
+             "(raising is stricter; lowering is refused)"),
     min_vol: float = typer.Option(
         MIN_FORWARD_VOL, "--min-vol",
         help="annualized volatility floor — a do-nothing strategy must not pass "
-             "(raising is stricter; lowering is human-only)"),
+             "(raising is stricter; lowering is refused)"),
     max_drawdown: float = typer.Option(
         MAX_FORWARD_DRAWDOWN, "--max-drawdown",
         help="max drawdown over the evidence series "
-             "(lowering is stricter; raising is human-only)"),
+             "(lowering is stricter; raising is refused)"),
     max_staleness: int = typer.Option(
         MAX_STALENESS_SESSIONS, "--max-staleness",
         help="newest admissible tick may be at most this many sessions old "
-             "(lowering is stricter; raising is human-only)"),
+             "(lowering is stricter; raising is refused)"),
     forward_sharpe_confidence: float = typer.Option(
         FORWARD_SHARPE_CONFIDENCE, "--forward-sharpe-confidence",
         help="one-sided confidence at which the realized-Sharpe lower bound must clear the "
-             "performance bar (raising is stricter; lowering is human-only)"),
+             "performance bar (raising is stricter; lowering is refused)"),
 ) -> None:
     """Forward-test evidence gate (#124): evaluate this strategy's wall-clock paper evidence
     and promote paper -> forward_tested on pass. At forward_tested: re-evaluate, refreshing
-    the live-wall certificate, no stage change. The paper-side analog of `research promote`;
-    relaxing any threshold below its protected default is human-only."""
+    the live-wall certificate, no stage change. The paper-side analog of `research promote`.
+    Every threshold may only be tightened, by any actor: relaxing one below its protected default
+    is refused (spec 2026-11-13 — the signed go-live is the only approval)."""
     actor_enum = Actor(actor)  # fail fast on a bad actor before touching the DB
     criteria = ForwardGateCriteria(
         min_forward_observations=min_observations,
@@ -1203,33 +1197,13 @@ def promote(
         repo = SqliteStrategyRepository(conn)
         rec = repo.get(name)  # StrategyNotFound -> JSON error before any work
         # Story 1.3d §5: this ledger read is the ONE slot. A FROZEN deployment's identity is its
-        # recorded descriptor, whose content is verified fresh HERE, before authentication (a human
-        # signs it) and before any row, look, token or stage change. Working-tree and legacy
-        # strategies only record the epoch read and keep today's order and identity sites.
+        # recorded descriptor, whose content is verified fresh HERE, before any row, look, token or
+        # stage change. Working-tree and legacy strategies only record the epoch read and keep
+        # today's order and identity sites.
         slot = promotion_slot(conn, rec, data_dir=get_settings().data_dir)
-        # AUTHENTICATE the human actor (#329) BEFORE the relaxation guard is even consulted. A bare
-        # `--actor human` is forgeable, so asserting a human actor here requires an SSH signature
-        # (namespace algua-human-actor) over a fresh single-use challenge binding this command +
-        # strategy + artifact identity + the FULL ForwardGateCriteria (all 8 thresholds), and for a
-        # frozen epoch its deployment id and manifest digest. No signature => a challenge is
-        # issued+printed and NOTHING runs. A declared agent is returned unchanged, never hashed
-        # (its relaxations are refused exactly as before).
-        actor_enum = authenticate_actor(
-            conn, command="paper promote", name=name, rec=rec,
-            stage_to=Stage.FORWARD_TESTED.value, declared_actor=actor_enum,
-            actor_signature=actor_signature,
-            identity=lambda: (approvals.compute_artifact_hashes(name) if slot.frozen is None
-                              else slot.frozen.identity),
-            run_context=canonical_run_context({
-                "min_observations": min_observations, "min_coverage": min_coverage,
-                "degradation_factor": degradation_factor, "sharpe_floor": sharpe_floor,
-                "min_vol": min_vol, "max_drawdown": max_drawdown, "max_staleness": max_staleness,
-                "forward_sharpe_confidence": forward_sharpe_confidence,
-                **slot.challenge_binding(),
-            }),
-        )
-        # PREFLIGHT: actor legality + relaxations-need-human + stage legality. Refuses here,
-        # before the broker is even constructed (TransitionError is a ValueError -> JSON error).
+        # PREFLIGHT: actor legality + tighten-only thresholds (every actor) + stage legality.
+        # Refuses here, before the broker is even constructed (TransitionError is a ValueError ->
+        # JSON error).
         forward_promotion_preflight(repo, name, actor=actor_enum, criteria=criteria)
         broker = _alpaca_broker_from_settings()
         outcome = run_forward_gate(

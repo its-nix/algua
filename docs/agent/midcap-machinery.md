@@ -32,8 +32,6 @@ uv run algua backtest walk-forward midcap_weekly_momentum_smoke --snapshot SNAPS
   --start 2024-11-01 --end 2026-11-08 --windows 4 --holdout-frac .2 --summary
 uv run algua backtest sweep midcap_weekly_momentum_smoke --snapshot SNAPSHOT \
   --start 2024-11-01 --end 2026-11-08 --param lookback=20 --summary
-uv run algua backtest replay midcap_weekly_momentum_smoke --snapshot SNAPSHOT \
-  --start 2026-08-01 --end 2026-11-08 --cash 50000 --output NEW_PRIVATE_TRACE.json
 ```
 
 `midcap_weekly_momentum_smoke` pins the actual selected 300-symbol November 8 sample. Its fixed
@@ -45,17 +43,7 @@ Appending future data cannot change earlier scores, and the vectorized scorer is
 every prefix of its canonical scorer. A changed sample requires a new reviewed strategy revision;
 the screen does not silently mutate the existing strategy.
 
-`backtest replay` drives the existing sequential `run_paper` and `SimBroker` without opening a
-registry or calling a broker API. It checks reconciliation and later-bar fills and optionally
-writes a new private JSON order/fill trace. It labels working-tree execution, snapshot/content and
-strategy code/config/dependency identities, the shared full-worktree runtime stamp, simulation mode
-and zero forward/live authority. It refuses
-unsupported execution lags and preserves the 20% replay drawdown breaker. An existing output file
-is never overwritten. The trace is not a deployed frozen-planner invocation or a paper session.
-
-The sequential simulator does not charge fees/slippage, and its raw reference fills/adjusted
-marks do not supply a verified corporate-action ledger. Its P&L is a mechanics diagnostic only.
-Use the separate costed backtest for exploratory economic metrics; neither path establishes
+The costed backtest gives exploratory economic metrics only. It does not establish
 investability from current-survivor proxy data. An observed full backtest is not an untouched
 holdout. Keep strict promotion refusals; five real paper sessions remain five elapsed sessions.
 Liquidity screening uses Yahoo's reported volume; IEX-only volume is not an interchangeable input.

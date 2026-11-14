@@ -1,5 +1,8 @@
 """Tests: `research promote` accepts --fundamentals/--news-snapshot and the PIT funnel is
-unblocked end-to-end to candidate for BOTH lanes (Task 6, #132)."""
+unblocked end-to-end to candidate for BOTH lanes (Task 6, #132).
+
+The bundled fundamentals/news strategies were removed; these tests use the test-local stand-ins from
+tests/_context_strategies.py."""
 from __future__ import annotations
 
 import json
@@ -11,20 +14,15 @@ from typer.testing import CliRunner
 
 from algua.cli.main import app
 from algua.data.store import DataStore
-from tests._human_actor_helpers import install_human_actor_anchor, promote_signed
+from tests._context_strategies import context_strategies  # noqa: F401
+
+pytestmark = [pytest.mark.serial, pytest.mark.usefixtures("context_strategies")]
 
 runner = CliRunner()
 
-# --- #329 authenticated --actor human plumbing ---------------------------------------------------
-_HUMAN_KEY = None
-_TMP_PATH = None
 
 
 def _promote(args):
-    """Drop-in for `runner.invoke(app, args)` at gated promote call sites: when `args` requests
-    `--actor human`, run the signed challenge dance; otherwise a plain invoke."""
-    if "human" in args:
-        return promote_signed(runner, app, args, _HUMAN_KEY, _TMP_PATH)
     return runner.invoke(app, args)
 
 
@@ -32,9 +30,6 @@ def _promote(args):
 def _tmp(monkeypatch, tmp_path):
     monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "r.db"))
     monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path))
-    global _HUMAN_KEY, _TMP_PATH
-    _HUMAN_KEY = install_human_actor_anchor(monkeypatch, tmp_path)
-    _TMP_PATH = tmp_path
 
 
 def _seed(data_dir):
@@ -75,12 +70,25 @@ def _seed(data_dir):
         columns=["symbol", "fiscal_period_end", "metric", "value", "knowable_at", "source"])
     frec = store.ingest_fundamentals(provider="v", symbols=["AAPL", "MSFT", "NVDA"],
                                      as_of="2025-01-01T00:00:00Z", source="v", frame=funds)
+    # A PIT universe covering the window: the gates have no non-PIT override (spec 2026-11-13).
+    store.ingest_universe(universe="ctx_pit", symbols=["AAPL", "MSFT", "NVDA"],
+                          effective_date="2024-12-01", as_of="2024-12-02T00:00:00+00:00",
+                          source="t")
     return brec.snapshot_id, nrec.snapshot_id, frec.snapshot_id
 
 
+def _measure_breadth(name, combos=9):
+    """Test setup standing in for `backtest sweep`: record measured search breadth (it can no
+    longer be declared with --n-combos)."""
+    from algua.registry.db import registry_conn
+    from algua.registry.store import SqliteStrategyRepository
+
+    with registry_conn() as conn:
+        SqliteStrategyRepository(conn).record_search_trial(name, combos, "{}")
+
+
 _RELAX = ["--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-          "--min-pct-positive", "0", "--min-window-sharpe", "-100",
-          "--windows", "2", "--n-combos", "9", "--allow-non-pit", "--actor", "human"]
+          "--windows", "2", "--universe", "ctx_pit"]
 _END = (pd.Timestamp("2025-01-01", tz="UTC") + pd.Timedelta(days=329)).date().isoformat()
 _WINDOW = ["--start", "2025-01-01", "--end", _END]
 
@@ -90,7 +98,10 @@ def _stage(name):
 
 
 def _backtest_to_backtested(name, *snapshot_args):
-    return runner.invoke(app, ["backtest", "run", name, *snapshot_args, "--register", *_WINDOW])
+    result = runner.invoke(app, ["backtest", "run", name, *snapshot_args, "--register", *_WINDOW])
+    if result.exit_code == 0:
+        _measure_breadth(name)
+    return result
 
 
 def _holdout_count(tmp_path):
@@ -139,13 +150,12 @@ def test_news_lane_unblocked_through_funnel(tmp_path):
     # records it in provenance. Reaching `candidate` ALSO requires clearing the integrity floor,
     # which this flat synthetic fixture cannot (zero raw holdout Sharpe fails the strict-positive
     # holdout_sharpe_floor). So we prove the PIT lane is unblocked THROUGH the funnel — blocked
-    # only by the PIT-unrelated floor, with the regime/IR misses recorded as advisory flags.
+    # only by the PIT-unrelated floor, with any statistical misses recorded as advisory flags.
     bid, nid, _fid = _seed(tmp_path)
     assert _backtest_to_backtested(
         "news_coverage_tilt", "--snapshot", bid, "--news-snapshot", nid).exit_code == 0
     r = _promote(["research", "promote", "news_coverage_tilt",
-                            "--snapshot", bid, "--news-snapshot", nid, *_WINDOW, *_RELAX,
-                            "--new-family", "news_fam"])  # #222: seed the first family (human)
+                            "--snapshot", bid, "--news-snapshot", nid, *_WINDOW, *_RELAX])
     assert r.exit_code == 0, r.stdout
     payload = json.loads(r.stdout)
     # The PIT snapshot flowed into the emitted payload (#132 GATE-2 Fix 1) AND the gate-row
@@ -161,12 +171,14 @@ def test_news_lane_unblocked_through_funnel(tmp_path):
     assert payload["promoted"] is False
     checks = payload.get("checks", [])
     failing = [c["name"] for c in checks if not c["passed"]]
-    # The flat fixture fails the strict-positive floor (binding) plus the two PIT-unrelated
-    # holdout-robustness stats (recorded as ADVISORY flags under the soft gate); all prove the
+    # The flat fixture fails the strict-positive floor (binding) plus PIT-unrelated advisory stats
+    # (recorded as ADVISORY flags under the soft gate); all prove the
     # funnel reached the gate evaluation. The PIT lane itself is unblocked (holdout burned above).
     assert "holdout_sharpe_floor" in failing, failing
     assert set(failing) <= {
-        "holdout_sharpe_floor", "regime_robustness", "idiosyncratic_alpha"}, failing
+        "holdout_sharpe_floor", "holdout_sharpe", "holdout_return",
+        # measured breadth arms the (advisory) DSR evidence checks
+        "dsr_evidence", "dsr_bootstrap"}, failing
     assert all(c.get("advisory") is True for c in checks
                if not c["passed"] and c["name"] != "holdout_sharpe_floor")
 
@@ -208,8 +220,7 @@ def test_run_gate_failure_after_burn_releases_noop_and_audits(tmp_path, monkeypa
     monkeypatch.setattr(promote_run, "get_logger", lambda _n: _Rec())
 
     r = _promote(["research", "promote", "news_coverage_tilt",
-                  "--snapshot", bid, "--news-snapshot", nid, *_WINDOW, *_RELAX,
-                  "--new-family", "news_fam2"])
+                  "--snapshot", bid, "--news-snapshot", nid, *_WINDOW, *_RELAX])
     # run_gate raised → the command fails (JSON error envelope), but the burn already happened.
     assert r.exit_code != 0, r.stdout
     # on_peek committed the burn before run_gate ran; release_holdout_reservation is a post-burn
@@ -252,8 +263,7 @@ def test_fundamentals_lane_unblocked_through_funnel(tmp_path):
         "fundamentals_earnings_tilt", "--snapshot", bid,
         "--fundamentals-snapshot", fid).exit_code == 0
     r = _promote(["research", "promote", "fundamentals_earnings_tilt",
-                            "--snapshot", bid, "--fundamentals-snapshot", fid, *_WINDOW, *_RELAX,
-                            "--new-family", "fund_fam"])  # #222: seed the first family (human)
+                            "--snapshot", bid, "--fundamentals-snapshot", fid, *_WINDOW, *_RELAX])
     assert r.exit_code == 0, r.stdout
     payload = json.loads(r.stdout)
     assert payload["fundamentals_snapshot"] == fid
@@ -263,9 +273,11 @@ def test_fundamentals_lane_unblocked_through_funnel(tmp_path):
     assert _holdout_count(tmp_path) >= 1
     assert payload["promoted"] is False
     failing = [c["name"] for c in payload.get("checks", []) if not c["passed"]]
-    # The flat fixture fails the strict-positive floor (binding) plus the two PIT-unrelated
-    # holdout-robustness stats (advisory under the soft gate); all prove the funnel reached the
+    # The flat fixture fails the strict-positive floor (binding) plus PIT-unrelated advisory stats
+    # (advisory under the soft gate); all prove the funnel reached the
     # gate evaluation. The PIT lane itself is unblocked (holdout reserved/burned above).
     assert "holdout_sharpe_floor" in failing, failing
     assert set(failing) <= {
-        "holdout_sharpe_floor", "regime_robustness", "idiosyncratic_alpha"}, failing
+        "holdout_sharpe_floor", "holdout_sharpe", "holdout_return",
+        # measured breadth arms the (advisory) DSR evidence checks
+        "dsr_evidence", "dsr_bootstrap"}, failing

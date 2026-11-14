@@ -5,9 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
-import subprocess
-import sys
+from dataclasses import asdict
 from pathlib import Path
 
 from algua.config.settings import Settings
@@ -25,17 +23,17 @@ from algua.registry.db import connect, migrate
 from algua.registry.idea_attempts import IdeaAttemptsRepository
 from algua.registry.ideas import IdeaRepository
 from algua.registry.negative_results import record_negative_result
+from algua.research.campaign_policy import campaign_exclusions, campaign_menu
 
 
 def menu(path: Path, destination: Path) -> dict:
-    env = {**os.environ, "ALGUA_DB_PATH": str(path),
-           "ALGUA_KNOWLEDGE_DIR": str(path.parent / "kb")}
-    command = [sys.executable, "-c", "from algua.cli.main import main; main()",
-               "research", "campaign-menu", "--budget", "4", "--novelty-min", "1",
-               "--novelty-max", "4"]
-    result = subprocess.run(command, env=env, capture_output=True, text=True, check=True)
-    payload = json.loads(result.stdout)
-    destination.write_text(result.stdout)
+    history = read_campaign_scorecard(path)
+    choices = campaign_menu(history, budget=4, novelty_min=1, novelty_max=4)
+    payload = {"ok": True, "choices": [asdict(c) for c in choices], "scorecard": history,
+               "exclusions": campaign_exclusions(history),
+               "budget": 4, "novelty_min": 1, "novelty_max": 4,
+               "unallocated_budget": 4 - sum(c.budget for c in choices)}
+    destination.write_text(json.dumps(payload))
     return payload
 
 

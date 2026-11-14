@@ -15,8 +15,8 @@ def record_search_breadth(
 
     Recorded UNCONDITIONALLY — even for a not-yet-registered strategy. Exploration precedes
     registration: keying by name (not the registry id) means a pre-registration sweep still
-    counts toward the promotion breadth, so an agent can't sweep broadly first and then promote a
-    freshly-registered strategy under a smaller declared --n-combos. Returns the recorded count
+    counts toward the promotion breadth, so a run can't sweep broadly first and then promote a
+    freshly-registered strategy with less recorded breadth. Returns the recorded count
     plus the new cumulative family total for the emitted JSON.
 
     The transaction is CALLER-OWNED: the CLI wraps this in ``with registry_conn() as conn:`` and

@@ -16,7 +16,12 @@ from algua.operator.forage_schedule import forage_due
 from algua.operator.research_memory_checkpoint import strict_json
 from algua.operator.research_profile import load_research_profile
 from algua.operator.source_recipe import assess_recipe
-from algua.operator.source_selection import record_source_pass, review_sources, source_plan
+from algua.operator.source_selection import (
+    record_source_pass,
+    review_sources,
+    source_feedback,
+    source_plan,
+)
 from algua.registry.campaign_read import read_campaign_scorecard
 from algua.registry.campaign_selection import menu_from_history
 from algua.registry.ideas import IdeaRepository
@@ -24,6 +29,12 @@ from algua.registry.read_snapshot import registry_snapshot
 from algua.tracking.bounded_local_read import read_local_file
 
 source_app = typer.Typer()
+
+
+@source_app.command("feedback")
+@json_errors
+def feedback(categories: str = typer.Option(..., help="Comma-separated search categories")) -> None:
+    emit(ok(source_feedback(get_settings(), {c.strip() for c in categories.split(",")})))
 
 
 @source_app.command("refill")

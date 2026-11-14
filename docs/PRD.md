@@ -13,6 +13,13 @@ are distinguished in [architecture](architecture.md). Implementation evidence is
 The [September reconciliation](vision-reconciliation.md) remains dated context; newer source
 and tests establish the implementation status stated here. This document grants no new permissions.
 
+Owner alignment, 2026-11-14: this PRD governs product intent; the operating guides govern present
+permissions, and architecture records evidenced implementation status. The November 7
+[strategy-delivery design](superpowers/specs/2026-11-07-strategy-cicd-design.md) supplies the adopted
+experimental-delivery direction in §16. Current opt-in qualification and risk implementation is
+documented in [capped live](agent/capped-live.md) and [layered risk](agent/layered-risk.md);
+their owner amendments supersede the earlier proposal status.
+
 ---
 
 # 1. North Star
@@ -449,12 +456,13 @@ Mandatory robustness should include, where applicable:
 Repeatedly searching the same historical data must never masquerade as independent confirmation.
 
 The implemented PIT masks, `t → t+1` lag, canonical/fast decision parity, burn-on-peek holdout
-accounting and measured search/family breadth remain binding. A replay cannot supply elapsed
+accounting and measured search breadth remain binding. A replay cannot supply elapsed
 broker-clocked forward observations. Do not lower enforced gates to make two-year evidence qualify;
 no qualifying strategy is a valid research outcome.
 
-Current research promotion retains a binding integrity floor while much of the statistical stack
-is recorded as advisory; frozen FDR accounting is not an active veto. The target's stronger
+Current research promotion has a binding integrity floor. Deflated Sharpe (DSR) with its
+bootstrap interval is the one trial-aware quality signal; it is recorded as advisory and does not
+veto. The target's stronger
 robustness requirements do not imply that all statistical checks currently block promotion. Agent
 advancement uses the actual promotion gates, never a board rank or a raw lifecycle flag.
 
@@ -694,6 +702,23 @@ They serve to:
 - test repairs,
 - and accumulate evidence without risking capital.
 
+### Experimental-delivery qualification target
+
+Owner reconfirmed on 2026-11-14: qualify historical economic evidence separately from operational
+delivery. Replay and failure tests exercise the exact frozen planner, then approximately five
+actual completed scheduled exchange sessions in paper qualify its operational behavior. Extend
+observation until required submission/fill, cancellation, reconciliation and restart mechanics are
+exercised; inactive sessions alone are insufficient. Keep synthetic integration evidence separate
+from the candidate's economic results. Preserve exact artifact/evidence identity and authenticated
+human experimental live activation.
+
+This target replaces the older planned requirement that experimental delivery always use the
+long paper economic gate. It does not amend that gate in executable code: current `paper promote`
+still requires at least 63 broker-clocked return observations and its other enforced criteria.
+The separate [capped frozen live route](agent/capped-live.md) implements the five-session profile
+without manufacturing a strict forward certificate. No agent may lower thresholds or substitute
+replay for elapsed broker observations. Activation still requires exact human-signed authority.
+
 ---
 
 # 17. Autonomous engineering
@@ -886,6 +911,11 @@ USD allocation and explicit approved instruments to a human signature. It does n
 equivalent of the initial ₪2,000 ceiling. Deployment verification, qualifying strategy evidence and
 human activation remain necessary. No funding, replenishment, activation or
 increase in approved capital follows from this document.
+
+The alignment discussion initially distinguished the earlier 10% pause target, generic 15%
+default and proposed 20% amendment. Current main includes the separate owner-approved opt-in
+10%-reduction/20%-halt controller described above; preserve that implemented policy and its signed
+live configuration. Unconfigured legacy behavior is distinct from an opted-in account.
 
 ---
 

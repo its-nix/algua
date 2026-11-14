@@ -6,8 +6,8 @@ Owner direction, 2026-11-04: prioritize working software and short iterations.
 - Use focused regression or smoke checks appropriate to the change. Do not run the full suite
   or wait for CI on every small change; use broad validation for broad integration work or on request.
 - Do not require a separate specification PR, readiness report, Todoist mirror, mutation campaign,
-  multi-agent review or evidence framework for routine implementation. BMAD planning is optional
-  unless the owner specifically requests it for the task.
+  multi-agent review or evidence framework for routine implementation. No planning framework is
+  required; use an existing technical specification when the change needs one.
 - Review concrete correctness, data-loss and authorization risks. Gather findings in one bounded
   pass and verify fixes directly. Do not restart a general audit for optional improvements.
 - Reuse existing commands and infrastructure. Keep notes proportional; finish the working flow

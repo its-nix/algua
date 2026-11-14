@@ -140,10 +140,11 @@ The starter library (`construction.py::CONSTRUCTION_POLICIES`):
 `construction_params` are validated per-policy at load time — an unknown policy id, an unknown
 param key, a missing required param (`top_k`), or a non-finite value all fail closed.
 
-**Bespoke construction = add a named policy, not inline math.** If no library policy fits, add a new
-`ConstructFn` to `algua/portfolio/construction.py` and register it in `_POLICIES` (additions-only;
-don't edit an existing policy) — then reference it by id from your `CONFIG`. Keeping construction in
-the library (not inside the strategy) is what lets the identity hash, the per-policy validation, and
+**Research workers use existing named construction policies.** If no library policy fits the
+assigned hypothesis, report that limitation for separately authorized engineering work. Do not
+edit the CODEOWNERS-protected `algua/portfolio/construction.py` or substitute inline math.
+An authorized extension would add a named `ConstructFn` and its registration in `_POLICIES`.
+Keeping construction in the library is what lets the identity hash, per-policy validation and
 the sweep `construction.<key>` namespace see it. A policy receives `(scores, view, params)`; `view`
 is the same PIT bar-schema frame the signal saw (passed so a future vol-targeting policy can size
 off prices with no contract change — the starter policies ignore it).
@@ -179,10 +180,12 @@ component without enough history is not stressed, and `turbulence` itself is NaN
 stressed" — whenever the trailing covariance is rank-deficient (perfectly correlated members, or
 more qualifying symbols than the covariance window); a stop never zeroes a name for lack of data.
 Do NOT smuggle regime or stop logic into `signal()` — it pollutes the alpha, escapes the sweep
-namespace, and is invisible to identity. Bespoke overlay = implement the policy, its validator and
-its `lookback(params)` in `algua/portfolio/overlay_policies.py` and register it in `_OVERLAYS` in
-`algua/portfolio/overlays.py` (additions-only, both CODEOWNERS-protected, alongside the shared
-`OverlayError` + param helpers in `algua/portfolio/overlay_validation.py`), never inline math.
+namespace, and is invisible to identity. If the hypothesis needs an unavailable overlay, report
+that limitation for separately authorized engineering work; research workers never edit protected
+overlay files. An authorized extension would add the policy, validator and `lookback(params)` in
+`algua/portfolio/overlay_policies.py` and register it in `_OVERLAYS` in
+`algua/portfolio/overlays.py`, using the shared `OverlayError` and param helpers in
+`algua/portfolio/overlay_validation.py`. All three files are CODEOWNERS-protected.
 
 ## The bars you receive
 
@@ -262,20 +265,16 @@ per bar. Rules:
   the as-of masking can't be reproduced by a whole-period panel fn. The fast path is static-universe
   only. See `algua/strategies/momentum/cross_sectional_momentum.py` for a worked example.
 
-## Optional: the fundamentals lane
+## Fundamentals and news inputs
 
-To read point-in-time fundamentals, set `needs_fundamentals=True` in `CONFIG` and author the **3-arg**
-form `signal(view, params, fundamentals) -> pd.Series` (the loader binds it as the active signal and
-the engine injects the PIT-correct fundamentals frame per bar). Wiring today is **narrow**: only
-`backtest run --fundamentals-snapshot <id>` supplies a fundamentals provider. **Everything else fails
-closed** on a `needs_fundamentals` strategy — paper, live, and (critically) `walk-forward` and
-`sweep`, which means a fundamentals strategy **cannot be promoted via `research promote` yet** (the
-trading- and research-lane wiring is a #132 follow-up). Construction composes exactly the same — the
-third arg only feeds the score.
+Fundamentals and news ingestion has been removed pending a redesign, so no new fundamentals or
+news snapshot can be produced and the former bundled fundamentals/news strategies are gone. Do not
+author a strategy with `needs_fundamentals=True` or `needs_news=True`; author from bars only. If an
+idea needs those inputs, report that the data is unavailable instead of substituting an OHLCV proxy.
 
 ## Multimodal research: `context_v1`
 
-For an idea requiring the implemented shared bars/news/model context, scaffold once with the same
+For an idea requiring the implemented shared bars/model context, scaffold once with the same
 `strategy new` command, then replace its legacy callback with `STRATEGY_INTERFACE = "context_v1"`
 and exactly one pure `score(context)` callback. Remove the scaffold's `signal`; do not add
 `signal_panel` or `target_weights`. The callback returns scores, and existing construction/risk
@@ -295,8 +294,9 @@ sidecar, report the missing input instead of inventing it.
 
 - **Additions only.** Create a NEW file under `algua/strategies/<family>/` via
   `uv run algua strategy new <name> --family <slug>`. Do **not** edit or overwrite an existing
-  strategy (especially the curated `cross_sectional_momentum.py`). Bespoke construction is also
-  additions-only — a new policy in `construction.py`, never an edit to an existing one.
+  strategy (especially the curated `cross_sectional_momentum.py`). Missing construction or overlay
+  policies are limitations to report; extending their protected libraries requires separately
+  authorized engineering work outside the research worker's role.
 - Include a module-level `GENERATED_BY = "agent"` (after the imports) so machine-authored
   strategies are identifiable. Do not place it before `from __future__ import annotations`.
 - After authoring, verify it loads and runs with the caller's exact bars snapshot, interval and

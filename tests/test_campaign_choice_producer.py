@@ -615,6 +615,7 @@ def test_invalid_export_refuses_cli_json_before_admission(
         conn.close()
 
 
+@pytest.mark.slow
 def test_legacy_ignores_unrelated_sibling_stderr(tmp_path):
     from tests.test_agent_runtime_seam import _REJECTED, _run_seam
 

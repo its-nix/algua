@@ -54,6 +54,8 @@ from algua.registry.store import SqliteStrategyRepository
 from algua.strategies.loader import load_tradable_strategy
 from tests._deployment_helpers import frozen_manifest
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 runner = CliRunner()
 
 # _S1 is registered first → lower DB id → FIFO tie-break admits it before _S2.

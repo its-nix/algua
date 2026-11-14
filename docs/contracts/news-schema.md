@@ -15,8 +15,8 @@ it became knowable.
 | `body` | str or null | full article text |
 
 ## Point-in-time rule
-A record is knowable at `t` iff `knowable_at <= t`. **This slice is hindsight-only** — `query-news`
-returns full history and is never wired into a decision. A future as-of signal lane would mask on
+A record is knowable at `t` iff `knowable_at <= t`. **Hindsight access is removed** — the `query-news`
+command no longer exists. A future as-of signal lane would mask on
 `knowable_at` exactly as fundamentals does.
 
 ## Identity & revisions
@@ -32,14 +32,8 @@ returns full history and is never wired into a decision. A future as-of signal l
 
 ## Two access modes
 - **As-of (signal):** DEFERRED (no `NewsProvider`/`needs_news` this slice).
-- **Hindsight (analysis):** `algua data query-news` (full history) — agent post-mortems / idea
-  sourcing only. Structurally walled from every decision/execution lane by `lint-imports`
-  (`algua.data` is forbidden to `backtest`/`features`/`strategies`/`contracts`/`live`/`execution`;
-  `algua.data.hindsight` is forbidden directly). The wall is a STATIC import-graph guarantee, not a
-  runtime sandbox.
+- **Hindsight (analysis):** removed (redesign pending); `algua.data.hindsight` no longer exists.
 
 ## Ingest
-`algua data ingest-news --from-file PATH --provider P --as-of TS`. Input rows carry `source`,
-`article_id`, `symbols` (list or comma-string), `published_at`, `knowable_at`, `headline`, and
-optionally `url`/`body`. `knowable_at` is required (never defaulted). `metadata.source` is the
-`--provider` label; the derived row-source/symbol sets are in `source_metadata`.
+Removed: `algua data ingest-news` and the Yahoo RSS fetcher are gone (redesign pending). Existing
+snapshots stay readable through the store read path.

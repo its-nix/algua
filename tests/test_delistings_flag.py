@@ -3,7 +3,8 @@
 Task 9 of issue #212: survivorship-free CLI wiring.
 
 * backtest run/walk-forward/sweep accept --delistings NAME
-* research promote accepts --delistings but rejects --assume-terminal-last-close (human-only)
+* research promote accepts --delistings; --assume-terminal-last-close is not a promote option
+  (removed with the human gate overrides, spec 2026-11-13)
 """
 
 from __future__ import annotations
@@ -15,21 +16,8 @@ from typer.testing import CliRunner
 
 from algua.cli.main import app
 from algua.data.store import DataStore
-from tests._human_actor_helpers import install_human_actor_anchor, promote_signed
 
 runner = CliRunner()
-
-# --- #329 authenticated --actor human plumbing ---------------------------------------------------
-_HUMAN_KEY = None
-_TMP_PATH = None
-
-
-def _promote(args):
-    """Drop-in for `runner.invoke(app, args)` at gated promote call sites: when `args` requests
-    `--actor human`, run the signed challenge dance; otherwise a plain invoke."""
-    if "human" in args:
-        return promote_signed(runner, app, args, _HUMAN_KEY, _TMP_PATH)
-    return runner.invoke(app, args)
 
 STRATEGY = "cross_sectional_momentum"
 
@@ -38,9 +26,6 @@ STRATEGY = "cross_sectional_momentum"
 def _isolated(monkeypatch, tmp_path):
     monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "r.db"))
-    global _HUMAN_KEY, _TMP_PATH
-    _HUMAN_KEY = install_human_actor_anchor(monkeypatch, tmp_path)
-    _TMP_PATH = tmp_path
 
 
 def _seed_delistings(tmp_path):
@@ -127,18 +112,20 @@ def test_backtest_run_no_delistings_snapshot_is_json_error(tmp_path):
     assert json.loads(res.output)["ok"] is False
 
 
-def test_research_promote_rejects_assume_terminal_last_close_for_agent():
-    """--assume-terminal-last-close is human-only: agent path must fail closed early."""
+@pytest.mark.parametrize("actor_args", [[], ["--actor", "human"]])
+def test_research_promote_refuses_assume_terminal_last_close(actor_args):
+    """--assume-terminal-last-close is no longer a promote option for ANY actor: an unknown
+    option (usage error), never silently ignored. A held-into-gap name without a delisting record
+    fails closed on the promote path."""
     res = runner.invoke(app, [
         "research", "promote", STRATEGY,
         "--universe", "U",
         "--start", "2020-01-01", "--end", "2020-12-31",
         "--assume-terminal-last-close",
-        # default --actor is "agent"
+        *actor_args,
     ])
-    assert res.exit_code != 0
-    out = res.output.lower()
-    assert "human" in out or "human-only" in out or "not allowed" in out
+    assert res.exit_code == 2
+    assert "no such option" in res.output.lower()
 
 
 def test_research_promote_fdr_throttle_override_flag_removed():
@@ -154,59 +141,3 @@ def test_research_promote_fdr_throttle_override_flag_removed():
         ])
         assert res.exit_code == 2  # usage error: unknown option
         assert "no such option" in res.output.lower() or "unexpected" in res.output.lower()
-
-
-def test_promote_signed_run_context_no_longer_contains_fdr_throttle_override(monkeypatch):
-    """The #329 canonical run_context (the exact input set a human signature binds) no longer
-    carries the removed fdr_throttle_override key — old signatures are nonce-bound and die
-    naturally; no compat key is kept."""
-    # promote_task's body calls canonical_run_context via algua.registry.promote_run's own module
-    # globals (Stage 6a Task 3: promote_task moved out of algua.cli.research_cmd into the
-    # registry), so that is the binding to patch.
-    import algua.registry.promote_run as promote_run
-
-    captured: dict = {}
-    orig = promote_run.canonical_run_context
-
-    def _capture(d):
-        captured.update(d)
-        return orig(d)
-
-    monkeypatch.setattr(promote_run, "canonical_run_context", _capture)
-    add = runner.invoke(app, ["registry", "add", STRATEGY])
-    assert add.exit_code == 0, add.output
-    # Fails later (stage is idea, not backtested) — but AFTER the run_context was built.
-    res = runner.invoke(app, [
-        "research", "promote", STRATEGY, "--demo",
-        "--start", "2020-01-01", "--end", "2020-12-31",
-    ])
-    assert res.exit_code != 0
-    assert captured, "canonical_run_context was not reached"
-    assert "fdr_throttle_override" not in captured
-    assert "allow_non_pit" in captured  # the rest of the signed input set is intact
-
-
-def test_research_promote_human_actor_can_pass_assume_terminal_last_close(tmp_path, monkeypatch):
-    """With --actor human the flag is accepted (not rejected at the human-only guard).
-
-    This test only verifies the guard does NOT fire for a human — the subsequent
-    promote will fail for other reasons (no registered strategy, no breadth, etc.),
-    which is fine as long as the failure is NOT the human-only guard message.
-    """
-    res = _promote([
-        "research", "promote", STRATEGY,
-        "--start", "2020-01-01", "--end", "2020-12-31",
-        "--demo",
-        "--assume-terminal-last-close",
-        "--actor", "human",
-        "--n-combos", "1",
-        "--allow-non-pit",
-    ])
-    # The command may fail (no strategy registered, etc.) but the failure must NOT
-    # be the human-only guard (i.e. must not contain "human-only" from our new guard).
-    # If it DID fail with our new guard message, that would be wrong.
-    # (Other failures — StrategyNotFound, etc. — are fine and expected here.)
-    if res.exit_code != 0:
-        payload = json.loads(res.output)
-        # The error should NOT be our assume-terminal-last-close rejection
-        assert "assume-terminal-last-close is human-only" not in payload.get("error", "").lower()

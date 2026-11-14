@@ -63,12 +63,16 @@ def selections(monkeypatch) -> list[tuple[Stage, Stage]]:
 
 
 @pytest.mark.parametrize(("source", "target"), [
-    (Stage.PAPER, Stage.FORWARD_TESTED),  # human raw (Story 2.1 deletes this edge for everyone)
+    (Stage.PAPER, Stage.FORWARD_TESTED),
     (Stage.FORWARD_TESTED, Stage.PAPER),
 ])
 def test_t14_edges_inside_the_paper_book_never_select_a_drain(
         tmp_path, monkeypatch, empty_exit_venues, selections, source, target):
     repo, conn, sid = _strategy_at(tmp_path, monkeypatch, source)
+    if target is Stage.FORWARD_TESTED:
+        # No actor is exempt from the forward token any more (spec 2026-11-13); stub the token
+        # lookup so this test keeps its subject: an in-book edge never selects a drain.
+        monkeypatch.setattr(transitions, "_validate_forward_gate", lambda **kw: None)
     injected: list[Any] = []
 
     rec = _move(repo, target, exit_guard_selector=lambda *a: injected.append(a))

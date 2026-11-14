@@ -83,23 +83,18 @@ _ALLOWED_KEYS: dict[str, frozenset[str]] = {
     }),
     "promote": frozenset({
         "start", "end", "demo", "snapshot", "fundamentals_snapshot", "news_snapshot", "universe",
-        "windows", "holdout_frac", "min_holdout_sharpe", "min_holdout_return", "min_pct_positive",
-        "min_window_sharpe", "n_combos", "allow_holdout_reuse", "allow_non_pit", "delistings",
-        "assume_terminal_last_close", "actor", "new_family",
+        "windows", "holdout_frac", "min_holdout_sharpe", "min_holdout_return", "delistings",
+        "actor",
     }),
 }
 
 
 _PARAMETER_TYPES: dict[str, type] = {
-    **dict.fromkeys(("demo", "register", "research_only", "assume_terminal_last_close",
-                    "allow_holdout_reuse",
-                    "allow_non_pit"), bool),
+    **dict.fromkeys(("demo", "register", "research_only", "assume_terminal_last_close"), bool),
     **dict.fromkeys(("start", "end", "snapshot", "universe", "fundamentals_snapshot",
-                    "news_snapshot", "delistings", "emit_series", "rank_by", "actor",
-                    "new_family"), str),
-    **dict.fromkeys(("windows", "top", "n_combos"), int),
-    **dict.fromkeys(("holdout_frac", "min_holdout_sharpe", "min_holdout_return",
-                    "min_pct_positive", "min_window_sharpe"), float),
+                    "news_snapshot", "delistings", "emit_series", "rank_by", "actor"), str),
+    **dict.fromkeys(("windows", "top"), int),
+    **dict.fromkeys(("holdout_frac", "min_holdout_sharpe", "min_holdout_return"), float),
     "param": list,
     "required_window_metrics": list,
     "evaluation_role": str,
@@ -107,7 +102,7 @@ _PARAMETER_TYPES: dict[str, type] = {
 }
 _NULLABLE = frozenset({
     "snapshot", "universe", "fundamentals_snapshot", "news_snapshot", "delistings",
-    "emit_series", "new_family", "n_combos", "param",
+    "emit_series", "param",
 })
 _TYPE_NAMES = {bool: "boolean", str: "string", int: "integer",
                float: "finite number", list: "array of strings"}
@@ -191,7 +186,7 @@ def run_all(
     parameter types reject the whole file before any task runs. Use booleans such as ``false``,
     never strings such as ``"false"``; numeric options require finite JSON numbers.
     Tasks run IN FILE ORDER and share the
-    funnel-breadth / FDR / holdout-burn ledgers EXACTLY as running them back-to-back as separate
+    funnel-breadth / holdout-burn ledgers EXACTLY as running them back-to-back as separate
     processes would (a promote task sees breadth a sibling sweep just recorded). Each task is
     fault-isolated: a task-domain failure becomes an ``{"ok": false, ..., "code": ...}`` marker and
     the loop continues. The envelope's ``ok`` is true iff EVERY task succeeded; the process exits

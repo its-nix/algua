@@ -154,6 +154,7 @@ def test_stderr_exactly_at_the_capture_is_not_truncated(tmp_path: Path) -> None:
     assert (result.stderr, result.stderr_truncated) == (b"e" * 100, False)
 
 
+@pytest.mark.slow
 def test_a_stray_grandchild_in_the_process_group_is_killed(tmp_path: Path) -> None:
     # The grandchild stays in the child's process group and inherits both pipes, so a runner
     # that did not kill the group after the child's exit would also hang until the deadline.

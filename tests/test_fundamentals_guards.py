@@ -8,6 +8,9 @@ from algua.registry.db import connect, migrate
 from algua.registry.store import SqliteStrategyRepository
 from algua.strategies.loader import load_strategy
 from algua.strategies.tradable import assert_tradable_without_fundamentals
+from tests._context_strategies import context_strategies  # noqa: F401
+
+pytestmark = [pytest.mark.serial, pytest.mark.usefixtures("context_strategies")]
 
 
 def _repo(tmp_path):
@@ -44,9 +47,6 @@ def test_promotion_preflight_passes_fundamentals_pit_check(tmp_path):
             repo,
             "fundamentals_earnings_tilt",
             actor=Actor.AGENT,
-            declared_combos=None,
-            allow_holdout_reuse=False,
-            allow_non_pit=False,
             provider=SyntheticProvider(seed=0),
             start=datetime(2024, 1, 1, tzinfo=UTC),
             end=datetime(2024, 6, 1, tzinfo=UTC),

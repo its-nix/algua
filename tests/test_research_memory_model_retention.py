@@ -259,6 +259,7 @@ def test_terminal_queue_retains_store_without_rewriting_terminal_result(driver_m
     assert result["skipped"] == "research_memory_unverified" and path.read_bytes() == before
 
 
+@pytest.mark.slow
 def test_bash_fallback_rechecks_new_model_store_after_actual_git_refusal(driver_memory):
     repo, worker, _, _ = driver_memory
     (worker / ".git").unlink()

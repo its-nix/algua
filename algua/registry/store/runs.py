@@ -115,7 +115,7 @@ class RunLedgerMixin:
     def _insert_run_locked(self, kind: str, strategy_name: str, **kwargs: Any) -> int:
         """The `record_run` INSERT with NO transaction of its own — for callers that already hold
         one (the gate's `BEGIN IMMEDIATE` block; see `GateLedgerMixin
-        .record_gate_with_fdr_and_maybe_promote`). `record_run` is this plus `with self._conn:`.
+        .record_gate_and_maybe_promote`). `record_run` is this plus `with self._conn:`.
 
         Takes `**kwargs` (only the store itself calls this — never CLI/research code), but still
         validates every key against `record_run`'s own keyword set: an unexpected key would

@@ -16,6 +16,8 @@ from algua.registry.approvals import closure_module_names
 from algua.strategies.base import LoadedStrategy, StrategyConfig, config_hash
 from algua.strategies.loader import StrategyNotFound, _loaded_for_test, load_strategy
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 _TS = {"lookback": 5, "stop_pct": 0.10, "cooldown_bars": 2}
 _RG_PARAMS = {
     "trend_window": 10, "dd_window": 10, "dd_threshold": 0.05,

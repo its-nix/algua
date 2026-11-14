@@ -1,10 +1,11 @@
-"""One single-use signed-challenge lifecycle (spec §4.4) behind both signing namespaces.
+"""One single-use signed-challenge lifecycle (spec §4.4) behind the go-live signing namespace.
 
-`live_gate` (algua-go-live) and `human_actor` (algua-human-actor, #329) were line-for-line
-parallel issue/find/consume stacks over their own tables; each is now a `ChallengeSpec` +
-thin wrappers. The payload format (`namespace\\nk=v…\\nnonce=…\\nexpires_at=…`) is
-byte-identical to the previous per-module builders, so existing enrolled keys and any
-in-flight signed challenges verify unchanged. Signature verification itself stays in
+`live_gate` (algua-go-live) is a `ChallengeSpec` + thin wrappers. (A second namespace,
+algua-human-actor for the #329 gate override, used the same lifecycle until it was removed by
+spec 2026-11-13; its `actor_challenges` table is kept as history and nothing writes to it.)
+The payload format (`namespace\\nk=v…\\nnonce=…\\nexpires_at=…`) is byte-identical to the
+previous per-module builders, so existing enrolled keys and any in-flight signed challenges
+verify unchanged. Signature verification itself stays in
 `live_gate.verify_signature` — this module owns only nonce issuance, matching, and
 single-use consumption. Column matching uses SQLite `IS` uniformly: identical to `=` for
 non-NULL values, and NULL-correct for nullable identity columns (dependency_hash)."""

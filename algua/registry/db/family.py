@@ -1,11 +1,13 @@
 """Family-governance context: ``families``, ``family_members``, ``family_parents``,
 ``family_events``.
 
-The #222/#524 family DAG and its append-only triggers (operated by
-``algua/registry/store/family.py``). Cross-module coupling: ``families.founder_gate_id`` REFERENCES
-``gate_evaluations(id)``, which lives in ``gate.py`` -- a further split must not separate the two
-carelessly. The #524 append-only rationale in the trigger comment below also covers
-``backtest_returns``' two triggers, which live in ``backtest_returns.py`` with their table.
+The #222/#524 family DAG and its append-only triggers. HISTORICAL since lean trim step 7:
+strategy-family governance was removed and no code writes these tables; they stay in the schema
+(no destructive migration) so existing rows remain readable. Cross-module coupling:
+``families.founder_gate_id`` REFERENCES ``gate_evaluations(id)``, which lives in ``gate.py`` -- a
+further split must not separate the two carelessly. The #524 append-only rationale in the trigger
+comment below also covers ``backtest_returns``' two triggers, which live in
+``backtest_returns.py`` with their table.
 """
 from __future__ import annotations
 

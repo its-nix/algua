@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from algua.operator.gate_runner import run_hermetic_quality_gate
+from algua.operator.gate_runner import _GATE_COMMANDS, run_hermetic_quality_gate
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -129,3 +129,14 @@ def test_plumbing_failure_is_red_not_raise(tmp_path: Path) -> None:
     not_repo = tmp_path / "not_a_repo"
     not_repo.mkdir()
     assert run_hermetic_quality_gate(not_repo, commands=[["true"]]) is None
+
+
+def test_gate_pytest_command_runs_and_collects_slow_tests() -> None:
+    """The gate's REAL pytest argv must work (exit 0) and include slow-marked tests."""
+    cmd = next(list(c) for c in _GATE_COMMANDS if "pytest" in c)
+    root = Path(__file__).resolve().parents[2]
+    target = "tests/test_research_memory_model_retention.py"
+    proc = subprocess.run(
+        [*cmd, "--collect-only", target], cwd=root, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "test_bash_fallback_rechecks_new_model_store_after_actual_git_refusal" in proc.stdout

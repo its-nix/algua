@@ -76,6 +76,7 @@ def test_unbounded_output_is_stopped_promptly_and_the_process_killed(
     assert _wait_gone(int(pid_file.read_text()))
 
 
+@pytest.mark.slow
 def test_timeout_kills_the_whole_process_group(tmp_path: Path) -> None:
     pid_file = tmp_path / "grandchild"
     code = (

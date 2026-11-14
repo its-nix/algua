@@ -25,9 +25,10 @@ from pathlib import Path
 from typing import Protocol
 
 # The exact strict-agent gate context the merge-back driver hard-wires (R4). Folded into the
-# attempt-token derivation so a row minted under ANY other input set (a relaxed human run) can never
-# collide with this attempt's token even by coincidence. The tuple is canonical + deterministic, so
-# every recovery pass re-derives the identical fingerprint.
+# attempt-token derivation so a row minted under ANY other input set can never collide with this
+# attempt's token even by coincidence. (The relaxations it names were removed by spec 2026-11-13;
+# the string stays byte-identical so in-flight attempt tokens re-derive unchanged.) The tuple is
+# canonical + deterministic, so every recovery pass re-derives the identical fingerprint.
 _STRICT_RELAXATION_CANONICAL = (
     "actor=agent;declared_combos=none;allow_holdout_reuse=false;"
     "allow_non_pit=false;assume_terminal_last_close=false;new_family=false"

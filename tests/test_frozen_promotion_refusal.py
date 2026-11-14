@@ -181,8 +181,7 @@ class _Spies:
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.calls: list[str] = []
         targets = {
-            # actor authentication (the CLI's bound name) and every checkout identity hash
-            "authenticate_actor": "algua.cli.paper_cmd.authenticate_actor",
+            # every checkout identity hash
             "compute_artifact_hashes": "algua.registry.approvals.compute_artifact_hashes",
             "forward_identity": "algua.registry.forward_promotion.compute_artifact_hashes",
             "transition_identity": "algua.registry.transitions._compute_hashes",
@@ -223,8 +222,8 @@ def test_frozen_qualification_pending_is_gone():
 @pytest.mark.parametrize("actor", ["agent", "human"])
 def test_paper_promote_verifies_frozen_content_before_any_work(monkeypatch, actor):
     """The synthetic descriptor's bundle was never published: the fresh verification refuses in
-    the chokepoint slot, before authentication (a human gets no challenge, which would bind an
-    unverified identity), preflight, broker, evidence, evaluation, token or stage change."""
+    the chokepoint slot, before preflight, broker, evidence, evaluation, token or stage change (and
+    no actor challenge is ever written: the signed --actor human path is gone)."""
     with closing(_registry_conn()) as conn:
         sid = _admit_frozen(conn)
         before = _snapshot(conn, sid)
@@ -249,8 +248,8 @@ def test_paper_promote_verifies_frozen_content_before_any_work(monkeypatch, acto
 
 def test_paper_promote_working_tree_order_and_identity_site_are_unchanged(monkeypatch):
     """A working-tree strategy is hashed from the checkout exactly where it always was: after
-    authentication, preflight and broker construction, immediately before the gate. The frozen
-    chokepoint never runs for it."""
+    preflight and broker construction, immediately before the gate. The frozen chokepoint never
+    runs for it."""
     order: list[str] = []
     with closing(_registry_conn()) as conn:
         rec = _working_tree_strategy(conn, "wt_order")
@@ -258,12 +257,7 @@ def test_paper_promote_working_tree_order_and_identity_site_are_unchanged(monkey
     import algua.cli.paper_cmd as paper_cmd
     import algua.registry.forward_promotion as forward_promotion
 
-    real_auth = paper_cmd.authenticate_actor
     real_preflight = paper_cmd.forward_promotion_preflight
-
-    def auth(*args, **kwargs):
-        order.append("authenticate")
-        return real_auth(*args, **kwargs)
 
     def preflight(*args, **kwargs):
         order.append("preflight")
@@ -284,7 +278,6 @@ def test_paper_promote_working_tree_order_and_identity_site_are_unchanged(monkey
     def verifier(*_args, **_kwargs):
         raise AssertionError("a working-tree promotion never touches frozen content")
 
-    monkeypatch.setattr(paper_cmd, "authenticate_actor", auth)
     monkeypatch.setattr(paper_cmd, "forward_promotion_preflight", preflight)
     monkeypatch.setattr(paper_cmd, "_alpaca_broker_from_settings", broker)
     monkeypatch.setattr(forward_promotion, "compute_artifact_hashes", hashes)
@@ -296,7 +289,7 @@ def test_paper_promote_working_tree_order_and_identity_site_are_unchanged(monkey
     result = runner.invoke(app, ["paper", "promote", rec.name])
 
     assert result.exit_code == 1, result.stdout
-    assert order == ["authenticate", "preflight", "broker", "checkout_identity", "assemble"]
+    assert order == ["preflight", "broker", "checkout_identity", "assemble"]
 
 
 def test_paper_promote_legacy_strategy_path_is_unchanged(monkeypatch):
@@ -403,38 +396,6 @@ def test_paper_promote_refuses_an_epoch_changed_after_the_slot(monkeypatch, succ
         assert _snapshot(conn, rec.id) == before
 
 
-# The pre-1.3d `paper promote` run context for the default thresholds (canonical JSON).
-GOLDEN_RUN_CONTEXT = (
-    '{"degradation_factor":0.5,"forward_sharpe_confidence":0.95,"max_drawdown":0.25,'
-    '"max_staleness":5,"min_coverage":0.9,"min_observations":63,"min_vol":0.02,'
-    '"sharpe_floor":0.3}')
-
-
-@pytest.mark.parametrize("legacy", [False, True])
-def test_working_tree_and_legacy_human_challenges_keep_todays_bytes(monkeypatch, legacy):
-    """Only a FROZEN challenge binds its epoch: a working-tree or legacy challenge is byte-for-byte
-    the pre-1.3d encoding (checkout hashes plus exactly the eight thresholds)."""
-    with closing(_registry_conn()) as conn:
-        if legacy:
-            repo = SqliteStrategyRepository(conn)
-            force_legacy_strategy(conn, repo.add("legacy_challenge").id)
-            rec = repo.get("legacy_challenge")
-        else:
-            rec = _working_tree_strategy(conn, "wt_challenge")
-    monkeypatch.setattr("algua.registry.approvals.compute_artifact_hashes", lambda n: WT_IDENTITY)
-
-    result = runner.invoke(app, ["paper", "promote", rec.name, "--actor", "human"])
-
-    assert result.exit_code == 0, result.stdout
-    issued = json.loads(result.stdout)
-    assert issued["action"] == "human_actor_challenge"
-    assert issued["challenge"] == "\n".join([
-        "algua-human-actor", "command=paper promote", f"strategy={rec.name}",
-        f"strategy_id={rec.id}", "stage_from=paper", "stage_to=forward_tested", "code_hash=c",
-        "config_hash=g", "dependency_hash=d", f"run_context={GOLDEN_RUN_CONTEXT}",
-        f"nonce={issued['nonce']}", f"expires_at={issued['expires_at']}"])
-
-
 # ---------------------------------------------------------------------------
 # The chokepoint and the forward gate (direct callers)
 # ---------------------------------------------------------------------------
@@ -451,7 +412,6 @@ def test_promotion_identity_keeps_the_working_tree_and_legacy_paths(monkeypatch)
         rec = _working_tree_strategy(conn, "working_tree_s")
         slot = promotion_slot(conn, rec, data_dir=Path("/nonexistent"))
         assert slot == PromotionSlot(repo.active_deployment(rec.id).id, None)
-        assert slot.challenge_binding() == {}
         promotion = promotion_identity(conn, rec, slot)
         assert promotion.identity == WT_IDENTITY
         assert promotion.deployment == repo.active_deployment(rec.id)
@@ -484,8 +444,8 @@ def test_promotion_slot_refuses_unverified_frozen_content_without_the_checkout(m
 
 
 def test_a_frozen_slot_binds_its_epoch_and_verified_digest(monkeypatch):
-    """A frozen slot's verified identity is the descriptor's, and its challenge binding names the
-    epoch and the manifest digest whose content was verified (verification stubbed here)."""
+    """A frozen slot's verified identity is the descriptor's, bound to the epoch and the manifest
+    digest whose content was verified (verification stubbed here)."""
     monkeypatch.setattr(FrozenContentVerifier, "_verified", lambda self, descriptor, dep: Path())
     with closing(_registry_conn()) as conn:
         sid = _admit_frozen(conn)
@@ -495,8 +455,6 @@ def test_a_frozen_slot_binds_its_epoch_and_verified_digest(monkeypatch):
         assert slot.deployment_id == deployment.id and slot.frozen is not None
         assert slot.frozen.deployment == deployment and slot.frozen.identity == IDENTITY
         assert slot.frozen.content_digest == deployment.manifest_digest
-        assert slot.challenge_binding() == {
-            "deployment_id": deployment.id, "manifest_digest": deployment.manifest_digest}
         assert promotion_identity(conn, rec, slot) is slot.frozen
 
 
@@ -761,18 +719,26 @@ def _legacy_at(name: str, stage: str) -> int:
 
 
 def test_legacy_raw_forward_transition_still_pins_the_checkout_identity(monkeypatch):
-    """Unchanged for a non-frozen strategy: the raw human edge hashes and pins identity."""
+    """Unchanged for a non-frozen strategy: the raw service edge hashes the checkout (and, with no
+    forward token, refuses for every actor — spec 2026-11-13); a fixture scaffold pins identity."""
+    from algua.contracts.lifecycle import TransitionError
+    from algua.registry.transitions import transition_strategy
+
     sid = _legacy_at("legacy_fwd", "paper")
     hashed: list[str] = []
     monkeypatch.setattr(
         "algua.registry.transitions._compute_hashes",
         lambda name: hashed.append(name) or IDENTITY)
+    with closing(_registry_conn()) as conn, pytest.raises(TransitionError, match="paper promote"):
+        transition_strategy(
+            SqliteStrategyRepository(conn), "legacy_fwd", Stage.FORWARD_TESTED, Actor.HUMAN, "raw")
+    assert hashed == ["legacy_fwd"]
 
-    from tests._human_actor_helpers import scaffold_transition
+    monkeypatch.setattr(
+        "algua.registry.approvals.compute_artifact_hashes", lambda name: IDENTITY)
+    from tests._scaffold_helpers import scaffold_transition
 
     scaffold_transition("legacy_fwd", "forward_tested", "raw")
-
-    assert hashed == ["legacy_fwd"]
     with closing(_registry_conn()) as conn:
         row = conn.execute(
             "SELECT code_hash, config_hash, dependency_hash FROM stage_transitions"

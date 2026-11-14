@@ -1,8 +1,9 @@
 # Algua architecture — implementation map and target design
 
 **Product authority:** [Vision of Record](PRD.md). This document maps current implementation;
-the [reconciliation record](vision-reconciliation.md) tracks the gap to the target architecture
-and the PRD §25 development sequence. Earlier specs do not override that sequence.
+the [September reconciliation](vision-reconciliation.md) preserves the earlier gap assessment.
+Use this map and source/tests for implementation status, and PRD §25 for the development sequence.
+Present operating permissions are defined in `AGENTS.md`, `CLAUDE.md` and the operating playbook.
 
 **Evidence baseline:** source, tests and merged changes through `a062a66` (PRs #719–#726).
 The October 2026 approved product direction is incorporated here and in the PRD; target design is
@@ -10,6 +11,13 @@ explicitly separated from implemented behavior. Source inspection establishes ca
 refusals, not deployment or unattended acceptance. The September reconciliation is dated context;
 its older artifact, capital-policy and CODEOWNERS observations must be read against current source.
 This map grants no operating, deployment, capital or activation permission.
+
+**Owner alignment, 2026-11-14:** the experimental-delivery target combines historical economic
+qualification with approximately five completed scheduled paper sessions for operational
+qualification, as described in PRD §16. Current main provides the separate opt-in
+[capped live route](agent/capped-live.md) and [layered risk controller](agent/layered-risk.md).
+The strict forward gate retains its meaning; capped qualification does not manufacture that
+certificate. The opted-in 10%-reduction/20%-halt policy differs from legacy generic defaults.
 
 **Read this before adding anything.** It tells you which package owns what, and where the
 extension points are. If you find yourself editing a core file to add a provider, broker, calendar,
@@ -41,6 +49,9 @@ recorded descriptor and freshly verified content, never the checkout (the raw `r
 edge refuses it). The raw registry go-live route still refuses frozen deployments; the separate human-signed
 [capped live connector](agent/capped-live.md) accepts an exact frozen deployment under the approved
 experimental profile. It does not mint a strict forward certificate.
+
+On the STRICT route the forward gate is the harsh threshold (Sharpe ≥ max(0.5× holdout, 0.3) over 63 broker-clocked sessions). On the CAPPED experimental route the edge is judged only by the research gate's out-of-sample holdout (Sharpe > 0, ≥63 bars). That is a weak bar. The five paper sessions prove mechanics, not edge. The deflated-Sharpe signal (DSR + bootstrap; trials = max(own lifetime sweep combos, funnel-wide combos in the 90-day window)) recorded by the research gate is advisory — the one trial-aware quality measure, and a candidate for a future binding bar (an owner decision).
+
 The shipped frozen-paper slice includes the two-phase planner boundary, verified immutable
 content/environments, child execution and deployment-bound operational evidence/qualification
 (Stories 1.3a–d). Existing migration-time tenants remain an explicit unmigrated cohort. The supervisor retains broker access, reconciliation and account-wide
@@ -76,9 +87,9 @@ paper-trades, and only a human with a signed challenge puts it live. The package
 ```
 
 **The one-way rule:** `cli` composes everything; nothing composes `cli`. Domain packages never
-import `algua.cli`. There is exactly one exception in the tree — `registry/human_actor.py` prints a
-signing challenge — and it is tracked as debt in **#592**, deliberately left uncontracted so it
-stays visible rather than being blessed by an exemption.
+import `algua.cli`. The last exception (`registry/human_actor.py`, debt #592) was deleted with the
+signed human-actor override, so the registry's side is now contracted ("registry stays off the cli
+layer").
 
 ### Three harnesses, one product
 
@@ -106,8 +117,8 @@ research database, MLflow instance, execution fork or speculative service split.
 | `features` / `portfolio` | signal computation; weight construction | I/O, registry, cli |
 | `backtest` | `simulate`/`run`, PIT masking (`pit_view`), the fast/canonical dual path + parity guard (`decision_path`), windowing (`walkforward`) | registry access, tracking, live/execution |
 | `calendar` | `MarketCalendar` + the settings-honouring `get_calendar()` factory | cli or registry imports |
-| `research` | the statistical gate: DSR, breadth deflation, regime robustness, forward gates | registry imports (`research` never imports `registry`) |
-| `registry` | **the lifecycle authority**: stages, transitions, gate tokens, allocations, approvals, families, the SQLite schema | live-lane imports |
+| `research` | the statistical gate: the integrity floor, DSR (the advisory trial-aware signal), forward gates | registry imports (`research` never imports `registry`) |
+| `registry` | **the lifecycle authority**: stages, transitions, gate tokens, allocations, approvals, the SQLite schema | live-lane imports |
 | `execution` | broker adapters, order state, ledgers, sizing, flatten/drain | cli imports |
 | `live` | the shared tick engine (`run_tick`), book exposure | cli imports |
 | `risk` | limits, breaches, kill-switch, global halt, peaks, book breaker | cli or live-lane imports |
@@ -174,7 +185,9 @@ adapters/declarations rather than permanent mutually exclusive strategy APIs.
 - `contracts/strategy_context.py` supplies `AsOfView`, `AsOfContext`, `ResearchStrategy` and shared
   score validation. Context includes aware `decision_ts`/`first_decision_ts`, eligible universe,
   immutable snapshot identities, defensive feature/model copies and verified model bytes/provenance.
-  News/fundamentals use existing PIT masks; models must be trained no later than the first decision.
+  News/fundamentals use existing PIT masks (their ingestion CLI and bundled strategies were removed pending
+  a redesign; the masks, store read path and manifest records remain); models must be trained no later than
+  the first decision.
   `as_of` is the decision cutoff. Daily UTC-midnight bar labels are not fabricated availability times.
 - `strategies/context_loader.py` binds `STRATEGY_INTERFACE = "context_v1"` and `score(context)`;
   a context module cannot also expose `signal` or `signal_panel`. `contracts/strategy_identity.py`
@@ -266,6 +279,12 @@ Source retry identities bind content, verified profile and an explicit capabilit
 (`operator/source_selection.py`), so unrelated deployments do not erase retry history. Extend that
 manifest when implementing a new recipe capability. Migration from old commit-based keys resets
 advisory retry counters once; durable criticism and experiment evidence are retained.
+The manifest also binds leap's skill review policy: changing that file legitimately reopens
+advisory source reviews; unrelated deployments still do not. Forage receives up to six prior
+review gaps for its selected categories, each bounded to 1,000 characters, as untrusted search
+context. Missing feedback is visible but does not stop forage. Leap separately assesses faithful
+replication and at most one source-motivated, explicitly labelled extension per offered source;
+the existing feasibility, semantic dedup/refutation and qualification checks remain binding.
 Conceptual `auto:leap_critic` / `CRITIC:untestable` discards without strategy/evaluation links remain
 required context for an unattempted idea's first trial rather than a permanent veto. Current-data
 preflight must recheck them. Actual attempts, empirical/manual and other critic rejections retain
@@ -311,7 +330,7 @@ strategy load/evaluation, with typed validated output. Hostile-code tests must r
 boundary, not just an authoring worktree. Missing kernel isolation must fail closed. This is an
 acceptance blocker; source hashes, prompts, allowlists and fresh processes do not satisfy it.
 
-Root and standalone web CI are implemented in `.github/workflows/ci.yml` (including PR #720).
+Root CI is implemented in `.github/workflows/ci.yml` (including PR #720).
 The target release chain additionally needs independent review and CI bound to the exact reviewed
 and integrated source, immutable artifact digests, isolated untrusted PR execution, serialized safe
 paper release, smoke/health verification and known-good recovery. A green CI run or an ordinary
@@ -474,15 +493,16 @@ both key on the slug.
 
 ---
 
-## Before you commit
+## Verification
 
-```
-uv run pytest -q && uv run ruff check . && uv run mypy algua && uv run lint-imports
-```
+Follow [the delivery policy](agent/story-delivery.md): run focused regression or smoke checks
+for the changed behavior, plus relevant lint, type and import-boundary checks. Use the full suite
+for broad integration changes or when requested. Existing automated merge-back gates still apply.
+Report the checks actually run; a full-suite run is not required before every small commit.
 
-Touching `web/`? Also `uv run --project web pytest web/backend/tests -q` and
-`cd web/frontend && npm run check && npm run build`. The root `uv.lock` is `dependency_hash`
-identity — never add web deps to it.
+Touching `web/` (the owner dashboard, a standalone uv project)? Also
+`uv run --project web pytest web/backend/tests -q` and `cd web/frontend && npm run check && npm run build`.
+The root `uv.lock` is `dependency_hash` identity — never add web deps to it.
 
 ### Frozen model mechanics (version 2; reviewed-code paper execution)
 

@@ -56,6 +56,8 @@ from tests._frozen_paper_world import (
     teardown_world,
 )
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 REPO = Path(__file__).resolve().parents[1]
 
 

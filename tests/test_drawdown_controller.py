@@ -22,7 +22,7 @@ from algua.registry.db import connect, migrate
 from algua.registry.drawdown_auth import paper_change, signed_change
 from algua.registry.drawdown_store import account_state, write_state
 from algua.risk.layered import DrawdownPolicy
-from tests.test_human_actor import _anchor, _make_key, _sign
+from tests._ssh_signing import _anchor, _make_key, _sign
 
 
 class Venue(AlpacaPaperBroker):

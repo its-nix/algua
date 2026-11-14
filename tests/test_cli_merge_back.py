@@ -30,6 +30,10 @@ from algua.registry.artifact_errors import FrozenEnvironmentUnavailable, FrozenS
 from algua.registry.db import connect, migrate
 from algua.registry.store import SqliteStrategyRepository
 
+# Merge-back cycles share repo-global locks and git state; under xdist a different subset failed
+# on each run (serial 38/38), so the module runs on the serial lane.
+pytestmark = pytest.mark.serial
+
 runner = CliRunner()
 _STRAT = "cross_sectional_momentum"
 _GATED_TREE = "f" * 40  # the tree sha the stubbed green gate returns (binds commit_merge)

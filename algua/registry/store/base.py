@@ -1,6 +1,6 @@
 """Shared base mixin for algua/registry/store/ — holds the one private helper genuinely called
 from more than one Protocol's domain (crud.py's apply_transition + intake_candidate_to_paper,
-gate.py's record_gate_with_fdr_and_maybe_promote, forward_gate.py's
+gate.py's record_gate_and_maybe_promote, forward_gate.py's
 record_forward_pass_and_promote). Each of those mixins inherits this one, so the real
 implementation here is the one that runs at composition time via the facade's MRO."""
 from __future__ import annotations

@@ -280,6 +280,7 @@ def test_unexpected_identity_change_on_refresh_refuses_before_evaluation(replay,
     assert not db.exists()
 
 
+@pytest.mark.slow
 def test_cold_process_mixed_family_book_captures_all_imports_before_identities(replay, tmp_path):
     """A later feature import must not retroactively change an earlier sleeve's captured closure."""
     import algua

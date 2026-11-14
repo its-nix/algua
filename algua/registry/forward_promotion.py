@@ -45,8 +45,9 @@ from algua.research.forward_gates import (
 
 
 def guard_forward_relaxations(actor: Actor, criteria: ForwardGateCriteria) -> None:
-    """Each threshold has a strict direction; an agent may only move it stricter (#124).
-    Mirrors ``guard_agent_relaxations``: the agent only ever sees the strict gate."""
+    """Each threshold has a strict direction; EVERY actor may only move it stricter (#124; spec
+    2026-11-13 removed the human relaxation). ``actor`` is accepted for the call shape and audit
+    only: it changes nothing here."""
     # forward_sharpe_confidence feeds NormalDist.inv_cdf (blows up at the 0/1 edges) and the
     # tighten-only comparison below (nan < 0.95 is False, so a non-finite value would slip through
     # the relaxation guard un-flagged). A confidence outside the open unit interval is nonsensical
@@ -56,8 +57,6 @@ def guard_forward_relaxations(actor: Actor, criteria: ForwardGateCriteria) -> No
         raise ValueError(
             "forward_sharpe_confidence must be a finite probability in (0, 1), got "
             f"{conf!r}")
-    if actor is Actor.HUMAN:
-        return
     defaults = ForwardGateCriteria()
     higher_is_stricter = ("min_forward_observations", "min_session_coverage",
                           "degradation_factor", "sharpe_floor", "min_forward_vol",
@@ -67,7 +66,8 @@ def guard_forward_relaxations(actor: Actor, criteria: ForwardGateCriteria) -> No
     relaxed += [f for f in lower_is_stricter if getattr(criteria, f) > getattr(defaults, f)]
     if relaxed:
         raise ValueError(
-            "forward-gate relaxation requires --actor human: " + ", ".join(sorted(relaxed)))
+            "forward-gate thresholds may only be tightened; refusing to relax: "
+            + ", ".join(sorted(relaxed)))
 
 
 _MINT = object()  # held by this module alone: nothing else can mint a PromotionIdentity
@@ -93,19 +93,11 @@ class PromotionIdentity:
 
 @dataclass(frozen=True)
 class PromotionSlot:
-    """What ``paper promote``'s ledger-only slot read, once, before authentication: the active
+    """What ``paper promote``'s ledger-only slot read, once, before the preflight: the active
     epoch's id (``None``: none, the legacy cohort) and a FROZEN epoch's verified identity."""
 
     deployment_id: int | None
     frozen: PromotionIdentity | None
-
-    def challenge_binding(self) -> dict[str, object]:
-        """Run context a human also signs for a frozen epoch: epochs can share the three hashes
-        yet differ in epoch and content. Empty otherwise: today's challenge bytes, exactly."""
-        if self.frozen is None:
-            return {}
-        return {"deployment_id": self.frozen.deployment.id,
-                "manifest_digest": self.frozen.content_digest}
 
 
 def promotion_slot(
@@ -164,10 +156,10 @@ def _require_slot_epoch(deployment: DeploymentRecord | None, slot: PromotionSlot
 def forward_promotion_preflight(
     repo: StrategyRepository, name: str, *, actor: Actor, criteria: ForwardGateCriteria,
 ) -> StrategyRecord:
-    """Pre-work refusals (mirrors ``promotion_preflight``): actor legality, relaxation guard,
-    stage legality. FORWARD_TESTED is legal because a re-evaluation refreshes the live-wall
-    certificate without a stage change (#124)."""
-    # SYSTEM would pass as "not human" (strict) yet mint a row it can never consume.
+    """Pre-work refusals (mirrors ``promotion_preflight``): actor legality, tighten-only guard
+    (every actor), stage legality. FORWARD_TESTED is legal because a re-evaluation refreshes the
+    live-wall certificate without a stage change (#124)."""
+    # SYSTEM would mint a row it can never consume.
     if actor not in (Actor.AGENT, Actor.HUMAN):
         raise ValueError(f"paper promote requires --actor agent or human, got {actor.value}")
     guard_forward_relaxations(actor, criteria)

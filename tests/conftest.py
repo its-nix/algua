@@ -35,12 +35,29 @@ remembering it.
 
 from __future__ import annotations
 
-from urllib.parse import urlsplit
+import fcntl
+import os
+import tempfile
+from pathlib import Path
+from typing import Any
 
-import pytest
-import requests
+# Under ``pytest -n auto`` every worker would otherwise start its own BLAS/Arrow/OpenMP thread pool
+# (one per core), and the oversubscription made the parallel suite several times SLOWER than serial.
+# Set before numpy/pyarrow import; child processes the tests spawn inherit it.
+for _var in (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "ARROW_DEFAULT_CPU_THREAD_COUNT",
+):
+    os.environ.setdefault(_var, "1")
 
-from algua.config.settings import Settings
+from urllib.parse import urlsplit  # noqa: E402
+
+import pytest  # noqa: E402
+import requests  # noqa: E402
+
+from algua.config.settings import Settings  # noqa: E402
 
 # ``empty_exit_venues`` (Story 2.2 §8): an explicit, opt-in fixture -- never autouse. A test that
 # drives an allocation-shedding transition names it to get empty fake venues for both lanes' exit
@@ -170,3 +187,53 @@ def _clean_main_checkout(monkeypatch):
     tests re-patch ``default_probe`` themselves. Test-only seam -- production has no bypass."""
     from algua.operator import checkout_guard
     monkeypatch.setattr(checkout_guard, "default_probe", lambda: _CleanMainProbe())
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Pin every ``serial``-marked test to one xdist worker (needs ``--dist loadgroup``)."""
+    for item in items:
+        if item.get_closest_marker("serial") is not None:
+            item.add_marker(pytest.mark.xdist_group("serial"))
+
+
+# ``serial`` tests write into the real source tree (``algua/strategies``, ``algua/features``), which
+# every other test's strategy/factor discovery scans. ``xdist_group`` keeps them on one worker but
+# not away from readers on the others, so they also take an exclusive cross-process lock: they hold
+# it for the whole consecutive group, every other test holds it shared. The gate lock stops a
+# stream of readers from starving a waiting writer. No-op cost without xdist.
+_LOCK_DIR = Path(tempfile.gettempdir())
+_LOCK_KEY = os.environ.get("PYTEST_XDIST_TESTRUNUID", f"solo-{os.getppid()}")
+_tree_lock: dict[str, Any] = {"mode": None, "fd": None, "gate": None}
+
+
+def _is_serial(item: pytest.Item | None) -> bool:
+    return item is not None and item.get_closest_marker("serial") is not None
+
+
+def _tree_open(name: str) -> int:
+    return os.open(_LOCK_DIR / f"algua-pytest-{name}-{_LOCK_KEY}.lock", os.O_RDWR | os.O_CREAT)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    want = fcntl.LOCK_EX if _is_serial(item) else fcntl.LOCK_SH
+    if _tree_lock["mode"] == want == fcntl.LOCK_EX:
+        return  # still inside the consecutive serial group
+    if _tree_lock["gate"] is None:
+        _tree_lock["gate"] = _tree_open("gate")
+    fd = _tree_open("tree")
+    fcntl.flock(_tree_lock["gate"], fcntl.LOCK_EX)
+    try:
+        fcntl.flock(fd, want)
+    finally:
+        fcntl.flock(_tree_lock["gate"], fcntl.LOCK_UN)
+    _tree_lock["mode"], _tree_lock["fd"] = want, fd
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> None:
+    if _tree_lock["mode"] == fcntl.LOCK_EX and _is_serial(nextitem):
+        return
+    if _tree_lock["fd"] is not None:
+        os.close(_tree_lock["fd"])  # closing the descriptor drops the flock
+    _tree_lock["mode"], _tree_lock["fd"] = None, None

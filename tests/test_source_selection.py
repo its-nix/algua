@@ -102,7 +102,7 @@ def test_actual_cli_review_and_existing_import_reach_research_queue(tmp_path, mo
     from algua.contracts.idea import Obscurity
     from algua.registry.db import connect, migrate
     from algua.registry.ideas import IdeaRepository, InspirationLink
-    from tests.campaign_fixtures import add_idea
+    from tests.campaign_fixtures import add_idea, invoke_menu
 
     settings = Settings(data_dir=tmp_path / "data", knowledge_dir=tmp_path / "kb")
     a = note(settings, "aaa", recipe())
@@ -178,7 +178,7 @@ def test_actual_cli_review_and_existing_import_reach_research_queue(tmp_path, mo
     assert len(IdeaRepository(conn).list()) == 1
     assert conn.execute("SELECT count(*) FROM idea_attempts").fetchone()[0] == 0
     conn.close()
-    result = runner.invoke(app, ["research", "campaign-menu", "--budget", "1"])
+    result = invoke_menu(1)
     assert result.exit_code == 0, result.stdout
     assert len(json.loads(result.stdout)["choices"]) == 1
 
@@ -425,3 +425,52 @@ def test_owner_sources_come_first(tmp_path):
     path.write_text(path.read_text().replace("status: fresh", "source_kind: human\nstatus: fresh"))
     plan = source_plan(settings, PROFILE)
     assert plan["sources"][0]["source_id"] == owner
+
+
+def test_feedback_reuses_review_gaps_for_selected_categories_without_spending_retries(tmp_path):
+    from algua.operator.source_selection import source_feedback
+
+    settings = Settings(data_dir=tmp_path / "data", knowledge_dir=tmp_path / "kb")
+    identity = note(settings, "feedback")
+    path = settings.knowledge_dir / "inspirations" / f"{identity}.md"
+    path.write_text(path.read_text().replace("status: fresh", "category: momentum\nstatus: fresh"))
+    plan = source_plan(settings, PROFILE, code="v1")
+    result = review_sources(plan, [{"source_id": identity, "recipe": None,
+                                   "reason": "Missing estimator and holding rule"}], new_ideas=[])
+    record_source_pass(settings.data_dir, result, clean=True, imported_sources=set())
+    state = (settings.data_dir / "leap-sources.json").read_bytes()
+    assert source_feedback(settings, {"mean_reversion"})["reviews"] == []
+    feedback = source_feedback(settings, {"momentum"})
+    assert feedback["reviews"] == [{"source_id": identity, "category": "momentum",
+                                    "reason": "Missing estimator and holding rule"}]
+    assert feedback["authority"] == "none"
+    assert (settings.data_dir / "leap-sources.json").read_bytes() == state
+
+
+def test_cli_feedback_reads_knowledge_dir_and_emits_bounded_advisory_json(tmp_path, monkeypatch):
+    import json
+
+    from typer.testing import CliRunner
+
+    from algua.cli.main import app
+
+    settings = Settings(data_dir=tmp_path / "data", knowledge_dir=tmp_path / "kb")
+    for i in range(8):
+        identity = note(settings, f"source-{i}")
+        path = settings.knowledge_dir / "inspirations" / f"{identity}.md"
+        path.write_text(path.read_text().replace(
+            "status: fresh", "category: momentum\nstatus: fresh"))
+        plan = source_plan(settings, PROFILE, code="v1", limit=3)
+        row = next(s for s in plan["sources"] if s["source_id"] == identity)
+        record_source_pass(settings.data_dir, {"reviews": [{"source_id": identity,
+                           "source_key": row["source_key"], "recipe": None, "reason": "x" * 2000}]},
+                           clean=True, imported_sources=set())
+    monkeypatch.setenv("ALGUA_DATA_DIR", str(settings.data_dir))
+    monkeypatch.setenv("ALGUA_KNOWLEDGE_DIR", str(settings.knowledge_dir))
+    result = CliRunner().invoke(app, ["research", "sources", "feedback",
+                                    "--categories", "momentum"])
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert len(payload["reviews"]) == 6
+    assert all(len(r["reason"]) == 1000 for r in payload["reviews"])
+    assert payload["authority"] == "none"

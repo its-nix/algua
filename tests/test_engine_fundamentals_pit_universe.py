@@ -1,12 +1,16 @@
 from datetime import datetime
 
 import pandas as pd
+import pytest
 
 from algua.backtest.engine import run
 from algua.data.serve import StoreBackedFundamentalsProvider, StoreBackedProvider
 from algua.data.store import DataStore
 from algua.evaluation.inputs import resolve_universe_inputs
 from algua.strategies.loader import load_strategy
+from tests._context_strategies import context_strategies  # noqa: F401
+
+pytestmark = [pytest.mark.serial, pytest.mark.usefixtures("context_strategies")]
 
 
 def test_future_member_fundamentals_do_not_leak(tmp_path, monkeypatch):

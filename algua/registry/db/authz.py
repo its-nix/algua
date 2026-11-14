@@ -1,9 +1,10 @@
 """Authorization context: ``live_challenges``, ``actor_challenges``, ``live_authorizations``,
 ``strategy_allocations``.
 
-The go-live and human-actor challenge/signature ledgers (``algua/registry/challenges.py``,
-``live_gate.py``, ``human_actor.py``) and the capital allocations the live wall gates
-(``algua/registry/allocations.py``).
+The go-live challenge/signature ledger (``algua/registry/challenges.py``, ``live_gate.py``) and
+the capital allocations the live wall gates (``algua/registry/allocations.py``).
+``actor_challenges`` is HISTORICAL: the signed ``--actor human`` override it served was removed
+(spec 2026-11-13). The table and its rows are kept (no migration); nothing writes to it.
 """
 from __future__ import annotations
 

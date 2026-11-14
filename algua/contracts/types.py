@@ -77,7 +77,7 @@ class ExecutionContract:
     # Transaction-cost model (issue #325). Both are per-side PROPORTIONAL frictions on trade
     # notional, expressed as fractional decimals (0.0005 = 5 bps). They are charged by the backtest
     # at execution time (see algua.backtest.engine.simulate -> vbt.from_orders fees=/slippage=), so
-    # every metric downstream — Sharpe, DSR, bootstrap, FDR, regime robustness, and the paper
+    # every metric downstream — Sharpe, DSR, bootstrap, and the paper
     # forward gate — evaluates NET-OF-COST returns. Two DISTINCT frictions, NOT double-counting:
     #   - fees:     commission / exchange+regulatory charge, proportional to |trade notional|.
     #   - slippage: half-spread + market-impact, an ADVERSE per-side fill-price move (buys/covers

@@ -181,10 +181,10 @@ def test_series_payload_returns_holdout_interval_context_without_per_bar_values(
     best-of-N surface sweep()'s holdout burn exists to prevent); it may only return the
     non-sensitive interval/n_bars scalars, enough to shade a chart's OOS region."""
     rec = repo.add("alpha")
-    reservation_id, _reused = repo.reserve_holdout(
+    reservation_id = repo.reserve_holdout(
         rec.id, data_source="synthetic", snapshot_id=None,
         period_start="2024-01-01", period_end="2024-06-01", holdout_frac=0.2,
-        holdout_start="2024-05-01", holdout_end="2024-05-03", allow_reuse=False,
+        holdout_start="2024-05-01", holdout_end="2024-05-03",
     )
     repo.finalize_holdout_reservation(reservation_id, config_hash="cfg", strategy_id=rec.id)
     holdout_returns_id = repo.record_holdout_returns(

@@ -793,10 +793,9 @@ def test_v33_backfills_legacy_binding_rows_into_cohorts(tmp_path):
 def test_529_relabels_old_cohort_size_binding_rows(tmp_path):
     """#529: binding rows labeled under a PRIOR (larger) FDR_COHORT_SIZE — e.g. (cohort=0,
     index=1..10) as recorded under N=64 — are re-partitioned to the CURRENT size (N=8) so a stale
-    within-cohort index > N can never wedge fdr_stream_state. Idempotent; fdr_alpha_level/passed
-    frozen; the re-labeled stream reads back cleanly."""
+    within-cohort index > N can never wedge the (now removed) stream reader. Idempotent;
+    fdr_alpha_level/passed frozen."""
     from algua.registry.db import FDR_COHORT_SIZE
-    from algua.registry.store import SqliteStrategyRepository
 
     assert FDR_COHORT_SIZE == 8
     conn = connect(tmp_path / "r.db")
@@ -837,12 +836,8 @@ def test_529_relabels_old_cohort_size_binding_rows(tmp_path):
     assert rows[0]["fdr_alpha_level"] == 0.01
     assert abs(rows[8]["fdr_alpha_level"] - 0.09) < 1e-9
     assert rows[0]["passed"] == 1 % 2
-    # The stream reads back cleanly (was None-wedged before the re-partition): the next test joins
-    # the partially-filled cohort 1 at within-cohort position 3.
-    repo = SqliteStrategyRepository(conn)
-    stream = repo.fdr_stream_state()
-    assert stream is not None
-    assert (stream.t, stream.cohort_index, stream.binding_tests) == (3, 1, n)
+    # (The fdr_stream_state reader was removed in lean trim step 7; this migration still runs so
+    # historical rows keep the labels they had.)
 
     before = [dict(r) for r in rows]
     migrate(conn)  # idempotent — no second re-partition

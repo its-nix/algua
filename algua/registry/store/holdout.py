@@ -24,8 +24,7 @@ class HoldoutLedgerMixin:
         holdout_frac: float,
         holdout_start: str,
         holdout_end: str,
-        allow_reuse: bool,
-    ) -> tuple[int, bool]:
+    ) -> int:
         # TOP-LEVEL ONLY. A manual BEGIN IMMEDIATE inside an already-open transaction raises
         # "cannot start a transaction within a transaction", and a blanket rollback below could
         # roll back a caller's surrounding tx. Fail loudly so the contract is enforced, not assumed.
@@ -63,20 +62,18 @@ class HoldoutLedgerMixin:
                 "      OR (holdout_start <= ? AND ? <= holdout_end)) LIMIT 1",
                 (strategy_id, holdout_end, holdout_start),
             ).fetchone()
-            overlap = row is not None
-            if overlap and not allow_reuse:
+            if row is not None:
                 raise ValueError(
                     "holdout already consumed: an overlapping out-of-sample window was already "
-                    "evaluated. Use fresh out-of-sample data, or --allow-holdout-reuse "
-                    "(--actor human) to override and accept the statistical cost.")
-            reused = bool(overlap)  # only reachable here with allow_reuse when overlap is True
+                    "evaluated. Use fresh out-of-sample data; the holdout is single-use for "
+                    "every actor.")
             cur = self._conn.execute(
                 "INSERT INTO holdout_evaluations"
                 "(strategy_id, data_source, snapshot_id, period_start, period_end, holdout_frac,"
                 " config_hash, reused, created_at, committed_at, holdout_start, holdout_end)"
                 " VALUES (?,?,?,?,?,?,?,?,?,NULL,?,?)",
                 (strategy_id, data_source, snapshot_id, period_start, period_end, holdout_frac,
-                 "", int(reused), _now(), holdout_start, holdout_end),
+                 "", 0, _now(), holdout_start, holdout_end),
             )
             self._conn.commit()
         except BaseException:
@@ -84,7 +81,7 @@ class HoldoutLedgerMixin:
             raise
         rowid = cur.lastrowid
         assert rowid is not None  # a successful INSERT always sets lastrowid
-        return rowid, reused
+        return rowid
 
     def finalize_holdout_reservation(
         self, reservation_id: int, *, config_hash: str, strategy_id: int

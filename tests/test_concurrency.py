@@ -28,53 +28,6 @@ ALGUA_BIN = Path(sys.executable).parent / "algua"
 STRATEGY_E2E = "cross_sectional_momentum"
 
 
-def _ensure_family_in_db(db_path: Path, strategy_name: str, family_name: str) -> None:
-    """Pre-assign a strategy to a family in the given DB file.
-
-    Task 4 (#222): promotion_preflight now requires a family assignment. Tests that probe
-    non-family behavior must satisfy this prerequisite.
-    """
-    from datetime import UTC, datetime
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    now = datetime.now(UTC).isoformat()
-    try:
-        row = conn.execute(
-            "SELECT family_id FROM family_members WHERE strategy_name=? AND removed_at IS NULL",
-            (strategy_name,),
-        ).fetchone()
-        if row is not None:
-            return
-        with conn:
-            cur = conn.execute(
-                "INSERT INTO families(name, created_at, created_by_actor, created_by_strategy)"
-                " VALUES (?,?,?,?)",
-                (family_name, now, "agent", strategy_name),
-            )
-            fam_id = cur.lastrowid
-            conn.execute(
-                "INSERT INTO family_events(event_type, family_id, actor, created_at)"
-                " VALUES (?,?,?,?)",
-                ("family_created", fam_id, "agent", now),
-            )
-            conn.execute(
-                "INSERT INTO family_members(family_id, strategy_name, joined_at, joined_by_actor)"
-                " VALUES (?,?,?,?)",
-                (fam_id, strategy_name, now, "agent"),
-            )
-            conn.execute(
-                "INSERT INTO family_events"
-                "(event_type, family_id, strategy_name, actor,"
-                " clustering_verdict, similarity_score, clustering_version,"
-                " clustering_config_json, axis_json, matched_family_id, created_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                ("strategy_assigned", fam_id, strategy_name, "agent",
-                 "NOVEL", 0.0, "v0", "{}", "{}", None, now),
-            )
-    finally:
-        conn.close()
-
-
 def test_connect_sets_busy_timeout(tmp_path):
     conn = connect(tmp_path / "b.db")
     assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
@@ -443,15 +396,16 @@ def test_sequential_reserve_blocks_second_claim(tmp_path):
     SqliteStrategyRepository(c1).reserve_holdout(
         sid, data_source="demo", snapshot_id=None,
         period_start="2022-01-01", period_end="2022-12-31", holdout_frac=0.2,
-        holdout_start="2022-10-01", holdout_end="2022-12-31", allow_reuse=False)
+        holdout_start="2022-10-01", holdout_end="2022-12-31")
     c2 = connect(db)
     with pytest.raises(ValueError, match="holdout already consumed"):
         SqliteStrategyRepository(c2).reserve_holdout(
             sid, data_source="demo", snapshot_id=None,
             period_start="2022-06-01", period_end="2023-06-01", holdout_frac=0.2,
-            holdout_start="2022-12-01", holdout_end="2023-03-01", allow_reuse=False)
+            holdout_start="2022-12-01", holdout_end="2023-03-01")
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not ALGUA_BIN.exists(), reason="algua console script not installed")
 def test_concurrent_research_promote_single_burn_e2e(tmp_path):
     """The issue's literal ask: two real `algua research promote` processes race the SAME
@@ -462,9 +416,9 @@ def test_concurrent_research_promote_single_burn_e2e(tmp_path):
     db = tmp_path / "e2e.db"
     env = {**os.environ, "ALGUA_DB_PATH": str(db), "ALGUA_DATA_DIR": str(tmp_path)}
 
-    # #329: a real subprocess cannot authenticate `--actor human` (no interactive signature), so the
-    # race is run on the AGENT-LEGAL path — a reproducible bars snapshot + a PIT universe + MEASURED
-    # breadth from `backtest sweep`, no human-only relaxation. The burn race is actor-independent
+    # The gates have no relaxation for any actor (spec 2026-11-13), so the race runs on the only
+    # path there is — a reproducible bars snapshot + a PIT universe + MEASURED breadth from
+    # `backtest sweep`. The burn race is actor-independent
     # (a committed DB row), so this exercises exactly the same single-use guard as before.
     import numpy as _np
     import pandas as _pd
@@ -502,12 +456,8 @@ def test_concurrent_research_promote_single_burn_e2e(tmp_path):
         cwd=REPO_ROOT, capture_output=True, text=True, env=env)
     assert sweep.returncode == 0, f"sweep failed:\n{sweep.stderr}\n{sweep.stdout}"
 
-    # Task 4 (#222): pre-assign family so the clustering guard passes in both concurrent processes.
-    _ensure_family_in_db(db, STRATEGY_E2E, "csm_e2e_family")
-
     promote_args = [str(ALGUA_BIN), "research", "promote", STRATEGY_E2E, *common,
                     "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                    "--min-pct-positive", "0", "--min-window-sharpe", "-100",
                     "--windows", "2", "--actor", "agent"]
 
     def _launch():
@@ -529,9 +479,8 @@ def test_concurrent_research_promote_single_burn_e2e(tmp_path):
         pytest.fail("e2e promote processes timed out after 180s")
 
     # The single-use HOLDOUT BURN is the concurrency invariant under test, and it is
-    # actor-INDEPENDENT (a committed DB row reserved under BEGIN IMMEDIATE). On the agent path the
-    # measured-breadth strategy faces the funnel-wide FDR gate (which declared/human breadth would
-    # skip), so the gate verdict here may be a FAIL — but a FAIL still burns the holdout exactly
+    # actor-INDEPENDENT (a committed DB row reserved under BEGIN IMMEDIATE). The gate verdict here
+    # may be a FAIL — but a FAIL still burns the holdout exactly
     # once (see test_failing_first_promote_still_burns_holdout). What must hold regardless of the
     # verdict: the two racing processes commit EXACTLY ONE burn and leave EXACTLY ONE holdout row —
     # one process wins the reservation, the other fails closed at reserve (or preflight).

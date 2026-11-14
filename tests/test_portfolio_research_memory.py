@@ -77,6 +77,7 @@ def test_actual_public_replay_survives_capture_cleanup_and_readback(
     assert snapshot["coverage"]["omitted_observations"] == 0
 
 
+@pytest.mark.slow
 def test_actual_contained_portfolio_context_survives_prune_with_no_authored_operations(
         memory_case, replay, monkeypatch):
     from algua.operator import campaign_memory as module

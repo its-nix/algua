@@ -19,7 +19,7 @@ import json
 import sqlite3
 from typing import Any
 
-from algua.registry.gate_history import GATE_DECISION_ALLOWLIST, _project_decision
+from algua.registry.gate_history import GATE_DECISION_PROJECTION, _project_decision
 from algua.registry.store import SqliteStrategyRepository
 from algua.registry.store.run_public import public_extra
 
@@ -98,7 +98,7 @@ def run_detail_payload(repo: SqliteStrategyRepository, run_id: int) -> dict[str,
             "SELECT decision_json FROM gate_evaluations WHERE id = ?", (payload["gate_id"],)
         ).fetchone()
         if gate_row is not None:
-            projected = _project_decision(gate_row["decision_json"], GATE_DECISION_ALLOWLIST)
+            projected = _project_decision(gate_row["decision_json"], GATE_DECISION_PROJECTION)
             payload["gate_decision"] = projected["decision"]
             if "decision_dropped_keys" in projected:
                 payload["gate_decision_dropped_keys"] = projected["decision_dropped_keys"]

@@ -87,7 +87,7 @@ without rerunning calculations. `--summary` is available when those detailed res
 `backtest|sweep|promote`, **not** walk-forward or `summary/track`. Keep standalone walk-forward.
 Record actual `sweep_trial` rows/overflow and failures; a sweep parent or claim slot is not a variant.
 Known proxy qualification ends `integrity_fail`, `preview_gate: null`, no `merge_back`; report empirical
-falsification separately. Do not pass `--n-combos`, human relaxation flags or a fabricated universe.
+falsification separately. Do not pass a fabricated universe; breadth is always measured and the gates have no relaxation.
 
 ## Isolated preparation commands
 
@@ -100,7 +100,6 @@ export ALGUA_DB_PATH="$PREP_ROOT/prep.db" ALGUA_DATA_DIR="$PREP_ROOT/data"
 export ALGUA_KNOWLEDGE_DIR="$PREP_ROOT/kb" ALGUA_TRACKING_BACKEND=noop
 uv run algua research idea add --title 'PREPARATION_ONLY midcap persistence' --source-type manual --category momentum --market us_equities --horizon daily --required-data ohlcv --family momentum --hypothesis 'PREPARATION_ONLY; fixed c63d16f44419cb96; no execution' --falsification 'Untested preparation; no economic result'
 uv run algua research idea cycle-start --run midcap-prep --limit 3 --timeout 20m --workers 1 --cpu-seconds 1200 --memory-mb 16384 --file-mb 512 --menu-only
-uv run algua research campaign-menu --budget 3
 ```
 
 On the prepared **Linux** release only, the same isolated environment can inspect the driver with

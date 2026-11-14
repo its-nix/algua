@@ -17,6 +17,8 @@ from tests.test_frozen_model_wire import identity, model_early, model_late
 from tests.test_trained_model_context import authored
 from tests.test_trained_model_context import trained as trained
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 
 def test_model_scores_weights_and_intents_match_research(trained, tmp_path):
     strategy, early = model_early(trained)

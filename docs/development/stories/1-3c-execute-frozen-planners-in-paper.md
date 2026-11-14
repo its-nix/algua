@@ -132,7 +132,7 @@ wire protocol version. A future operational setting may only tighten a bound.
 ### Review Findings
 
 Independent review round 1 (2026-09-30): Codex was out of quota, so the story-delivery fallback ran
-BMAD Blind Hunter + Edge Case Hunter over three bounded file groups (wire/child/primitive; port and
+Blind Hunter + Edge Case Hunter over three bounded file groups (wire/child/primitive; port and
 planner; registry and CLI), an Acceptance Auditor over the whole story, and an opt-in test against a
 real provisioned environment. Every finding was either patched or accepted as a recorded residual.
 

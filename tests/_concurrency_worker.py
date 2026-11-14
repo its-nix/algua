@@ -156,12 +156,12 @@ def op_reserve_holdout(db_path, barrier, wid, name, period_start, period_end, ho
     wait_for(barrier, "go")
     touch(barrier, f"attempting-{wid}")
     try:
-        rid, reused = repo.reserve_holdout(
+        rid = repo.reserve_holdout(
             sid, data_source="demo", snapshot_id=None,
             period_start=period_start, period_end=period_end,
             holdout_frac=float(holdout_frac),
-            holdout_start=holdout_start, holdout_end=holdout_end, allow_reuse=False)
-        _emit({"ok": True, "wid": wid, "rid": rid, "reused": reused})
+            holdout_start=holdout_start, holdout_end=holdout_end)
+        _emit({"ok": True, "wid": wid, "rid": rid})
     except ValueError as exc:
         _emit({"ok": False, "wid": wid, "error": "ValueError", "msg": str(exc)})
     except Exception as exc:

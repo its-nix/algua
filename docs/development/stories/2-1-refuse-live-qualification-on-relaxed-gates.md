@@ -4,7 +4,13 @@ baseline_commit: e875b6d
 
 # Story 2.1: Refuse live qualification built on relaxed gates
 
-Status: ready-for-dev
+Status: backlog — policy revision required
+
+Owner alignment, 2026-11-14: the historical-economic plus short-paper operational route in PRD §16
+is the adopted experimental-delivery target. This story's blanket unrelaxed-defaults qualification
+predicate is an older target and must be revised before implementation. Retain exact relaxation
+recording, auditability, identity binding and no-agent-waiver goals. Existing executable gates
+remain binding; this notice neither implements the new route nor authorizes a relaxation.
 
 Prepared: 2026-10-04. Baseline: `e875b6d` (main after PR #686). Epic: 2.
 Requirements: FR14 (signed-relaxation policy), FR8 (live-wall preconditions), NFR2, NFR4–NFR6,

@@ -34,6 +34,8 @@ from algua.risk.limits import WEIGHT_TOL, RiskBreach
 from algua.strategies.base import LoadedStrategy, StrategyConfig
 from algua.strategies.loader import load_strategy
 
+pytestmark = pytest.mark.serial  # writes into the real algua/ source tree
+
 START = datetime(2024, 1, 1, tzinfo=UTC)
 END = datetime(2024, 6, 1, tzinfo=UTC)
 

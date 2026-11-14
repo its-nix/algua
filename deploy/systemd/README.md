@@ -78,7 +78,7 @@ deploy/systemd/install-user-units.sh --dry-run  # print the rendered units, writ
 
 For each of `algua-research.{service,timer,path}`, `algua-paper.{service,timer}`,
 `algua-mergeback-drain.{service,timer}`, `algua-forage.{service,timer}`,
-`algua-leap.{service,timer}`, `algua-web.service`
+`algua-leap.{service,timer}`
 it renders the `/opt/algua` template to `~/.config/systemd/user/<name>`, replacing `/opt/algua`
 with the actual repo root (resolved from the script's own location; a root containing whitespace
 or any character outside `[A-Za-z0-9/._-]` fails closed — plain substitution can't safely render
@@ -426,10 +426,10 @@ when only the paper operator shipped. It uses the **explore-isolated** topology.
 - seeds a **per-run scratch funnel** from the real registry via sqlite's consistent online backup, and
   wires the agent to it — `ALGUA_DB_PATH`, `ALGUA_KNOWLEDGE_DIR`, `ALGUA_MLFLOW_TRACKING_URI` point at
   scratch; only `ALGUA_DATA_DIR` (the immutable snapshots) is the real one, shared read-only. So the
-  agent's walk-forward/sweep/promote see the REAL accumulated breadth, families, and burned holdouts (a
+  agent's walk-forward/sweep/promote see the REAL accumulated breadth and burned holdouts (a
   realistic pass/fail **preview**), but every write lands on the copy — **exploration can never mutate
-  the authoritative FDR ledger / family graph / holdout rows**, and wasted search never taxes the real
-  funnel;
+  the authoritative breadth / gate / holdout rows**, and wasted search never inflates the real DSR
+  trial count;
 - runs `opencode run` (bounded by `TIMEOUT`, default 45m) to drive ideate → author → walk-forward/sweep →
   `research promote` (preview) up to `candidate`, then writes a report to `kb/research-runs/<stamp>.md`
   on the branch, ending in a machine-readable trailer naming, per hypothesis, its verdict and — for a
@@ -439,7 +439,7 @@ when only the paper operator shipped. It uses the **explore-isolated** topology.
   drainer (factory slice 3) to run for real — see "Auto merge-back" below.
 
 **Why isolated and not "direct authoritative".** `opencode run` runs unsandboxed and could edit
-`promotion.py`/`gates.py`/`fdr_lord.py` in its mutable worktree; strategy code and gate code are the
+`promotion.py`/`gates.py` in its mutable worktree; strategy code and gate code are the
 same Python package, so if the agent ran against the real funnel it could execute altered gate logic
 against the real registry. CODEOWNERS only gates *merges to main*, not a live agent's local execution.
 Exploration therefore runs on a throwaway copy, and the **only** path to the authoritative funnel is
@@ -454,23 +454,22 @@ worktree). Enable with `sudo systemctl enable --now algua-research.timer`.
 not a promotion. The launcher enqueues every valid `merge_back` it parses from the report trailer;
 the merge-back drainer (`algua-mergeback-drain.timer`, every 30m) runs the REAL
 `paper merge-back --branch research-run/<stamp> --strategy <name> --universe <u> --start D --end D`
-for it through `algua operator lock-run`. That is the trusted, authoritative promote (real breadth
-tax, real single-use holdout burn, family mint) + gated code merge + paper intake. The agent
+for it through `algua operator lock-run`. That is the trusted, authoritative promote (real recorded
+breadth, real single-use holdout burn) + gated code merge + paper intake. The agent
 **cannot go live** (human-signed cryptographic wall) and cannot merge the CODEOWNERS-protected
 integrity files. A human can still force one through immediately instead of waiting for the next
 drain cycle: `uv run algua paper merge-back --branch <b> --strategy <s> --universe <u> --start D
 --end D` (see "Direct-invocation residual risk" above for why that bypasses the shared lock).
 
-**Cadence and the FDR budget.** The timer runs at **factory cadence: every 2h, 12 runs/day**
+**Cadence and the trial count.** The timer runs at **factory cadence: every 2h, 12 runs/day**
 (`OnCalendar=*-*-* 00/2:00:00 UTC`). That rate is safe for the funnel *because* exploration is
 scratch: a cycle's `research promote` is a preview that records NO breadth and burns NO holdout on
-the authoritative funnel, so it never consumes the FDR budget (**≤16 promotion-eligible binding
-tests / rolling 365 days**). That budget is spent only by an actual `paper merge-back` run — which
-records a metered breadth tax that raises the promotion Sharpe bar for ALL future strategies. So the
-producer can run as often as configured; the drainer paces the *merge-backs* (one per 30-minute
-cycle). The holdout is single-use *per strategy*, so the loop keeps authoring new strategies on the
-existing snapshot — the breadth/FDR tax at merge-back, not the holdout, is what makes it
-progressively harder. The real per-cycle costs are compute/API (tune `N_HYPOTHESES` / `TIMEOUT` in
+the authoritative funnel. Breadth is recorded only by an actual `paper merge-back` run, and every
+recorded sweep raises the DSR trial count (max of a strategy's own lifetime combos and the
+funnel-wide combos in the 90-day window) that the advisory deflated-Sharpe signal is computed
+against for ALL future strategies. So the producer can run as often as configured; the drainer
+paces the *merge-backs* (one per 30-minute cycle). The holdout is single-use *per strategy*, so the
+loop keeps authoring new strategies on the existing snapshot. The real per-cycle costs are compute/API (tune `N_HYPOTHESES` / `TIMEOUT` in
 the env file; provider rate-limit hits are recorded per run and are recorded per run in the
 digest — see below) and disk (auto-pruned; see below).
 
@@ -548,17 +547,20 @@ the research loop each serialize against THEMSELVES only, on their own
 `data/{leap,forage,research-loop}.lock` flock, so an overlapping firing of the same unit skips
 cleanly instead of queueing.
 
-**Privileges (spec §9).** All three run a sandboxed agent behind `.opencode/scripts/run_agent.sh`, which re-imposes a kernel write wall with bwrap
-(writes confined to its throwaway run worktree) with a TRUSTED, unsandboxed DRIVER doing every
-authoritative write after the agent exits: the forage agent gets the shell network off and only
-the runtime's own web search (the FORAGE_MCP bypass is GONE: OpenCode configures MCP declaratively in opencode.json, so no wall has to drop —
-loudly logged) and no registry path at all, with the driver validating and landing survivors via
-`research inspirations accept`; the leap agent gets no web access and a THROWAWAY SCRATCH COPY of
-the registry (it can read the real pool's history but write only scratch), with the driver doing
-the real `research idea import` (re-dedup, eligibility, cap), the critic ledger, and the
-inspirations bookkeeping; the research agent is unchanged (shell network on for `uv`, scratch
-registry copy, `claim` before / `record-outcome` after via the driver, `link` via the drainer). No
-agent in this trio ever holds a path to the authoritative registry or vault directly.
+**Privileges.** All three agents launch through `.opencode/scripts/run_agent.sh`.
+`ALGUA_AGENT_SANDBOX=bwrap` adds a filesystem write boundary: most host paths are read-only,
+`/tmp` is private, and the worktree plus runtime-state paths remain writable. `auto` selects bwrap
+when available and otherwise runs with `none`; it is not a fail-closed sandbox guarantee.
+The seam does not isolate networking or hide all readable host files. The forage profile denies
+the shell tool and enables web tools; leap denies web tools but allows a shell, whose networking
+is not disabled. MCP uses declarative runtime configuration; there is no `FORAGE_MCP` bypass.
+
+Research and leap receive scratch registry paths; forage receives no configured registry path.
+These routing choices are not proof that authoritative host files are inaccessible. Trusted
+drivers validate and perform authoritative writes after the agent exits: forage accepts notes,
+leap imports hypotheses and records critic outcomes, and research records claims/outcomes and
+queues eligible merge-backs. Verify the actual sandbox mode and deployment permissions before
+relying on containment.
 
 **The vault's sources registry.** `kb/inspirations/` is runtime state and git-ignored; the tracked
 artifact is the SEED at `deploy/kb/inspirations/_sources.yaml`, which `install-user-units.sh` (and
@@ -570,8 +572,8 @@ your curation and the `write-yield` stamps are never overwritten.
 `ALGUA_RESEARCH_HYPOTHESES_PER_RUN`, `ALGUA_IDEA_POOL_FLOOR_DAYS`, `ALGUA_IDEA_POOL_CEILING_DAYS`,
 `ALGUA_IDEA_CLAIM_TTL_MINUTES`, `ALGUA_IDEA_PREVIEW_HOLD_HOURS` drive the pool-depth math
 (`refill_at`/`ceiling` = `runs_per_day * hypotheses_per_run * {floor,ceiling}_days`); `LEAP_MAX_IDEAS`
-bounds hypotheses per leap; `FORAGE_MAX_NOTES`/`FORAGE_SLICES`/`FORAGE_MCP` bound notes per forage
-run, the category rotation width, and the MCP opt-in.
+bounds hypotheses per leap; `FORAGE_MAX_NOTES`/`FORAGE_SLICES` bound notes per forage run and
+the category rotation width.
 
 **Done.** `uv run algua research idea depth` shows a non-empty pool that recovers above
 `refill_at` within one leap interval after a research run; `uv run algua research idea scorecard
@@ -594,8 +596,7 @@ promote-failed / gate-failed-exhausted — never retried) | `promoted_allocated`
 (status update) — mutate it ONLY under `mergeback-queue.lock` (a dedicated, non-blocking flock with
 a short bounded retry; queue mutations are sub-second), via
 `.opencode/scripts/mergeback_queue.py`'s atomic tmp+fsync+`os.replace` read-modify-write (the same
-idiom `web/backend/push.py` uses for its subscription store, ported to this bash-driven side of the
-system since that module is FastAPI-process-local). The research driver only enqueues (idempotent
+standard idiom, in this bash-driven side of the system). The research driver only enqueues (idempotent
 on the `(strategy, branch)` key — a re-enqueue of an existing key is a no-op, since a branch is
 produced exactly once per research-run stamp); it never runs merge-back itself, so queue depth can
 never extend a research cycle past its own `TIMEOUT` budget.

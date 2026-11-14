@@ -3,8 +3,13 @@ from __future__ import annotations
 
 import inspect
 
+import pytest
+
 from algua.registry.approvals import compute_artifact_hashes
 from algua.strategies.loader import load_strategy
+from tests._context_strategies import context_strategies  # noqa: F401
+
+pytestmark = [pytest.mark.serial, pytest.mark.usefixtures("context_strategies")]
 
 
 def test_authored_signal_for_fundamentals_strategy_resolves_to_correct_module():

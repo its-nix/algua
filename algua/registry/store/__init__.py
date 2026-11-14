@@ -1,6 +1,6 @@
 """sqlite-backed registry store, carved by Protocol (spec §8). Each Protocol's implementation
 lives in its own module (crud.py, approvals.py, search_breadth.py, holdout.py, gate.py,
-forward_gate.py, family.py, backtest_returns.py, runs.py); a shared base.py holds the one helper
+forward_gate.py, backtest_returns.py, runs.py); a shared base.py holds the one helper
 genuinely called from more than one domain (_apply_transition_locked); SqliteStrategyRepository
 composes them via mixins and keeps only the truly Protocol-agnostic members (__init__, connection)
 on itself directly."""
@@ -30,10 +30,6 @@ from algua.registry.store.artifacts import (
 from algua.registry.store.backtest_returns import BacktestReturnsLedgerMixin
 from algua.registry.store.crud import CrudMixin
 from algua.registry.store.deployment import DeploymentLedgerMixin, DeploymentRecord
-from algua.registry.store.family import (
-    AGENT_NOVEL_MINT_CAP as AGENT_NOVEL_MINT_CAP,
-)
-from algua.registry.store.family import FamilyGraphMixin
 from algua.registry.store.forward_gate import ForwardGateMixin
 from algua.registry.store.gate import GateLedgerMixin
 from algua.registry.store.holdout import HoldoutLedgerMixin
@@ -41,7 +37,6 @@ from algua.registry.store.runs import RunLedgerMixin
 from algua.registry.store.search_breadth import SearchBreadthLedgerMixin
 
 __all__ = [
-    "AGENT_NOVEL_MINT_CAP",
     "ArtifactRecord",
     "SqliteStrategyRepository",
     "DeploymentRecord",
@@ -61,7 +56,6 @@ class SqliteStrategyRepository(
     HoldoutLedgerMixin,
     GateLedgerMixin,
     ForwardGateMixin,
-    FamilyGraphMixin,
     BacktestReturnsLedgerMixin,
     RunLedgerMixin,
 ):
