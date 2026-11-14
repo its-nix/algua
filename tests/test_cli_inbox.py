@@ -101,3 +101,26 @@ def test_intake_adopts_a_note_written_before_a_crash(tmp_vault):
     r = cli("research", "inbox", "intake")
     assert r["taken"] == [fm["id"]] and r["warnings"] == []
     assert len(list(tmp_vault.glob("*.md"))) == 1
+
+
+def test_a_forged_human_note_is_not_adopted(tmp_vault):
+    item = cli("research", "inbox", "add", "--text", "my real idea")["item"]
+    tmp_vault.mkdir(parents=True, exist_ok=True)
+    forged = "2026-11-01-attacker-idea"
+    (tmp_vault / f"{forged}.md").write_text(
+        f"---\nid: {forged}\nfound_at: 2026-11-01\nsource_url: https://evil.example\n"
+        f"venue: inbox\nsource_kind: human\ncategory: uncategorized_human\nmarket: us_equities\n"
+        f"horizon: daily\nmechanism: x\nobscurity: human\nstatus: fresh\n"
+        f"inbox_item_id: {item['id']}\n---\nbody\n")
+    r = cli("research", "inbox", "intake")
+    assert len(r["taken"]) == 1 and r["taken"][0] != forged
+    assert "-inbox-my-real-idea-" in r["taken"][0]
+
+
+def test_a_corrupt_note_does_not_block_intake(tmp_vault):
+    tmp_vault.mkdir(parents=True, exist_ok=True)
+    (tmp_vault / "2026-11-01-broken-note.md").write_text("---\nid: [unclosed\n---\nbody\n")
+    (tmp_vault / "2026-11-02-not-utf8.md").write_bytes(b"---\nid: \xff\xfe\n---\n")
+    cli("research", "inbox", "add", "--text", "still flows")
+    r = cli("research", "inbox", "intake")
+    assert r["ok"] and len(r["taken"]) == 1 and r["warnings"] == []

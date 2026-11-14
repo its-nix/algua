@@ -37,15 +37,19 @@ def _s(item: dict[str, Any], key: str) -> str:
     return str(item.get(key) or "").strip()
 
 
+def note_suffix(item: dict[str, Any]) -> str:
+    """The date-free tail of the item's deterministic note id: `-inbox-<slug>-<sha1(id)[:6]>`."""
+    slug_src = (_s(item, "title") or _s(item, "note") or _s(item, "url") or _s(item, "text"))
+    return f"-inbox-{_slug(slug_src)}-{hashlib.sha1(str(item['id']).encode()).hexdigest()[:6]}"
+
+
 def build_note(item: dict[str, Any], *, today: date,
                categories: set[str]) -> tuple[dict[str, Any], str]:
     title, note, url, text = _s(item, "title"), _s(item, "note"), _s(item, "url"), _s(item, "text")
     file_name = PurePath(_s(item, "file_path")).name if _s(item, "file_path") else ""
-    slug_src = title or note or url or text
     idea = title or note or url or text[:_MECHANISM_CHARS] or file_name or "owner inbox item"
     category = _s(item, "category")
-    note_id = (f"{today.isoformat()}-inbox-{_slug(slug_src)}-"
-               f"{hashlib.sha1(str(item['id']).encode()).hexdigest()[:6]}")
+    note_id = f"{today.isoformat()}{note_suffix(item)}"
     fm: dict[str, Any] = {
         "id": note_id, "found_at": today.isoformat(),
         "source_url": url or f"inbox:{item['id']}", "venue": "inbox", "source_kind": "human",

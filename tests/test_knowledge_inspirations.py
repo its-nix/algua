@@ -263,3 +263,20 @@ def test_list_notes_puts_human_first_and_filters_source_kind(tmp_path):
     assert [n["id"] for n in list_notes(s)] == [
         "2026-11-01-inbox-b-idea", "2026-11-10-a-paper-note"]
     assert [n["id"] for n in list_notes(s, source_kind="human")] == ["2026-11-01-inbox-b-idea"]
+
+
+def test_accept_new_notes_rejects_owner_provenance_claims(tmp_path):
+    # Only `research inbox intake` writes owner notes: a staged (web-derived) note claiming
+    # `source_kind: human` or an `inbox_item_id` would let forage hijack an owner's inbox item.
+    s = _settings(tmp_path)
+    staged = tmp_path / "staged"
+    staged.mkdir()
+    (staged / "2026-11-12-inbox-fake-abc123.md").write_text(
+        _human("2026-11-12-inbox-fake-abc123"))
+    (staged / "2026-09-08-quiet-turnover-drift.md").write_text(
+        GOOD.replace("status: fresh", "status: fresh\ninbox_item_id: 1"))
+    out = accept_new_notes(staged_dir=staged, settings=s, seen_path=tmp_path / "seen.jsonl",
+                           categories=CATS, run_stamp="r", max_notes=10)
+    assert out["accepted"] == []
+    assert len(out["rejected"]) == 2 and all(
+        "reserved for inbox intake" in " ".join(r["reasons"]) for r in out["rejected"])

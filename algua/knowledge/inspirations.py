@@ -149,6 +149,10 @@ def accept_new_notes(*, staged_dir: Path, settings: Settings, seen_path: Path,
             rejected.append({"file": path.name,
                              "reasons": [f"unparseable frontmatter: {exc}"]})
             continue
+        # Owner notes are written ONLY by `research inbox intake`; staged (web-derived) notes may
+        # never claim that provenance or point at an inbox item.
+        if fm.get("source_kind") == "human" or "inbox_item_id" in fm:
+            reasons.append("source_kind human / inbox_item_id are reserved for inbox intake")
         if not reasons and url_hash(str(fm["source_url"])) in seen_hashes:
             reasons.append("already seen: source_url")
         exists = stem in sheet_ids if table is not None else (dest / path.name).exists()

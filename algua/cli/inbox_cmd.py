@@ -5,6 +5,7 @@ driver-facing: `leap.sh` runs it on every firing, before any gate, and turns eac
 exactly one `source_kind: human` inspiration in the vault."""
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -14,9 +15,14 @@ import typer
 from algua.cli._common import ok
 from algua.cli.app import emit
 from algua.cli.errors import json_errors
-from algua.config.settings import get_settings
-from algua.knowledge.inbox_notes import build_note
-from algua.knowledge.inspirations import MAX_NOTE_BYTES, list_notes, write_note
+from algua.config.settings import Settings, get_settings
+from algua.knowledge.inbox_notes import build_note, note_suffix
+from algua.knowledge.inspirations import (
+    MAX_NOTE_BYTES,
+    inspirations_dir,
+    parse_note,
+    write_note,
+)
 from algua.primitives.timeparse import now_iso
 from algua.registry.db import registry_conn
 from algua.registry.idea_links import ideas_by_inspiration, journey
@@ -73,6 +79,30 @@ def list_cmd(limit: int = typer.Option(50, "--limit", min=1, max=500)) -> None:
     emit(ok({"items": [{**item, "journey": journey(item, ideas)} for item in items]}))
 
 
+def _already_written(settings: Settings, item: dict[str, Any],
+                     warnings: list[dict[str, Any]]) -> str | None:
+    """The item's own note, written on an earlier run that crashed before `mark_taken`.
+
+    Only a file at the item's deterministic id (any date + `note_suffix`) qualifies, and only if
+    it really is that item's inbox note — never a scan of the whole vault, so neither another
+    note's claim of `inbox_item_id` nor one corrupt note elsewhere can affect this item."""
+    pattern = re.compile(rf"^\d{{4}}-\d{{2}}-\d{{2}}{re.escape(note_suffix(item))}$")
+    d = inspirations_dir(settings)
+    for path in sorted(d.glob(f"*{note_suffix(item)}.md")) if d.exists() else []:
+        if not pattern.match(path.stem):
+            continue
+        try:
+            fm, _ = parse_note(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            warnings.append({"item": item["id"], "error": f"unreadable {path.name}: {exc}"})
+            continue
+        if (isinstance(fm, dict) and fm.get("id") == path.stem and fm.get("venue") == "inbox"
+                and fm.get("source_kind") == "human"
+                and str(fm.get("inbox_item_id")) == str(item["id"])):
+            return path.stem
+    return None
+
+
 @inbox_app.command("intake")
 @json_errors
 def intake_cmd() -> None:
@@ -80,14 +110,11 @@ def intake_cmd() -> None:
     settings = get_settings()
     categories = set(load_categories(categories_file_default()))
     today = datetime.now(UTC).date()
-    # A note written but not yet marked taken (a crash in between) is adopted, not rewritten.
-    written = {str(fm["inbox_item_id"]): str(fm["id"])
-               for fm in list_notes(settings, source_kind="human") if fm.get("inbox_item_id")}
     taken: list[str] = []
     warnings: list[dict[str, Any]] = []
     with registry_conn() as conn:
         for item in queued_items(conn):
-            note_id = written.get(str(item["id"]))
+            note_id = _already_written(settings, item, warnings)
             if note_id is None:
                 try:
                     fm, body = build_note(item, today=today, categories=categories)
