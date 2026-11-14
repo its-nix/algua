@@ -4,6 +4,11 @@ Algua is being built into a mostly autonomous quantitative trading company. You 
 drive the system through the **same** CLI. Every data command emits JSON on stdout.
 
 ## Orientation — where to look
+Document roles: the PRD governs product intent; this guide, `AGENTS.md` and the operating
+playbook govern present permissions; architecture records evidenced implementation status.
+Dated assessments preserve history. An approved target requires reviewed implementation before
+it changes runtime controls or permissions.
+
 - **THE VISION OF RECORD:** `docs/PRD.md` — what Algua is for, how success is measured, the
   economic thesis, capital constraints, human authority and eight-phase development sequence.
   It governs product direction. A conflict with current controls is work to reconcile through
@@ -14,7 +19,8 @@ drive the system through the **same** CLI. Every data command emits JSON on stdo
   It also lists the walls (PIT,
   single-use holdout, the paper→live gate, lane parity, executable CODEOWNERS) so you know why a
   change might be refused.
-- **Vision-to-implementation gaps and issue migration:** `docs/vision-reconciliation.md`.
+- **Dated September gaps and issue migration:** `docs/vision-reconciliation.md`; use architecture
+  and current source/tests for implementation status.
 - **Historical architecture rationale:** `docs/superpowers/specs/2026-05-29-algua-platform-architecture-design.md`.
   Dated plans preserve earlier decisions; the current roadmap is PRD §25.
 - **Why the rules exist (detail):** `docs/agent/operating.md`
@@ -26,7 +32,7 @@ drive the system through the **same** CLI. Every data command emits JSON on stdo
   data↔research seam.
 - **Current state:** data, research/backtesting, paper/live execution, portfolio/risk,
   knowledge/tracking and operator machinery are implemented. The architecture map describes
-  these packages; the reconciliation record distinguishes partial capabilities from targets.
+  these packages and distinguishes partial capabilities from targets.
 
 ## Knowledgebase and Drive assets
 
@@ -86,6 +92,11 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   `--min-vol`, `--max-drawdown`, `--max-staleness`) are human-only. A passing run is the ONLY
   agent path to `forward_tested`; re-running at `forward_tested` refreshes the live-wall
   certificate without changing the stage.
+  **Experimental-delivery target (owner reconfirmed 2026-11-14):** historical economic
+  qualification plus approximately five completed scheduled paper sessions for operational
+  qualification, extended until required mechanics are exercised. This target is not the current
+  gate; do not lower thresholds or relabel replay to obtain it. See PRD §16 and the
+  `2026-11-07-strategy-cicd-design.md` design for the pending protected implementation.
 - `uv run algua paper merge-back --branch B --strategy S --universe U --start D --end D` — autonomous
   research-cycle merge-back (#485): one repo-global-locked cycle that gated-merges a candidate branch
   onto `main` (preview-merge → FULL quality gate on the staged tree → commit only on green), runs the

@@ -62,7 +62,7 @@ verbose tool output doesn't rot your context (#349); omit it when you need the f
 - **The canonical command walkthrough:** `docs/agent/research-lifecycle.md`.
 - **Product vision of record:** `docs/PRD.md`.
 - **Current implementation and rules:** `docs/architecture.md`, `CLAUDE.md` and
-  `docs/agent/operating.md`; `docs/vision-reconciliation.md` records gaps and historical status.
+  `docs/agent/operating.md`; `docs/vision-reconciliation.md` preserves the dated September gap assessment.
 - **Historical architecture rationale:** `docs/superpowers/specs/2026-05-29-algua-platform-architecture-design.md`;
   its original lifecycle, authentication and roadmap are not current operating instructions.
 - **The data contract crossing data↔research:** `docs/contracts/bar-schema.md`.

@@ -9,9 +9,11 @@ sources:
   - ../spec-story-1-3d-frozen-evidence-and-qualification/SPEC.md
 ---
 
-> **Canonical contract.** This SPEC and the files in `companions:` are the complete contract for
-> what to build, test and validate. Source documents remain narrative and traceability evidence;
-> they do not override this contract.
+> **Policy revision required — owner decision, 2026-11-14.** PRD §16 adopts historical economic
+> qualification plus short-paper operational qualification as the experimental-delivery target.
+> This older contract's blanket unrelaxed-defaults predicate must be revised before implementation.
+> Preserve auditability, exact relaxation recording and no-agent-waiver goals. The text below
+> records the prior design; it does not override the adopted target or change executable controls.
 
 # Story 2.1 Unrelaxed Live Qualification Contract
 

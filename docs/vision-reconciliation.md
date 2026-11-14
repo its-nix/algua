@@ -1,5 +1,11 @@
 # Vision reconciliation — 2026-09-24
 
+> **Historical assessment.** This records the September baseline and subsequent notes, not the
+> current gap register. For implementation status use [architecture](architecture.md) and current
+> source/tests; for product intent use [the PRD](PRD.md); for present permissions use `AGENTS.md`,
+> `CLAUDE.md` and [the operating playbook](agent/operating.md). In particular, the artifact and
+> duplicate-CODEOWNERS findings below describe older source, not today's implementation.
+
 **Purpose:** translate the [Vision of Record](PRD.md) into consistent repository guidance and
 backlog direction. This is an implementation-gap record, not another product vision or a grant
 of operating authority. Evidence below was inspected at base commit
@@ -22,7 +28,7 @@ Its conceptual journey through shadow/paper/experimental/scaled live is not a ch
 current `Stage` enum. Research workers stop at `candidate`; gated operational commands can
 reach `forward_tested`; real-money activation still requires the signed human ceremony.
 
-## Current capability versus target
+## Capability versus target at the recorded baseline
 
 | Area | Verified current state | Target / next work |
 |---|---|---|
@@ -88,6 +94,10 @@ These findings are **flag-only** in this documentation change. Current controls 
    existing specification/enforcement mismatch, not a new permission. Owner: Lior, before
    work changes calendar boundaries, must reconcile the intended invariant with the shipped
    contract. This pass neither weakens the supplied invariant nor changes code/import policy.
+
+   Resolution (owner approved 2026-11-14): `AGENTS.md` now explicitly allows the settings-reading
+   calendar factory while keeping `market_calendar.py` config-free and calendar independent of
+   CLI/registry. This resolves the documentation mismatch; no implementation or import policy changed.
 
 The 90-day target measures an end-to-end operating machine. It does not waive research evidence,
 forward qualification or human live approval if a strategy cannot qualify within that time.

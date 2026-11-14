@@ -13,6 +13,11 @@ are distinguished in [architecture](architecture.md). Implementation evidence is
 The [September reconciliation](vision-reconciliation.md) remains dated context; newer source
 and tests establish the implementation status stated here. This document grants no new permissions.
 
+Owner alignment, 2026-11-14: this PRD governs product intent; the operating guides govern present
+permissions, and architecture records evidenced implementation status. The November 7
+[strategy-delivery design](superpowers/specs/2026-11-07-strategy-cicd-design.md) supplies the adopted
+experimental-delivery target in §16. Its 20% drawdown proposal remains unadopted, as clarified in §21.
+
 ---
 
 # 1. North Star
@@ -676,6 +681,23 @@ They serve to:
 - test repairs,
 - and accumulate evidence without risking capital.
 
+### Experimental-delivery qualification target
+
+Owner reconfirmed on 2026-11-14: qualify historical economic evidence separately from operational
+delivery. Replay and failure tests exercise the exact frozen planner, then approximately five
+actual completed scheduled exchange sessions in paper qualify its operational behavior. Extend
+observation until required submission/fill, cancellation, reconciliation and restart mechanics are
+exercised; inactive sessions alone are insufficient. Keep synthetic integration evidence separate
+from the candidate's economic results. Preserve exact artifact/evidence identity and authenticated
+human experimental live activation.
+
+This target replaces the older planned requirement that experimental delivery always use the
+long paper economic gate. It does not amend that gate in executable code: current `paper promote`
+still requires at least 63 broker-clocked return observations and its other enforced criteria.
+Versioned economic and operational qualification profiles require separate protected implementation
+and verification before use. No agent may lower thresholds or substitute replay for elapsed
+broker observations. See the [November 7 design](superpowers/specs/2026-11-07-strategy-cicd-design.md).
+
 ---
 
 # 17. Autonomous engineering
@@ -854,6 +876,12 @@ long-only/unleveraged experimental envelope. The owner-defined cash-flow-adjuste
 recorded in Story 2.6; implementation and deployment verification remain necessary. Do not silently
 substitute the existing flattening breaker for this policy. No funding, replenishment, activation
 or risk-default change follows from this document.
+
+Owner clarification, 2026-11-14: **10% remains established experimental-account policy**;
+**15% is the current generic runtime default**; **20% is a proposed amendment**, not an adopted
+policy or applied setting. Approval of the short-paper delivery target does not approve a new
+drawdown threshold. Any amendment needs its own explicit risk-policy decision and reviewed
+implementation before activation.
 
 ---
 

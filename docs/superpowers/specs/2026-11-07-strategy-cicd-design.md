@@ -4,6 +4,11 @@ Date: 2026-11-07. Source baseline: `9f4fbce`.
 Status: written design approved by the owner in conversation on 2026-11-07.
 This document changes no executable policy, lifecycle edge, approval, allocation or service.
 
+Owner reconfirmation, 2026-11-14: the historical-economic plus short-paper operational route is
+the adopted experimental-delivery target, incorporated in PRD §16. It still requires protected
+implementation. The 20% drawdown proposal below is not adopted: the 10% policy and separate
+15% runtime default retain their distinct statuses under PRD §21.
+
 ## 1. Agreed objective and constraints
 
 Deliver strategies quickly through one reproducible research-to-execution path. Judge economic

@@ -6,6 +6,10 @@ baseline_commit: e875b6d
 
 Status: backlog
 
+Owner clarification, 2026-11-14: this story's 10% pause remains the established policy target.
+The generic runtime breaker defaults to 15%; November's proposed 20% amendment has not been
+adopted. Agreement on the short-paper qualification target does not change this loss policy.
+
 Prepared: 2026-10-04. Baseline: `e875b6d` (main after PR #686). Epic: 2.
 Requirements: FR11 (10% pause), NFR2, NFR4, NFR6, NFR8. PRD §§15, 19, 21.
 Owner decision: [#624, comment of 2026-10-04, item 1](https://github.com/Lior-Nis/algua/issues/624).

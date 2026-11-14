@@ -36,7 +36,7 @@ to demonstrate compliance. Trading authorization and data/execution invariants b
 **Design intent (read before touching code):**
 - `docs/PRD.md` — **product vision of record**: objectives, constraints, capital policy and development sequence. Read before prioritizing or proposing work.
 - `docs/architecture.md` — current package responsibilities and extension seams. Read before changing implementation.
-- `docs/vision-reconciliation.md` — current implementation gaps, historical-document status and issue migration. Read when translating the vision into work or interpreting an older plan.
+- `docs/vision-reconciliation.md` — dated September gap assessment and issue migration. Read when interpreting that history; use `docs/architecture.md` and source/tests for implementation status.
 - `docs/superpowers/specs/2026-05-29-algua-platform-architecture-design.md` — historical architecture rationale; its original lifecycle, authentication mechanism and roadmap are not current operating instructions.
 - `docs/superpowers/plans/2026-05-29-foundation-command-surface.md` — historical plan for the completed foundation, not the present scope limit.
 - `CLAUDE.md` — the agent operating contract (command surface, golden rules, live-gate summary).
@@ -70,7 +70,7 @@ not a driver. Work on a branch, not directly on `main`.
 **Foundation modules (part of the implemented system):**
 - `algua/contracts/lifecycle.py` — `Stage`/`Actor` enums + `ALLOWED_TRANSITIONS` state machine + `validate_transition`. **Pure** (stdlib only).
 - `algua/contracts/types.py` — `ExecutionContract` (encodes the `t→t+1` anti-look-ahead rule), `OrderIntent`, and `Strategy`/`DataProvider`/`Broker` protocols. **Pure** (pandas only under `TYPE_CHECKING`).
-- `algua/calendar/market_calendar.py` — NYSE (`XNYS`) session calendar wrapper; `next_session`/`previous_session` are **strictly** after/before the given day.
+- `algua/calendar/market_calendar.py` — config-free exchange session wrapper (default `XNYS`); `next_session`/`previous_session` are **strictly** after/before the given day. `calendar/factory.py::get_calendar` selects `ALGUA_EXCHANGE` per call.
 - `algua/config/settings.py` — pydantic-settings (`ALGUA_` env prefix). `get_settings()` is intentionally uncached (test isolation).
 - `algua/registry/db/` — SQLite connection (WAL, `foreign_keys=ON`) + idempotent `migrate()` (schema versioned via `PRAGMA user_version`). Tables: `strategies`, `stage_transitions`, `approvals`.
 - `algua/registry/store/` — typed registry API: `add_strategy`, `get_strategy`, `list_strategies`, `list_transitions`, `transition` (**contains the live gate**).
@@ -96,9 +96,11 @@ Treat these as hard constraints. If a "fix" requires violating one, **stop and f
    `transition` coerces inputs to enums first so a raw string `"live"` cannot skip the gate.
    The live runner must trust the *approval*, never the bare `stage` flag. Never make
    this easier to bypass. (`algua/registry/store/`, `algua/registry/approvals.py`)
-2. **Module purity / boundaries.** `algua/contracts` and `algua/calendar` import no other
-   `algua` modules (enforced by `lint-imports`). `contracts`/`features` stay side-effect-free.
-   Don't introduce cross-layer imports to make something convenient.
+2. **Module purity / boundaries.** `algua/contracts` imports no other `algua` modules.
+   `algua/calendar/market_calendar.py` stays config-free; `calendar/factory.py` may read
+   `algua.config.settings` to select the exchange per call. Calendar imports neither CLI nor
+   registry. This documented factory exception was approved by the owner on 2026-11-14;
+   it does not permit other cross-layer imports. `contracts`/`features` stay side-effect-free.
 3. **The `t→t+1` rule.** `ExecutionContract.decision_lag_bars >= 1` — features computed on a
    closed bar `t` may not fill on the same bar. Don't relax this; it prevents look-ahead bias.
 4. **Reproducibility & point-in-time correctness:**
@@ -111,7 +113,7 @@ Treat these as hard constraints. If a "fix" requires violating one, **stop and f
 ## 4. Intentionally deferred — do NOT flag these as defects
 
 Review the implemented system, not only its original foundation. Distinguish defects in shipped
-behavior from missing target capabilities in `docs/vision-reconciliation.md`. Do not implement
+behavior from missing target capabilities in `docs/architecture.md` and the PRD. Do not implement
 future capabilities during a review without explicit scope, especially when they affect safety.
 
 - **Target capabilities remain partial:** immutable deployed planners, complete hourly operation,
@@ -148,7 +150,7 @@ named mitigation — not defects to fix:
   gate only against the same statically-reachable first-party source a human reviewed (dynamic
   `importlib` string imports and non-source data files are outside the closure). A true execution
   strategy sandbox is future live-hardening work; the OpenCode agent's write sandbox is a
-  separate boundary. Artifact-freeze implementation is partial; see the reconciliation record.
+  separate boundary. Artifact-freeze implementation is partial; see the current architecture map.
 
 **Deployment hardening (enforce when deployment lands).** The trust anchor
 `approvers/allowed_signers` is the root of BOTH go-live authority AND (since #329) authenticated

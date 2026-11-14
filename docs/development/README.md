@@ -12,6 +12,11 @@ assessments; their process instructions do not override the current delivery pol
 technical safety contracts and protected-review requirements remain binding. A code merge is not
 authorization to deploy, trade or allocate capital.
 
+The owner reconfirmed the November strategy-delivery target on 2026-11-14: historical economic
+qualification plus short scheduled paper operational qualification (PRD §16). Story 2.1's older
+blanket unrelaxed-defaults predicate needs policy revision before implementation. Preserve its
+auditability and no-agent-waiver goals; this decision does not relax current executable gates.
+
 GitHub issues track implementation work and reviews. Repository artifacts retain specifications
 and acceptance evidence. The [Algua Todoist board](https://app.todoist.com/app/project/algua-6hGjQph9JgcgpC2G)
 tracks Lior's actual decisions/access actions. Avoid duplicating generic engineering chores onto

@@ -2,11 +2,17 @@
 
 This expands `CLAUDE.md` with the why behind the rules.
 
-Product direction comes from [the vision of record](../PRD.md); current implementation gaps and
-historical references are tracked in [the reconciliation record](../vision-reconciliation.md).
-The vision does not itself change runtime controls or grant a new merge/deployment permission.
-The 10% experimental-account pause is a target requiring implementation review; the current
-configured default is documented separately in that record.
+Product intent comes from [the vision of record](../PRD.md); implementation status is evidenced in
+[architecture](../architecture.md) and source/tests. This playbook, `CLAUDE.md` and `AGENTS.md`
+define present operating permissions. The [September reconciliation](../vision-reconciliation.md)
+is a dated assessment, not a current gap register. Product targets do not change runtime controls
+or grant merge/deployment permission.
+
+The established experimental-account pause policy is 10%, pending implementation; the current
+generic book breaker defaults to 15%. The November proposal of 20% remains an undecided amendment.
+The target experimental route uses historical economic qualification plus approximately five
+completed scheduled paper sessions for operational qualification (PRD §16). Current `paper promote`
+still requires its existing forward gate; no new qualification route is implemented by this prose.
 
 ## The live gate
 Lifecycle stage lives in the SQLite registry (`algua/registry`). State is a *record*,
@@ -32,7 +38,9 @@ The full implemented package map is in [architecture](../architecture.md). The o
 foundation responsibilities below remain useful orientation, not an exhaustive system inventory.
 
 - `contracts/` — pure types/protocols. No I/O, no other algua imports.
-- `calendar/` — market sessions; depended on by both backtest and live.
+- `calendar/market_calendar.py` — config-free session calculations; depended on by backtest and live.
+  `calendar/factory.py::get_calendar` reads settings per call for operational exchange selection;
+  calendar imports neither CLI nor registry.
 - `registry/` — lifecycle source of truth (`db`, `store`, `approvals`).
 - `config/` — pydantic settings (env prefix `ALGUA_`).
 - `cli/` — the shared command surface; `main.py` is the entry point.

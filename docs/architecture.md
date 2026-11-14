@@ -1,8 +1,9 @@
 # Algua architecture — implementation map and target design
 
 **Product authority:** [Vision of Record](PRD.md). This document maps current implementation;
-the [reconciliation record](vision-reconciliation.md) tracks the gap to the target architecture
-and the PRD §25 development sequence. Earlier specs do not override that sequence.
+the [September reconciliation](vision-reconciliation.md) preserves the earlier gap assessment.
+Use this map and source/tests for implementation status, and PRD §25 for the development sequence.
+Present operating permissions are defined in `AGENTS.md`, `CLAUDE.md` and the operating playbook.
 
 **Evidence baseline:** source, tests and merged changes through `a062a66` (PRs #719–#726).
 The October 2026 approved product direction is incorporated here and in the PRD; target design is
@@ -10,6 +11,13 @@ explicitly separated from implemented behavior. Source inspection establishes ca
 refusals, not deployment or unattended acceptance. The September reconciliation is dated context;
 its older artifact, capital-policy and CODEOWNERS observations must be read against current source.
 This map grants no operating, deployment, capital or activation permission.
+
+**Owner alignment, 2026-11-14:** the experimental-delivery target combines historical economic
+qualification with approximately five completed scheduled paper sessions for operational
+qualification, as described in PRD §16 and the November 7 strategy-delivery design. This is pending
+protected implementation; current forward gates and human live authorization remain unchanged.
+The 10% experimental pause remains established policy, the generic breaker defaults to 15%, and
+20% remains a proposed amendment. These are different statuses, not interchangeable thresholds.
 
 **Read this before adding anything.** It tells you which package owns what, and where the
 extension points are. If you find yourself editing a core file to add a provider, broker, calendar,
