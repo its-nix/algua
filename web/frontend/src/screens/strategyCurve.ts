@@ -72,7 +72,7 @@ export function windowPoints(stagePoints: DayPoint[], window: Window): DayPoint[
   return start === null ? stagePoints : stagePoints.filter((p) => p.date >= start)
 }
 
-const finite = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+export const finite = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const truthy = (v: unknown) => v === true || v === 1
 
 export interface HoldoutRecord { sharpe: number | null; totalReturn: number | null; nObs: number | null }
@@ -117,86 +117,6 @@ export function realized(points: DayPoint[]): Realized {
     vol: sd * Math.sqrt(252),
     maxDrawdown: dd,
   }
-}
-
-/** The one-sided 95% lower bound on the annualized Sharpe, with the Lo/Mertens non-normal
- * standard error `forward_gates._forward_sharpe_lcb` uses; null when degenerate. */
-export function sharpeLcb(points: DayPoint[]): number | null {
-  const eq = points.map((p) => p.equity)
-  const rets = eq.slice(1).map((v, i) => v / eq[i] - 1).filter(Number.isFinite)
-  const t = rets.length
-  if (t < 3) return null
-  const mean = rets.reduce((a, b) => a + b, 0) / t
-  const sd = Math.sqrt(rets.reduce((a, x) => a + (x - mean) ** 2, 0) / (t - 1))
-  if (!(sd > 0)) return null
-  const m2 = rets.reduce((a, x) => a + (x - mean) ** 2, 0) / t
-  const skew = rets.reduce((a, x) => a + (x - mean) ** 3, 0) / t / m2 ** 1.5
-  const kurt = rets.reduce((a, x) => a + (x - mean) ** 4, 0) / t / m2 ** 2
-  const sr = mean / sd
-  const v = 1 - skew * sr + ((kurt - 1) / 4) * sr * sr
-  if (!(v > 0)) return null
-  const lcb = (sr - 1.6448536 * Math.sqrt(v / (t - 1))) * Math.sqrt(252)
-  return Number.isFinite(lcb) ? lcb : null
-}
-
-/** Weekdays from `from` to `to` inclusive (holidays not removed, so coverage reads low, never
- * high). */
-export function weekdaysBetween(from: string, to: string): number {
-  const d = new Date(`${from}T00:00:00Z`)
-  const end = new Date(`${to}T00:00:00Z`)
-  let n = 0
-  while (d <= end) {
-    if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6) n += 1
-    d.setUTCDate(d.getUTCDate() + 1)
-  }
-  return n
-}
-
-// `paper promote` defaults (algua/research/forward_gates.py); a recorded forward evaluation's own
-// thresholds take precedence.
-export const FORWARD_DEFAULTS = {
-  minObservations: 63, minCoverage: 0.9, degradationFactor: 0.5, sharpeFloor: 0.3, maxDrawdown: 0.25,
-}
-
-export interface GateCheckView { label: string; value: string; passed: boolean }
-export interface ForwardGateView {
-  observations: number; required: number; drawdownLimit: number; checks: GateCheckView[]
-}
-
-/** Progress toward `paper promote`: return observations (sessions after the first) and the three
- * checks it measures, each against its threshold. */
-export function forwardGate(
-  lane: DayPoint[], forwardRows: GateRow[] | undefined, holdoutSharpe: number | null,
-): ForwardGateView {
-  const row = forwardRows?.[0]
-  const required = finite(row?.min_forward_observations) ?? FORWARD_DEFAULTS.minObservations
-  const minCoverage = finite(row?.min_session_coverage) ?? FORWARD_DEFAULTS.minCoverage
-  const factor = finite(row?.degradation_factor) ?? FORWARD_DEFAULTS.degradationFactor
-  const floor = finite(row?.sharpe_floor) ?? FORWARD_DEFAULTS.sharpeFloor
-  const limit = Math.abs(finite(row?.max_forward_drawdown) ?? FORWARD_DEFAULTS.maxDrawdown)
-  const holdout = finite(row?.holdout_sharpe) ?? holdoutSharpe
-  const observations = Math.max(lane.length - 1, 0)
-  const r = realized(lane)
-  const checks: GateCheckView[] = []
-  if (holdout !== null) {
-    // A recorded evaluation's bar already carries the multiple-testing tax; otherwise the bar
-    // is the untaxed first-look one.
-    const recorded = row?.decision?.checks?.find((c) => c.name === 'realized_sharpe')?.threshold
-    const bar = finite(recorded) ?? Math.max(factor * holdout, floor)
-    // `paper promote` passes only if BOTH the point estimate and its 95% lower bound clear the bar.
-    const lcb = sharpeLcb(lane)
-    checks.push({ label: `Sharpe at least ${ratio(bar)}`, value: ratio(r.sharpe),
-      passed: r.sharpe !== null && r.sharpe >= bar && lcb !== null && lcb >= bar })
-  }
-  const dd = r.maxDrawdown === null ? null : Math.abs(r.maxDrawdown)
-  checks.push({ label: `Drawdown under ${fmtPct(limit)}`, value: dd === null ? '—' : fmtPct(dd, 1),
-    passed: dd !== null && dd <= limit })
-  const first = lane[0]
-  const last = lane.at(-1)
-  const coverage = first && last ? lane.length / Math.max(weekdaysBetween(first.date, last.date), 1) : null
-  checks.push({ label: `Session coverage ${fmtPct(minCoverage)}`,
-    value: coverage === null ? '—' : fmtPct(Math.min(coverage, 1)), passed: coverage !== null && coverage >= minCoverage })
-  return { observations, required, drawdownLimit: limit, checks }
 }
 
 /** 0.1 -> "10%", 0.034 (digits 1) -> "3.4%". */

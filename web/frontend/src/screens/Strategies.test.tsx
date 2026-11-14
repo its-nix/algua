@@ -121,6 +121,19 @@ it('negative P&L chip is red', async () => {
     .toBe('var(--green)')
 })
 
+it('a row whose series fetch failed says so instead of going blank', async () => {
+  const saved = SERIES.paper_one
+  delete SERIES.paper_one
+  try {
+    mount()
+    const row = (await screen.findByText('paper_one')).closest('a')!
+    await waitFor(() => expect(row.textContent).toContain('Equity unavailable'))
+    expect(row.textContent).toContain('$1,550 slice')
+  } finally {
+    SERIES.paper_one = saved
+  }
+})
+
 it('Research segment links to the moved Leaderboard and Research views', async () => {
   mount()
   fireEvent.click(await screen.findByRole('button', { name: /Research 2/ }))

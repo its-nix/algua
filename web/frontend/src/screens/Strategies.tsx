@@ -101,7 +101,9 @@ function OperatingRow({ rec, slice }: { rec: StrategyRecord; slice: number | nul
   const change = first !== undefined && last !== undefined && first > 0 ? last / first - 1 : null
   const up = change === null || change >= 0
   const sub = [
-    points.length > 0 ? `Day ${points.length - 1}` : series.data !== undefined ? 'No ticks yet' : null,
+    points.length > 0 ? `Day ${points.length - 1}`
+      : series.data !== undefined ? 'No ticks yet'
+        : series.error !== null ? 'Equity unavailable' : null,
     slice !== null ? `${money(slice, false)} slice` : null,
   ].filter((x): x is string => x !== null).join(' · ')
   return (

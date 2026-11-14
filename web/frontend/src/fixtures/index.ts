@@ -21,7 +21,7 @@ import {
   type Seed,
 } from './steady-state'
 import { INBOX, equityFixture } from './equity'
-import { seriesRowsFor, stageAnchors } from './strategySeries'
+import { forwardRowFor, seriesRowsFor, stageAnchors } from './strategySeries'
 import type {
   GateCheck,
   GateDecision,
@@ -231,10 +231,12 @@ function gatesFor(seed: Seed): GatesPayload | null {
   const rank = stageRank(seed.stage)
   if (rank === -1 || rank < LIFECYCLE_ORDER.indexOf('candidate')) return null
   const reachedForward = rank >= LIFECYCLE_ORDER.indexOf('forward_tested')
+  const research = buildGateRow(seed, 1000 + seed.id * 10, 'research')
   return {
     strategy: seed.name,
-    gate_evaluations: [buildGateRow(seed, 1000 + seed.id * 10, 'research')],
-    forward_gate_evaluations: reachedForward ? [buildGateRow(seed, 1000 + seed.id * 10 + 1, 'forward')] : [],
+    gate_evaluations: [research],
+    forward_gate_evaluations: reachedForward
+      ? [forwardRowFor(seed, 1000 + seed.id * 10 + 1, Number(research.sharpe_oos))] : [],
   }
 }
 

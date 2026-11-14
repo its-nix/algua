@@ -5,9 +5,10 @@ import { money } from '../format'
 import type { SeriesPayload, StrategyDetailResponse } from '../types'
 import { useWidth } from '../useWidth'
 import {
-  expectedDaily, expectedPath, fmtPct, forwardGate, laneFor, lanePoints, laneStage, passingHoldout,
+  expectedDaily, expectedPath, fmtPct, laneFor, lanePoints, laneStage, passingHoldout,
   ratio, realized, shortDate, sinceStage, stageEntry, stageLabel, stageWords, windowPoints, type Window,
 } from './strategyCurve'
+import { currentForwardRow, estimateForwardGate, recordedForwardGate } from './forwardGateView'
 import './strategies.css'
 
 const EXPECTED_COLOR = 'rgba(255, 255, 255, 0.38)'
@@ -37,7 +38,7 @@ export default function StrategyTop({ detail, series, seriesLoading, seriesError
   const holdout = passingHoldout(detail.gates?.gate_evaluations)
   const daily = expectedDaily(holdout)
   const hasTicks = since.length > 0
-  const noTicks = !hasTicks && (series !== undefined || !operating)
+  const noTicks = operating && !hasTicks && series !== undefined
   const seriesFailed = operating && series === undefined && seriesError
 
   const raw = windowPoints(since, win === 'backtest' && daily === null ? 'stage' : win).map((p) => p.equity)
@@ -62,8 +63,9 @@ export default function StrategyTop({ detail, series, seriesLoading, seriesError
   const change = first && last ? last.equity - first.equity : 0
   const changePct = first && first.equity > 0 ? change / first.equity : null
   const r = realized(since)
+  const record = stage === null ? null : currentForwardRow(detail.gates?.forward_gate_evaluations, stage, entry)
   const gate = stage === 'paper' || stage === 'forward_tested'
-    ? forwardGate(since, detail.gates?.forward_gate_evaluations, holdout?.sharpe ?? null)
+    ? (record !== null ? recordedForwardGate(record) : estimateForwardGate(since, holdout?.sharpe ?? null))
     : null
   const ddLimit = gate?.drawdownLimit ?? null
   const windows: { key: Window; label: string; disabled?: boolean }[] = [
@@ -93,7 +95,7 @@ export default function StrategyTop({ detail, series, seriesLoading, seriesError
         ) : seriesLoading && series === undefined && <div className="skeleton-block sd-big-skeleton" aria-hidden="true" />)}
       </div>
 
-      <div className="sd-chart" ref={chartRef}>
+      {operating && <div className="sd-chart" ref={chartRef}>
         {noTicks && <div className="sd-chart-empty">No ticks yet</div>}
         {seriesFailed && <div className="sd-chart-empty">Equity unavailable</div>}
         {expected !== null && n > 1 && (
@@ -113,7 +115,7 @@ export default function StrategyTop({ detail, series, seriesLoading, seriesError
             {[hi, (hi + lo) / 2, lo].map((v, i) => <span key={i}>{Math.round(v).toLocaleString('en-US')}</span>)}
           </div>
         )}
-      </div>
+      </div>}
 
       {n > 1 && (
         <div className="sd-legend">
@@ -144,10 +146,16 @@ export default function StrategyTop({ detail, series, seriesLoading, seriesError
       )}
 
       {gate !== null && (
-        <div className="sd-card" data-testid="gate-card">
+        <div className="sd-card" data-testid="gate-card" data-kind={gate.kind}>
           <h2 className="sd-card-title">Forward gate <span className="num-tab">
-            {stage === 'forward_tested' ? `Passed · ${gate.observations} sessions` : `${gate.observations} of ${gate.required} sessions`}
+            {gate.passed !== null && `${gate.passed ? 'Passed' : 'Failed'} · `}
+            {gate.observations} of {gate.required} sessions
           </span></h2>
+          <p className="sd-card-note">
+            {gate.kind === 'recorded' && gate.asOf !== null
+              ? `Recorded evaluation · as of ${shortDate(gate.asOf)}`
+              : 'Estimate from ticks — not the gate'}
+          </p>
           <div className="sd-meter" role="progressbar" aria-label="Sessions observed" aria-valuemin={0}
             aria-valuemax={gate.required} aria-valuenow={Math.min(gate.observations, gate.required)}>
             <i style={{ width: `${Math.min(gate.observations / gate.required, 1) * 100}%` }} />

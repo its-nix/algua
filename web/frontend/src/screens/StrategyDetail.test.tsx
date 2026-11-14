@@ -336,5 +336,78 @@ it('gate card shows 41 of 63 sessions from fixture', async () => {
   const card = await screen.findByTestId('gate-card')
   await waitFor(() => expect(card.textContent).toContain('41 of 63 sessions'))
   expect(card.textContent).toContain('Forward gate')
-  expect(within(card).getAllByTestId('gate-check').length).toBe(3)
+  // No recorded evaluation this paper stint: an estimate, labelled as such, with the lower
+  // bound as its own row.
+  expect(card.getAttribute('data-kind')).toBe('estimate')
+  expect(card.textContent).toContain('Estimate from ticks — not the gate')
+  const labels = within(card).getAllByTestId('gate-check').map((c) => c.textContent ?? '')
+  expect(labels.length).toBe(4)
+  expect(labels.some((l) => l.startsWith('Sharpe 95% lower bound at least'))).toBe(true)
+})
+
+/** Falling ticks: a recomputation would fail every check the recorded pass cleared. */
+function fallingRows(n: number): SeriesRow[] {
+  return paperRows(n, 1550).map((r, i) => ({ ...r, equity: 1550 * (1 - 0.004 * i) + (i % 2) * 3 }))
+}
+
+function forwardTestedDetail(): StrategyDetailResponse {
+  const base = paperDetail({ sharpe_oos: 1.65, total_return_oos: 0.254, n_obs_oos: 252 })
+  return {
+    ...base,
+    registry: { ...base.registry!, stage: 'forward_tested', transitions: [
+      ...base.registry!.transitions,
+      { from_stage: 'paper', to_stage: 'forward_tested', actor: 'agent', reason: null,
+        created_at: '2026-12-31T12:00:00+00:00' },
+    ] },
+    gates: { ...base.gates!, forward_gate_evaluations: [{
+      id: 50, passed: 1, actor: 'agent', created_at: '2026-12-31T12:00:00+00:00', consumed: 1,
+      n_forward_observations: 64, min_forward_observations: 63, max_forward_drawdown: 0.25,
+      decision: { passed: true, checks: [
+        { name: 'min_forward_observations', op: '>=', threshold: 63, value: 64, passed: true },
+        { name: 'realized_sharpe', op: '>=', threshold: 0.83, value: 1.12, passed: true },
+        { name: 'realized_sharpe_lcb', op: '>=', threshold: 0.83, value: 0.9, passed: true },
+        { name: 'max_forward_drawdown', op: '<=', threshold: 0.25, value: 0.034, passed: true },
+        { name: 'session_coverage', op: '>=', threshold: 0.9, value: 0.98, passed: true },
+        { name: 'reconcile_ok', passed: true },
+        { name: 'single_account', passed: true },
+      ] },
+    }] },
+  }
+}
+
+it('forward_tested renders the recorded evaluation, not a recomputation from ticks', async () => {
+  stubDetail(forwardTestedDetail(), fallingRows(65))
+  mountDetail('dual_test')
+  const card = await screen.findByTestId('gate-card')
+  expect(card.getAttribute('data-kind')).toBe('recorded')
+  expect(card.textContent).toContain('Passed · 64 of 63 sessions')
+  expect(card.textContent).toContain('as of Dec 31')
+  const rows = within(card).getAllByTestId('gate-check')
+  expect(rows.map((r) => r.getAttribute('data-pass'))).not.toContain('false')
+  const text = rows.map((r) => r.textContent).join('|')
+  expect(text).toContain('Sharpe at least 0.831.12')
+  expect(text).toContain('Sharpe 95% lower bound at least 0.830.90')
+  expect(text).toContain('Integrity and account checks2 of 2')
+  expect(card.textContent).not.toContain('Estimate from ticks')
+})
+
+it('paper with only an earlier-stint evaluation shows the estimate, at default thresholds', async () => {
+  const d = forwardTestedDetail()
+  const old = { ...d.gates!.forward_gate_evaluations[0], created_at: '2026-09-01T00:00:00+00:00',
+    max_forward_drawdown: 0.4 }
+  stubDetail({ ...paperDetail({ sharpe_oos: 1.65, total_return_oos: 0.254, n_obs_oos: 252 }),
+    gates: { ...d.gates!, forward_gate_evaluations: [old] } }, paperRows(42, 1584.1))
+  mountDetail('dual_test')
+  const card = await screen.findByTestId('gate-card')
+  await waitFor(() => expect(card.textContent).toContain('Estimate from ticks — not the gate'))
+  expect(card.textContent).toContain('Drawdown under 25%')
+})
+
+it('a non-operating strategy draws no chart box', async () => {
+  stubDetail({ ...paperDetail({}), registry: { ...paperDetail({}).registry!, stage: 'candidate' } }, [])
+  const { container } = mountDetail('dual_test')
+  await screen.findByText('dual_test')
+  expect(container.querySelector('.sd-chart')).toBeNull()
+  expect(screen.queryByText('No ticks yet')).toBeNull()
+  expect(screen.queryByTestId('gate-card')).toBeNull()
 })
