@@ -35,26 +35,6 @@ from algua.research.gates import FUNNEL_WINDOW_DAYS, GateCriteria, GateDecision,
 from algua.strategies.loader import StrategyNotFound, load_strategy
 
 
-def guard_agent_relaxations(
-    actor: Actor,
-    *,
-    declared_combos: int | None,
-    allow_holdout_reuse: bool,
-    allow_non_pit: bool,
-) -> None:
-    """Every gate RELAXATION (declared breadth, holdout reuse, non-PIT) requires a human actor. An
-    agent passing any is refused — the agent only ever sees the strict gate. Call EARLY
-    (pre-peek)."""
-    if actor is Actor.HUMAN:
-        return
-    if declared_combos is not None or allow_holdout_reuse or allow_non_pit:
-        raise ValueError(
-            "gate relaxation requires --actor human: --n-combos (declared breadth), "
-            "--allow-holdout-reuse and --allow-non-pit are human-only. For an agent, breadth must "
-            "be measured (run `backtest sweep`), the holdout fresh, and the universe PIT."
-        )
-
-
 def resolve_pit_ok(
     universe_name: str | None,
     universe_snapshots: list[dict[str, str]] | None,
@@ -91,45 +71,42 @@ def promotion_preflight(
     name: str,
     *,
     actor: Actor,
-    declared_combos: int | None,
-    allow_holdout_reuse: bool,
-    allow_non_pit: bool,
     provider: DataProvider,
     start: datetime,
     end: datetime,
-    new_family_slug: str | None = None,   # human-only, for NOVEL verdict
     universe_name: str | None = None,
     universe_by_date: Mapping[date, Collection[str]] | None = None,
 ) -> BreadthContext:
     """Pre-peek phase — runs BEFORE walk_forward, so every hard refusal happens before the holdout
-    is touched and before any gate row is minted: (1) relaxations-need-human; (2) stage legality
-    (BACKTESTED -> CANDIDATE must be legal — never mint a passing token for an illegal source
-    stage); (3) exhaustive signal_panel parity gate (raises
-    BacktestError on divergence, no-op when no signal_panel); (5) breadth resolution (refuse "no
-    measured breadth" here)."""
-    # FIRST check, before any holdout-affecting work and before the relaxation guard: only an agent
-    # or a human may promote. SYSTEM is not a valid promote actor — it would pass as "not human"
-    # (strict), burn the holdout, mint a gate_evaluations row it can NEVER consume (consumable rows
-    # are filtered actor='agent'), leaving an orphaned token.
+    is touched and before any gate row is minted: (1) actor legality; (2) reproducible source;
+    (3) stage legality (BACKTESTED -> CANDIDATE must be legal — never mint a passing token for an
+    illegal source stage); (4) cost floor; (5) exhaustive signal_panel parity gate (raises
+    BacktestError on divergence, no-op when no signal_panel); (6) declared feature_lookback;
+    (7) family classification; (8) breadth resolution (refuse "no measured breadth" here);
+    (9) gated-universe subset.
+
+    ``actor`` is an audit label: every wall applies to every actor. There is no human override
+    (spec 2026-11-13 — the signed go-live is the only approval)."""
+    # FIRST check, before any holdout-affecting work: only an agent or a human may promote. SYSTEM
+    # is not a valid promote actor — it would burn the holdout and mint a gate_evaluations row it
+    # can NEVER consume (consumable rows are filtered actor='agent'), leaving an orphaned token.
     if actor not in (Actor.AGENT, Actor.HUMAN):
         raise ValueError(
             f"research promote requires --actor agent or human, got {actor.value}")
-    guard_agent_relaxations(actor, declared_combos=declared_combos,
-                            allow_holdout_reuse=allow_holdout_reuse, allow_non_pit=allow_non_pit)
-    # Reproducible-source guard (#205): an agent's holdout burn must be over reproducible bars — an
+    # Reproducible-source guard (#205): a holdout burn must be over reproducible bars — an
     # immutable snapshot (snapshot_id set) or a deterministic provider (reproducible marker) — so
     # the OOS truth it spends is identical on a re-run. Refuse a non-snapshot, non-reproducible
-    # provider for an agent BEFORE any provider read (verify_signal_panel_parity below reads bars).
-    # Humans are exempt (they accept the cost, mirroring --allow-non-pit). select_provider exposes
-    # only demo/snapshot today; this fail-closes a future mutable/live provider. Duck-typed getattr
-    # avoids a registry->data import-boundary violation; `is not True` (not just falsy) so a future
-    # provider with a truthy-but-not-True `reproducible` cannot slip the guard (fail closed).
-    if (actor is Actor.AGENT and getattr(provider, "snapshot_id", None) is None
+    # provider BEFORE any provider read (verify_signal_panel_parity below reads bars).
+    # select_provider exposes only demo/snapshot today; this fail-closes a future mutable/live
+    # provider. Duck-typed getattr avoids a registry->data import-boundary violation; `is not True`
+    # (not just falsy) so a future provider with a truthy-but-not-True `reproducible` cannot slip
+    # the guard (fail closed).
+    if (getattr(provider, "snapshot_id", None) is None
             and getattr(provider, "reproducible", False) is not True):
         raise ValueError(
-            "agent research promote requires a reproducible data source: an ingested snapshot "
+            "research promote requires a reproducible data source: an ingested snapshot "
             "(--snapshot) or a deterministic provider. A non-reproducible/live provider's bars may "
-            "revise between runs; promote with --actor human to accept the cost.")
+            "revise between runs.")
     rec = repo.get(name)
     # Source stage MUST be exactly BACKTESTED. validate_transition alone is too permissive here:
     # PAPER -> CANDIDATE is a legal back-step, so promoting from `paper` would otherwise pass
@@ -144,13 +121,13 @@ def promotion_preflight(
         _loaded = load_strategy(name)
     except StrategyNotFound:
         _loaded = None
-    # Transaction-cost floor (#325): an agent may only promote a backtest evaluated at a realistic
+    # Transaction-cost floor (#325): a promote may only gate a backtest evaluated at a realistic
     # transaction cost. The whole statistical stack (Sharpe/DSR/bootstrap/FDR/regime) is calibrated
     # on the return stream this promote will peek; if that stream were (near-)cost-free, a strategy
     # whose only edge is a cost illusion could clear every gate. assert_gated_costs fails closed on
     # a sub-floor fees+slippage BEFORE the holdout is touched, so a frictionless config can't mint
-    # a gate token. Agent-only — a human accepts any cost (exploration / sensitivity sweeps).
-    if actor is Actor.AGENT and _loaded is not None:
+    # a gate token. Applies to every actor.
+    if _loaded is not None:
         assert_gated_costs(_loaded.execution)
     # Exhaustive signal_panel parity gate (#178): a panel that diverges from its per-bar signal on
     # ANY bar cannot pass promotion. Runs on the already-loaded strategy, in static mode over the
@@ -158,53 +135,45 @@ def promotion_preflight(
     # Raises BacktestError on divergence (caught by the `promote` CLI's @json_errors).
     if _loaded is not None:
         verify_signal_panel_parity(_loaded, provider, start, end)
-    # Walk-forward embargo declaration (#345): an agent's holdout is gated on a purge gap sized by
+    # Walk-forward embargo declaration (#345): the holdout is gated on a purge gap sized by
     # the strategy's declared feature lookback. An UNDECLARED lookback (feature_lookback is None)
     # resolves the embargo to 0 (legacy zero-gap, see _resolve_embargo), leaving a real
     # ~60-bar-lookback signal with NO purge and re-opening the leak on the gate-bearing path. Fail
     # closed:
-    # the agent must declare feature_lookback (it may declare 0 for a strategy with no rolling
-    # feature window). Humans accept the cost. Only enforceable for a bundled module (load_strategy
-    # resolved); synthetic-name test strategies are left as-is, matching the parity gate above.
-    if (actor is Actor.AGENT and _loaded is not None
-            and _loaded.config.feature_lookback is None):
+    # the strategy must declare feature_lookback (it may declare 0 for a strategy with no rolling
+    # feature window). Only enforceable for a bundled module (load_strategy resolved);
+    # synthetic-name test strategies are left as-is, matching the parity gate above.
+    if _loaded is not None and _loaded.config.feature_lookback is None:
         raise ValueError(
-            f"agent research promote requires {name!r} to declare feature_lookback (the bars of "
+            f"research promote requires {name!r} to declare feature_lookback (the bars of "
             f"trailing history its signal reads) so the walk-forward embargo can purge the "
             f"in-sample/holdout boundary (#345). Declare it on the strategy CONFIG (0 if the "
-            f"signal has no rolling feature window); promote with --actor human to accept the "
-            f"default.")
+            f"signal has no rolling feature window).")
     # --- Family classification (clustering verdict, #222 / #524) ---
     # Runs BEFORE breadth resolution and BEFORE the holdout is touched. A strategy already assigned
     # to a family is left as-is. An agent NOVEL verdict is DEFERRED (#524): no family is created
     # here — classification returns a PendingNovelFamily spec, and the seeded family is minted only
-    # at the pass moment inside the atomic promote tx. A human NOVEL still creates the fresh 0-prior
-    # family in preflight (requires --new-family <slug>, the human privilege).
-    classify = classify_and_assign_family(
-        repo, name, actor=actor, new_family_slug=new_family_slug,
-    )
+    # at the pass moment inside the atomic promote tx. A human-labelled NOVEL is refused here
+    # (nobody mints a fresh 0-prior family any more).
+    classify = classify_and_assign_family(repo, name, actor=actor)
     windowed_total = repo.windowed_search_combos(FUNNEL_WINDOW_DAYS)
     measured = repo.total_search_combos(name)
-    if measured > 0:
-        own, provenance = measured, "measured"
-    elif declared_combos is not None:  # human-only path (already guarded above)
-        own, provenance = declared_combos, "declared"
-    else:
+    if measured <= 0:
         raise ValueError(
             f"no recorded search breadth for {name!r}; run `algua backtest sweep {name} ...` "
-            f"(records breadth). Declaring via --n-combos requires --actor human."
+            f"(records breadth). Breadth is always measured; it cannot be declared."
         )
-    # Gated-universe subset guard (#559): an AGENT promote on a PIT universe fails closed — still
+    own, provenance = measured, "measured"
+    # Gated-universe subset guard (#559): a promote on a PIT universe fails closed — still
     # BEFORE the holdout is touched and before any gate row is minted — when the loaded strategy's
     # CONFIG.universe contains a symbol that was NEVER a member of the gated universe's membership
     # timeline (the union over the same universe_by_date map the PIT walk-forward consumes). The
     # module's universe is agent-authored and can silently diverge from the universe the evidence
     # was produced on (e.g. a 5-symbol template incl. NVDA gated on liquid10); at deployment the
     # tick binds to the GATE universe, so a config symbol outside it was never validated at all.
-    # Humans are exempt (exploration), mirroring the other agent-only integrity walls. Placed
-    # AFTER the structural refusals above so the established refusal precedence (stage, costs,
-    # parity, lookback, classification, breadth) is unchanged.
-    if actor is Actor.AGENT and _loaded is not None and universe_by_date:
+    # Applies to every actor. Placed AFTER the structural refusals above so the established refusal
+    # precedence (stage, costs, parity, lookback, classification, breadth) is unchanged.
+    if _loaded is not None and universe_by_date:
         gated_members: set[str] = set().union(*universe_by_date.values())
         offending = sorted(set(_loaded.config.universe) - gated_members)
         if offending:
@@ -279,8 +248,6 @@ def run_gate(
     holdout_frac: float,
     data_source: str,
     snapshot_id: str | None,
-    allow_non_pit: bool,
-    reason_suffix: str,
     holdout_evaluation_id: int | None = None,
     attempt_token: str | None = None,
     comparison_inputs: dict[str, bool | None] | None = None,
@@ -348,7 +315,7 @@ def run_gate(
         boot_lower, boot_b, boot_block = boot.lower_confidence, boot.b_used, boot.block_len
     decision = evaluate_gate(
         wf, criteria, n_combos=n_funnel, breadth_provenance=breadth.provenance,
-        pit_ok=pit_ok, allow_non_pit=allow_non_pit, own_lifetime_combos=breadth.own,
+        pit_ok=pit_ok, own_lifetime_combos=breadth.own,
         windowed_total_combos=breadth.windowed_total, funnel_window_days=FUNNEL_WINDOW_DAYS,
         dsr_binding=dsr_binding, dsr_trial_var_ann=dsr_trial_var_ann,
         dsr_funnel_floor_var_ann=(funnel_floor.var_ann if funnel_floor else None),
@@ -475,7 +442,7 @@ def run_gate(
     )
     fdr_outcome = repo.record_gate_with_fdr_and_maybe_promote(
         rec, gate_row=gate_row, funnel=funnel, actor=actor,
-        reason=(_gate_reason(decision) + reason_suffix) if decision.passed else None,
+        reason=_gate_reason(decision) if decision.passed else None,
         pending_novel_family=breadth.pending_novel_family,  # #524: minted only on pass, in-tx
         # The same decision as an economic-layer run row. PASS AND FAIL — the rejections are the
         # dataset the IS-vs-OOS scatter is mostly made of.

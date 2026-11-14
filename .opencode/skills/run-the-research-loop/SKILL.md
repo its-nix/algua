@@ -107,8 +107,9 @@ For each claimed idea:
 5. **Interpret.** Delegate the results JSON to the `interpret` subagent for a promote/discard
    recommendation with reasoning, and assess the idea's own `falsification` statement against the
    walk-forward evidence -> `falsification_assessment` (`refuted` | `survived` | `untested`).
-6. **Gate.** Run `uv run algua research promote <name> <data-options>` (record the combos you searched with
-   `--n-combos K`). The gate advances `backtested → candidate` **only on pass**; on a fail it
+6. **Gate.** Run `uv run algua research promote <name> <data-options> --universe <pit-universe>` (the
+   combos you searched are counted from the recorded `backtest sweep` trials; breadth cannot be
+   declared, so sweep first). The gate advances `backtested → candidate` **only on pass**; on a fail it
    reports why and leaves the stage unchanged. Trust the gate — do not lower thresholds to force a pass.
 7. **Record.** Sync the synced fact blocks: `uv run algua strategy doc <name>`. Then write
    the doc's `## Verdict & next` (what was learned + the next idea as a `[[dangling-link]]`),

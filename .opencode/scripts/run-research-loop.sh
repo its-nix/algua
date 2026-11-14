@@ -1137,7 +1137,7 @@ Hold the research discipline (it makes your preview trustworthy):
     are not PIT evidence, untouched holdout evidence or proof of alpha. Pass this distinction
     to author and interpret. See the run-the-research-loop skill's pilot instructions.
   - Measure breadth with 'backtest sweep' before you promote (the gate requires it).
-  - TRUST THE GATE; never pass a relaxation flag (human-only; they fail closed on your path).
+  - TRUST THE GATE; there are no relaxation flags for anyone (breadth is measured, the universe is PIT).
     Proxy exploration does not authorize promotion: never fabricate a PIT universe, relabel
     data or enqueue merge_back for a known-ineligible proxy. Record its qualification limits
     separately from the empirical results, and distinguish a known preflight limit from an

@@ -58,14 +58,17 @@ uv run algua backtest sweep cross_sectional_momentum --demo \
 
 ```bash
 uv run algua research promote cross_sectional_momentum --demo \
-  --start 2022-01-01 --end 2023-12-31 \
+  --universe <pit-universe> --start 2022-01-01 --end 2023-12-31 \
   --min-holdout-sharpe 0.5 --min-holdout-return 0.0 \
-  --min-pct-positive 0.6 --min-window-sharpe 0.0 \
-  --n-combos 6
+  --min-pct-positive 0.6 --min-window-sharpe 0.0
 ```
 
-- `--n-combos` records how many combinations you searched in step 2 (evidence, must be `>= 1`).
+- Breadth is the number of combinations you searched in step 2, **measured** from the recorded
+  `backtest sweep` trials. It cannot be declared; with no recorded sweep the promote is refused.
+- `--universe` must name a point-in-time universe covering the window; non-PIT fails closed.
+- The holdout is single-use: a promote burns it, and a burned window cannot be re-evaluated.
 - `--min-pct-positive` must be in `[0, 1]`.
+- These gates are the same for every actor; `--actor human` unlocks nothing.
 - The default thresholds are the gate criteria in `algua/research/gates.py`.
 
 Output carries `passed`, `promoted`, the per-check breakdown, the config hash, and the snapshot
@@ -92,7 +95,8 @@ uv run algua paper promote cross_sectional_momentum
 
 The gate requires ≥63 broker-clocked daily return observations, ≥90% session coverage, realized
 Sharpe ≥ max(0.5 × holdout_sharpe, 0.3), vol/drawdown bounds, clean integrity, and account
-hygiene. Evidence must be ≤5 trading sessions stale. Relaxation flags are human-only.
+hygiene. Evidence must be ≤5 trading sessions stale. The threshold flags may only tighten a
+threshold, for every actor; loosening one is refused.
 
 Re-running `paper promote` on a strategy already at `forward_tested` refreshes the live-wall
 certificate without a stage change (exit 0 on pass).

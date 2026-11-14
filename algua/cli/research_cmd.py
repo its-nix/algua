@@ -21,7 +21,6 @@ _PROMOTE_SUMMARY_KEYS = (
     "dsr_binding", "dsr_bootstrap_binding", "fdr_binding", "regime_robustness_binding",
     "ir_binding", "returns_available", "holdout", "stability", "config_hash", "snapshot_id",
     "universe_name", "universe_snapshots", "fundamentals_snapshot", "news_snapshot",
-    "holdout_reuse",
 )
 
 
@@ -50,44 +49,12 @@ def promote(
     min_holdout_return: float = typer.Option(0.0, "--min-holdout-return"),
     min_pct_positive: float = typer.Option(0.6, "--min-pct-positive"),
     min_window_sharpe: float = typer.Option(0.0, "--min-window-sharpe"),
-    n_combos: int = typer.Option(
-        None, "--n-combos",
-        help="OPERATOR DECLARATION of search breadth, used ONLY when no measured sweep trials "
-             "exist; the measured sum from `backtest sweep` is preferred and always wins",
-    ),
-    allow_holdout_reuse: bool = typer.Option(
-        False, "--allow-holdout-reuse",
-        help="OVERRIDE the single-use holdout guard: re-evaluate a holdout window already burned "
-             "by a prior promote. Records the reuse (reused=1) and marks it in the audit trail. "
-             "Statistically costly — only with fresh justification.",
-    ),
-    allow_non_pit: bool = typer.Option(
-        False, "--allow-non-pit",
-        help="HUMAN-ONLY override: promote a non-PIT (survivorship-biased) backtest. Audited. "
-             "Agents may not pass this.",
-    ),
     delistings: str = typer.Option(
         None, "--delistings",
         help="delistings snapshot handle (survivorship-free: realize held delisted names)"),
-    assume_terminal_last_close: bool = typer.Option(
-        False, "--assume-terminal-last-close",
-        help="HUMAN-ONLY: realize a held-into-gap name at its last close when no delisting record "
-             "exists. An agent must supply explicit delisting records; no-record-gap fails closed.",
-    ),
-    actor: str = typer.Option("agent", "--actor", help="human | agent | system"),
-    actor_signature: str = typer.Option(
-        None, "--actor-signature",
-        help="path to the SSH signature over the printed human-actor challenge (#329). Required to "
-             "authenticate --actor human: a bare --actor human unlocks NO human-only path — run "
-             "once without this to print a challenge, sign it with your enrolled algua-human-actor "
-             "key (ssh-keygen -Y sign -n algua-human-actor), then re-run with --actor-signature."),
-    new_family: str = typer.Option(
-        None, "--new-family",
-        help="HUMAN-ONLY: name a new family with FRESH (zero-prior) breadth on a NOVEL/PARENTAGE "
-             "verdict. Required for a human NOVEL; ignored once the strategy is assigned. An agent "
-             "NOVEL now AUTO-creates a family (auto-named) SEEDED with the funnel-wide breadth "
-             "prior (no human signature) — this flag is ignored for agents.",
-    ),
+    actor: str = typer.Option(
+        "agent", "--actor",
+        help="human | agent: an audit label only; it unlocks nothing (every gate is the same)"),
     summary: bool = typer.Option(
         False, "--summary",
         help="emit only decision-relevant scalars (drops deep dsr_*/fdr_*/regime diagnostics; "
@@ -95,17 +62,15 @@ def promote(
 ) -> None:
     """Gate backtested->candidate on the INTEGRITY FLOOR; promote only on pass (factory soft gate).
 
-    BINDING (the floor): PIT universe (`--universe`; non-PIT fails closed unless a human passes
-    --allow-non-pit), holdout >= 63 observations (underpowered holdouts fail closed), and raw
-    holdout Sharpe > 0. Everything statistical — the breadth-DEFLATED holdout-Sharpe bar, window
-    stability, DSR/bootstrap evidence, regime robustness, idiosyncratic alpha — is computed and
-    recorded as ADVISORY (`"advisory": true` on the check; never vetoes). The FORWARD gate is the
-    harsh threshold (its bar is 0.5x the holdout Sharpe recorded here — overfit self-punishes).
-    Breadth is still MEASURED as the sum of recorded `search_trials` (from `backtest sweep`); an
-    agent must have measured breadth (no measured trials => refused). Declaring breadth via
-    --n-combos is HUMAN-ONLY and recorded with provenance="declared" (auditably less trustworthy).
-    On pass for an agent this mints the single-use gate token the BACKTESTED->CANDIDATE
-    transition consumes. See docs/superpowers/specs/2026-08-10-strategy-factory-design.md.
+    BINDING (the floor): PIT universe (`--universe`; non-PIT fails closed), holdout >= 63
+    observations (underpowered holdouts fail closed), and raw holdout Sharpe > 0. Everything
+    statistical — the breadth-DEFLATED holdout-Sharpe bar, window stability, DSR/bootstrap
+    evidence, regime robustness, idiosyncratic alpha — is computed and recorded as ADVISORY
+    (`"advisory": true` on the check; never vetoes). The FORWARD gate is the harsh threshold (its
+    bar is 0.5x the holdout Sharpe recorded here — overfit self-punishes). Breadth is MEASURED as
+    the sum of recorded `search_trials` (from `backtest sweep`); no measured trials => refused. The
+    holdout is single-use. The gates are the same for every `--actor`: there is no override. See
+    docs/superpowers/specs/2026-11-13-go-live-only-approval-design.md.
     """
     payload = promote_task(
         name, start=start, end=end, demo=demo, snapshot=snapshot,
@@ -113,9 +78,7 @@ def promote(
         universe=universe, windows=windows, holdout_frac=holdout_frac,
         min_holdout_sharpe=min_holdout_sharpe, min_holdout_return=min_holdout_return,
         min_pct_positive=min_pct_positive, min_window_sharpe=min_window_sharpe,
-        n_combos=n_combos, allow_holdout_reuse=allow_holdout_reuse, allow_non_pit=allow_non_pit,
-        delistings=delistings, assume_terminal_last_close=assume_terminal_last_close,
-        actor=actor, actor_signature=actor_signature, new_family=new_family,
+        delistings=delistings, actor=actor,
     )
     out = ok(payload)
     emit(project(out, _PROMOTE_SUMMARY_KEYS) if summary else out)

@@ -49,7 +49,8 @@ in paper. The forward gate, not this one, is the harsh threshold.
 ## Pitfalls to watch
 
 - **Search breadth / overfitting.** The more parameter combos you sweep, the more likely one looks
-  good by chance. Record the number searched (`promote --n-combos K`); treat a thin holdout margin
+  good by chance. The gate counts every combo you searched from the recorded `backtest sweep`
+  trials (breadth is measured, never declared); treat a thin holdout margin
   after a wide search as weak. The holdout is your defense against search-induced overfitting.
 - **Look-ahead.** The engine enforces the `t→t+1` decision lag centrally, so a *correctly authored*
   strategy can't peek — but if results look too good to be true, re-read `compute_weights` (and

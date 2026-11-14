@@ -62,11 +62,14 @@ def test_human_token_not_consumable_by_agent(tmp_path, monkeypatch):
         transition_strategy(repo, "alpha", Stage.CANDIDATE, Actor.AGENT, "try")
 
 
-def test_human_shortlist_exempt(tmp_path):
+def test_human_shortlist_not_exempt(tmp_path, monkeypatch):
+    # Spec 2026-11-13: no human exemption — a human label needs the gate token too.
     repo = _repo(tmp_path)
     _backtested(repo)
-    assert transition_strategy(repo, "alpha", Stage.CANDIDATE, Actor.HUMAN, "manual").stage \
-        == Stage.CANDIDATE
+    monkeypatch.setattr("algua.registry.transitions._compute_hashes", lambda name: _IDENT())
+    with pytest.raises(TransitionError, match="gate"):
+        transition_strategy(repo, "alpha", Stage.CANDIDATE, Actor.HUMAN, "manual")
+    assert repo.get("alpha").stage is Stage.BACKTESTED
 
 
 def test_token_for_strategy_a_not_consumable_by_strategy_b(tmp_path, monkeypatch):
@@ -139,18 +142,14 @@ def test_agent_forward_tested_refused_without_token(tmp_path, monkeypatch):
         transition_strategy(repo, "alpha", Stage.FORWARD_TESTED, Actor.AGENT, "try")
 
 
-def test_human_forward_tested_raw_pins_identity(tmp_path, monkeypatch):
-    # A human raw transition needs no token, but the stage_transitions row must record the
-    # RECOMPUTED identity hashes for audit (#124).
+def test_human_forward_tested_raw_needs_token(tmp_path, monkeypatch):
+    # Spec 2026-11-13: no human exemption — a human label needs a forward token too.
     repo = _repo(tmp_path)
     _paper(repo)
     monkeypatch.setattr("algua.registry.transitions._compute_hashes", lambda name: _FWD_IDENT)
-    assert transition_strategy(repo, "alpha", Stage.FORWARD_TESTED, Actor.HUMAN, "manual").stage \
-        == Stage.FORWARD_TESTED
-    last = repo.list_transitions("alpha")[-1]
-    assert last["to_stage"] == "forward_tested"
-    assert (last["code_hash"], last["config_hash"], last["dependency_hash"]) \
-        == ("c0", "cfg0", "dep0")
+    with pytest.raises(TransitionError, match="algua paper promote"):
+        transition_strategy(repo, "alpha", Stage.FORWARD_TESTED, Actor.HUMAN, "manual")
+    assert repo.get("alpha").stage is Stage.PAPER
 
 
 def test_demote_then_repromote_needs_fresh_token(tmp_path, monkeypatch):

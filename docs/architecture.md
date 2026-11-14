@@ -79,9 +79,9 @@ paper-trades, and only a human with a signed challenge puts it live. The package
 ```
 
 **The one-way rule:** `cli` composes everything; nothing composes `cli`. Domain packages never
-import `algua.cli`. There is exactly one exception in the tree — `registry/human_actor.py` prints a
-signing challenge — and it is tracked as debt in **#592**, deliberately left uncontracted so it
-stays visible rather than being blessed by an exemption.
+import `algua.cli`. The last exception (`registry/human_actor.py`, debt #592) was deleted with the
+signed human-actor override, so the registry's side is now contracted ("registry stays off the cli
+layer").
 
 ### Three harnesses, one product
 

@@ -124,7 +124,7 @@ def test_cli_compatibility_actor_is_unsigned_provenance(qualified, monkeypatch, 
     conn, *_ = qualified
     monkeypatch.setattr(paper_experimental, 'verify_frozen_artifact', lambda *args, **kw: None)
     result = CliRunner().invoke(app, ['paper', 'qualify-experimental', 'ops_s',
-        '--actor', actor, '--actor-signature', '/not-read-or-required'])
+        '--actor', actor])
     assert result.exit_code == 0, result.stdout
     assert json.loads(result.stdout)['recorded'] is True
     assert conn.execute('SELECT actor FROM experimental_qualifications').fetchone()[0] == actor

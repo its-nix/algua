@@ -120,13 +120,12 @@ def test_ambiguous_duplicate_fields_prevent_all_dispatch(tmp_path, monkeypatch, 
      "rank_by": "mean_sharpe"},
     {"action": "promote", "name": "third", "start": "2025-01-01", "end": "2026-01-01",
      "demo": False, "snapshot": "bars", "universe": "universe", "fundamentals_snapshot": None,
-     "news_snapshot": None, "delistings": None, "assume_terminal_last_close": False,
+     "news_snapshot": None, "delistings": None,
      "windows": 4, "holdout_frac": 0.2, "min_holdout_sharpe": 1, "min_holdout_return": 0,
-     "min_pct_positive": 0.6, "min_window_sharpe": -1, "n_combos": None,
-     "allow_holdout_reuse": False, "allow_non_pit": False, "actor": "agent", "new_family": None},
+     "min_pct_positive": 0.6, "min_window_sharpe": -1, "actor": "agent"},
     {"action": "sweep", "name": "no-params", "param": None},
     {"action": "sweep", "name": "empty-params", "param": []},
-    {"action": "promote", "name": "count", "n_combos": 1},
+    {"action": "promote", "name": "count", "windows": 1},
 ])
 def test_valid_json_parameters_are_forwarded_without_coercion(tmp_path, monkeypatch, task):
     import algua.cli.research_batch_cmd as batch

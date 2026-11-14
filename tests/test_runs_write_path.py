@@ -150,10 +150,10 @@ def _promote(*, expect_pass: bool) -> None:
     """Drive one `research promote` attempt for STRATEGY to a completed gate decision, reusing the
     recipe from tests/test_cli_research.py::test_agent_promote_blocked_without_pit: register +
     backtest, assign a family, sweep for measured breadth, then promote as the DEFAULT agent actor
-    with no `--allow-non-pit`/`--universe` — every current strategy fails the binding `pit_required`
-    check under that recipe, which is exactly the "easy path" the task brief calls for. Only
-    `expect_pass=False` is exercised by this module; a caller asking for a pass would need the
-    human-actor signed-challenge dance (tests/_human_actor_helpers.py) this helper does not do.
+    with no `--universe` — every strategy fails the binding `pit_required` check under that recipe
+    (there is no non-PIT override), which is exactly the "easy path" the task brief calls for. Only
+    `expect_pass=False` is exercised by this module; a caller asking for a pass would need a PIT
+    universe this helper does not ingest.
 
     The final promote step calls `promote_run.promote_task` DIRECTLY rather than through the CLI
     (`typer`'s `research promote` command): that command is wrapped in `@json_errors`, a catch-all
@@ -171,8 +171,8 @@ def _promote(*, expect_pass: bool) -> None:
 
     if expect_pass:
         raise NotImplementedError(
-            "no strategy in this suite passes the gate without a human-actor relaxation; "
-            "this helper only drives the (task-relevant) failing path")
+            "this helper ingests no PIT universe, so nothing passes the gate here; "
+            "it only drives the (task-relevant) failing path")
     runner = CliRunner()
     bt = runner.invoke(app, ["backtest", "run", STRATEGY, "--demo",
                               "--start", "2022-01-01", "--end", "2023-12-31", "--register"])

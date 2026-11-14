@@ -139,9 +139,8 @@ def test_bad_task_is_isolated_siblings_still_run(tmp_path):
 
 def test_holdout_single_use_preserved_across_warm_batch(tmp_path):
     bid, end_iso = _seed_bars(tmp_path)
-    # A batch worker is AGENT-only — a human actor cannot sign a challenge inside a batch (#329), so
-    # this exercises the holdout guard on the agent-legal path: MEASURED breadth (a sweep task) +
-    # a PIT universe, no human-only relaxation.
+    # The gates have no relaxation for any actor (spec 2026-11-13), so this exercises the holdout
+    # guard on the only path there is: MEASURED breadth (a sweep task) + a PIT universe.
     # #559: the gated universe must COVER the strategy CONFIG universe (agent subset guard).
     runner.invoke(app, ["data", "ingest-universe", "csm_uni",
                         "--symbols", "AAPL,MSFT,NVDA,AMZN,GOOGL",

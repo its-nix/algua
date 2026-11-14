@@ -57,9 +57,9 @@ BUDGET: dict[str, int] = {
     "algua/cli/data_cmd.py": 319,
     "algua/cli/live_cmd.py": 730,
     "algua/cli/operator_cmd.py": 334,
-    "algua/cli/paper_cmd.py": 1381,
+    "algua/cli/paper_cmd.py": 1349,
     # Story 2.2: the live exit-drain selection moved to execution/lane_exit.select_exit_guard.
-    "algua/cli/registry_cmd.py": 380,
+    "algua/cli/registry_cmd.py": 378,
     # +39 for #560: ExecutionContract.target_gross_utilization plus its domain guards. The field
     # and guards are ~8 lines; the rest is the comment deriving the 0.95 default from an explicit
     # between-tick move policy (u <= 1/(1+r)), sizing 5% as a stress allowance against measured
@@ -93,9 +93,9 @@ BUDGET: dict[str, int] = {
     # so the client_order_id name rule must be enforced here too or it is decorative on exactly the
     # path that runs unattended.
     "algua/registry/mergeback_intake.py": 471,
-    "algua/registry/promote_run.py": 348,
-    "algua/registry/promotion.py": 542,
-    "algua/registry/repository.py": 965,
+    "algua/registry/promote_run.py": 292,
+    "algua/registry/promotion.py": 509,
+    "algua/registry/repository.py": 964,
     # +7 for #560: the registration-time call to assert_coid_safe_name, plus why the rule lives in
     # a stdlib-only leaf (order_state imports algua.live, which this layer may not reach).
     "algua/registry/store/crud.py": 393,

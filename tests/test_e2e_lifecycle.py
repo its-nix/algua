@@ -22,25 +22,19 @@ from algua.config.settings import get_settings
 from algua.registry.db import connect, migrate
 from algua.registry.store import SqliteStrategyRepository
 from tests._deployment_helpers import force_legacy_strategy
-from tests._human_actor_helpers import _sign, install_human_actor_anchor, scaffold_transition
+from tests._scaffold_helpers import scaffold_transition
 
 STRATEGY = "cross_sectional_momentum"
 
 # The console script the `[project.scripts]` wiring installs sits next to the venv's python.
 ALGUA_BIN = Path(sys.executable).parent / "algua"
 
-# Set by the autouse fixture so `_run_promote_signed` can sign the human-actor challenge (#329).
-_HUMAN_KEY = None
-_TMP_PATH = None
 
 
 @pytest.fixture(autouse=True)
 def _isolated(monkeypatch, tmp_path):
-    global _HUMAN_KEY, _TMP_PATH
     monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "lifecycle.db"))
     monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path))
-    _HUMAN_KEY = install_human_actor_anchor(monkeypatch, tmp_path)
-    _TMP_PATH = tmp_path
 
 
 def _run(capsys, *args: str) -> tuple[int, dict]:
@@ -50,17 +44,6 @@ def _run(capsys, *args: str) -> tuple[int, dict]:
     out = capsys.readouterr().out
     code = exit_info.value.code or 0
     return code, json.loads(out)
-
-
-def _run_promote_signed(capsys, *args: str) -> tuple[int, dict]:
-    """Run a gated `research promote --actor human` end-to-end as an AUTHENTICATED human (#329):
-    invoke once to get the challenge, sign it with the enrolled test key, then re-invoke with
-    --actor-signature. `args` must already contain `--actor human`."""
-    code, payload = _run(capsys, *args)
-    if payload.get("action") != "human_actor_challenge":
-        return code, payload  # fails-closed earlier for a non-auth reason; hand it back
-    sig = _sign(_HUMAN_KEY, payload["challenge"], _TMP_PATH)
-    return _run(capsys, *args, "--actor-signature", str(sig))
 
 
 def _stage(capsys) -> str:
@@ -118,12 +101,23 @@ def test_full_research_lifecycle_to_shortlist_and_live_wall(capsys):
         )
     conn.close()
 
+    # Measured breadth and a PIT universe: the gates are the same for every actor and have no
+    # override (spec 2026-11-13).
+    code, payload = _run(capsys, "backtest", "sweep", STRATEGY, "--demo",
+                         "--start", "2022-01-01", "--end", "2023-12-31",
+                         "--param", "lookback=20,40", "--param", "construction.top_k=1,3")
+    assert code == 0, payload
+    code, payload = _run(capsys, "data", "ingest-universe", "demo_pit",
+                         "--symbols", "AAPL,MSFT,NVDA,AMZN,GOOGL",
+                         "--effective-date", "2021-01-01")
+    assert code == 0, payload
+
     # backtested -> candidate: the promotion gate evaluates and transitions on pass.
-    code, payload = _run_promote_signed(capsys, "research", "promote", STRATEGY, "--demo",
+    code, payload = _run(capsys, "research", "promote", STRATEGY, "--demo",
                          "--start", "2022-01-01", "--end", "2023-12-31",
                          "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
                          "--min-pct-positive", "0", "--min-window-sharpe", "-100",
-                         "--n-combos", "9", "--allow-non-pit", "--actor", "human")
+                         "--universe", "demo_pit")
     assert code == 0, payload
     assert payload["passed"] is True
     assert payload["promoted"] is True

@@ -526,6 +526,12 @@ def test_mint_succeeds_and_persists_seed_founder_and_profile() -> None:
     assert mrow["member_factors_json"] == '["fx"]'
     # founder_gate_id queryable both directions.
     assert repo.family_lifetime_combos(fid) == 40 + 40  # seed + the founder's own real trial
+    # The mint's strategy_assigned event carries the classification's clustering_version (the
+    # NOVEL-path counterpart of the MERGE assertion in test_family_creation_guard.py).
+    ev = repo._conn.execute(
+        "SELECT clustering_version FROM family_events WHERE family_id=? AND strategy_name='x'"
+        " AND event_type='strategy_assigned'", (fid,)).fetchone()
+    assert ev is not None and ev["clustering_version"] == "v1"
 
 
 def test_mint_audit_reports_rate_cap_and_lifetime_count_only() -> None:
