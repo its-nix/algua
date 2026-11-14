@@ -1,7 +1,11 @@
-"""algua-monitor: read-only FastAPI backend over the algua CLI seam (slices B+C+D).
+"""algua-monitor: FastAPI backend over the algua CLI seam (slices B+C+D + dashboard Inbox).
 
-Same-origin by design: no CORS middleware (dev uses the Vite proxy). Binds
-127.0.0.1 ONLY — tailnet exposure goes through `tailscale serve`, never 0.0.0.0.
+Read-only except the owner's Inbox (`POST /api/inbox`, `POST /share`): every write passes
+backend.owner.require_owner (the `Tailscale-User-Login` header) and goes through the CLI's
+`research inbox add`, the Inbox's only writer.
+
+Same-origin by design: no CORS middleware (dev uses the Vite proxy). Production listens on a
+Unix socket only tailscaled can open (web/README.md) — never 0.0.0.0.
 
 Every user-controlled value that reaches the CLI is validated in backend.params
 and passed in ``--flag=value`` form (a single argv element), so a crafted value
@@ -27,10 +31,13 @@ from typing import Annotated, Any
 from fastapi import FastAPI, Query, Request
 from fastapi import Path as ApiPath
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from starlette.datastructures import UploadFile
 
-from backend import push
-from backend.algua_cli import CliError, run_cli
+from backend import inbox, push
+from backend.algua_cli import CliError, forget, run_cli
+from backend.extract import extract_pdf_text, fetch_article
+from backend.owner import Forbidden, refuse_cross_site, require_owner
 from backend.params import (
     InvalidParam,
     validate_action,
@@ -90,6 +97,20 @@ def create_app() -> FastAPI:
         return JSONResponse(
             status_code=422,
             content={"ok": False, "error": exc.error, "code": "invalid_param"},
+        )
+
+    @app.exception_handler(Forbidden)
+    async def forbidden_handler(request: Request, exc: Forbidden) -> JSONResponse:
+        return JSONResponse(
+            status_code=403,
+            content={"ok": False, "error": str(exc), "code": "forbidden"},
+        )
+
+    @app.exception_handler(inbox.TooLarge)
+    async def too_large_handler(request: Request, exc: inbox.TooLarge) -> JSONResponse:
+        return JSONResponse(
+            status_code=413,
+            content={"ok": False, "error": str(exc), "code": "too_large"},
         )
 
     @app.exception_handler(push.SubscriptionLimit)
@@ -388,6 +409,81 @@ def create_app() -> FastAPI:
         await asyncio.to_thread(push.remove_subscription, endpoint)
         return {"ok": True}
 
+    @app.get("/api/equity")
+    async def equity(lane: str | None = None) -> dict[str, Any]:
+        # Cached like /api/book: the curve moves once per session.
+        args = ["fleet", "equity"]
+        if lane is not None:
+            args.append(f"--lane={validate_lane(lane)}")
+        return await run_cli(*args, ttl_s=30.0)
+
+    @app.get("/api/inbox")
+    async def inbox_list(
+        limit: Annotated[int | None, Query(ge=1, le=500)] = None,
+    ) -> dict[str, Any]:
+        # No cache: the owner expects to see their item the moment it is added.
+        args = ["research", "inbox", "list"]
+        if limit is not None:
+            args.append(f"--limit={limit}")
+        return await run_cli(*args, ttl_s=0.0)
+
+    @app.post("/api/inbox")
+    async def inbox_add(request: Request) -> JSONResponse:
+        # Owner first, before a single body byte is read or spooled.
+        require_owner(request)
+        refuse_cross_site(request)
+        if request.headers.get("content-type", "").startswith("multipart/form-data"):
+            form = await inbox.read_form(request, max_files=1)
+            try:
+                files = inbox.form_files(form, "file")
+                if not files:
+                    raise InvalidParam("multipart body needs a file")
+                data = await _add_file(
+                    files[0], title=inbox.check_title(inbox.form_str(form, "title")),
+                    note=inbox.check_note(inbox.form_str(form, "note")))
+            finally:
+                await form.close()
+        else:
+            body = await inbox.read_json(request)
+            if not isinstance(body, dict):
+                raise InvalidParam("body must be a JSON object")
+            url = inbox.check_url(body.get("url"))
+            text = inbox.check_body_text(body.get("text"))
+            title = inbox.check_title(body.get("title"))
+            note = inbox.check_note(body.get("note"))
+            if (url is None) == (text is None):
+                raise InvalidParam("give exactly one of url or text")
+            if url is not None:
+                data = await _add_link(url, title=title, note=note)
+            else:
+                data = await _cli_add([f"--text={text}",
+                                       *inbox.optional_args(title=title, note=note)])
+        return JSONResponse(status_code=201, content=data)
+
+    @app.post("/share")
+    async def share_target(request: Request) -> RedirectResponse:
+        # The PWA's Web Share Target (Android: Share -> Algua). Owner first, as for every write.
+        require_owner(request)
+        form = await inbox.read_form(request, max_files=inbox.MAX_SHARE_FILES)
+        try:
+            title = inbox.check_title(inbox.form_str(form, "title"))
+            text = inbox.check_body_text(inbox.form_str(form, "text"))
+            url = inbox.check_url(inbox.form_str(form, "url") or inbox.url_in_text(text))
+            files = inbox.form_files(form, "files")
+            note = inbox.check_note(text) if text and text != url else None
+            if files:
+                for upload in files:
+                    await _add_file(upload, title=title, note=note)
+            elif url is not None:
+                await _add_link(url, title=title, note=note)
+            elif text is not None:
+                await _cli_add([f"--text={text}", *inbox.optional_args(title=title, note=None)])
+            else:
+                raise InvalidParam("nothing was shared")
+        finally:
+            await form.close()
+        return RedirectResponse("/inbox?shared=1", status_code=303)
+
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
         return {"ok": True}
@@ -402,6 +498,48 @@ def create_app() -> FastAPI:
         logger.info("api-only mode: no frontend build at %s (run `npm run build`)", dist)
 
     return app
+
+
+async def _cli_add(source_args: list[str]) -> dict[str, Any]:
+    """Run `research inbox add` once, uncached; returns ``{"ok", "item", "duplicate"}``.
+
+    run_cli stale-serves a cached value when the CLI fails; for a write that would be a fake
+    success, so a stale result is the failure it stands for."""
+    args = ("research", "inbox", "add", *source_args)
+    try:
+        result = await run_cli(*args, ttl_s=0.0)
+    finally:
+        forget(*args)
+    if result.get("stale"):
+        raise CliError(str(result.get("last_error_code") or "cli_error"), "inbox add failed")
+    data = result["data"]
+    return {"ok": True, "item": data.get("item"), "duplicate": bool(data.get("duplicate"))}
+
+
+async def _add_link(url: str, *, title: str | None, note: str | None) -> dict[str, Any]:
+    fetched_title, text = await fetch_article(url)
+    with inbox.extracted_text_arg(text) as extracted:
+        return await _cli_add([f"--url={url}", *extracted,
+                               *inbox.optional_args(title=title or fetched_title, note=note)])
+
+
+async def _add_file(upload: UploadFile, *, title: str | None, note: str | None) -> dict[str, Any]:
+    path = await inbox.save_upload(upload)
+    try:
+        if await asyncio.to_thread(inbox.is_pdf, path, upload.content_type):
+            text = await asyncio.to_thread(extract_pdf_text, path)
+        elif inbox.is_text_file(path, upload.content_type):
+            text = await asyncio.to_thread(inbox.read_text_file, path)
+        else:
+            text = None
+        with inbox.extracted_text_arg(text) as extracted:
+            return await _cli_add([
+                f"--file={path}", *extracted,
+                *inbox.optional_args(title=title or inbox.sanitize_name(upload.filename),
+                                     note=note)])
+    except BaseException:
+        inbox.discard_upload(path)
+        raise
 
 
 app = create_app()

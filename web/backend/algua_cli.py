@@ -164,6 +164,15 @@ async def _execute(args: tuple[str, ...], timeout_s: float) -> Any:
     return _classify(payload)
 
 
+def forget(*args: str) -> None:
+    """Drop the cache entry (and lock) for one args tuple.
+
+    Writes go through :func:`run_cli` with ``ttl_s=0``; their result must never be served again
+    as a stale "success" for a later identical write, and unique write argv must not pile up."""
+    _cache.pop(tuple(args), None)
+    _locks.pop(tuple(args), None)
+
+
 async def run_cli(
     *args: str, ttl_s: float, timeout_s: float = 60.0, force_refresh: bool = False
 ) -> dict[str, Any]:

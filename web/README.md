@@ -1,6 +1,6 @@
 # algua-monitor — web monitor
 
-A **read-only** web monitor for the algua fleet. This directory is a
+A web monitor for the algua fleet, **read-only except the owner's Inbox** (see "Inbox writes"). This directory is a
 **standalone uv project** (own `web/uv.lock`) — slice B is the backend: a small
 FastAPI app whose only seam to the platform is running the `algua` CLI as a
 subprocess and serving its JSON (with a short TTL cache, singleflight, and loud
@@ -25,6 +25,31 @@ Endpoints:
 - `GET /healthz` — backend liveness.
 - `GET /api/research-memory?limit=20` — retained attempt references, including failed/excluded runs.
 - `GET /api/research-memory/<cycle>` — archive/checkpoint-verified public worker observations.
+- `GET /api/equity?lane=paper|live` — `algua fleet equity`, the P&L-indexed portfolio curve
+  (30s cache, like `/api/book`).
+- `GET /api/inbox?limit=N` — `algua research inbox list`, items with their journeys (no cache).
+- `POST /api/inbox` — owner only. JSON `{"url"?, "text"?, "title"?, "note"?}` (exactly one of
+  `url`/`text`) or multipart (`file`, `title?`, `note?`); 201 `{"ok", "item", "duplicate"}`.
+- `POST /share` — owner only. The PWA's Web Share Target (`title`, `text`, `url`, `files`);
+  303 to `/inbox?shared=1`.
+
+### Inbox writes
+
+The only writes in this app. Each one runs `algua research inbox add` (the Inbox's only writer):
+
+- **Owner check.** A write is accepted only when the `Tailscale-User-Login` header (stamped by
+  `tailscale serve`) equals `ALGUA_WEB_OWNER_LOGIN`. With that env unset or blank every write is
+  refused (403 `forbidden`). `POST /api/inbox` also refuses `Sec-Fetch-Site: cross-site`.
+- **Uploads** (≤ 20 MB, else 413 `too_large`) are saved to
+  `$ALGUA_WEB_INBOX_DIR/<uuid>/<sanitized name>`; unset, that is `<ALGUA_DATA_DIR>/inbox`
+  (`ALGUA_DATA_DIR` as the root settings read it, default `data`, relative to the repo). The
+  backend does not read the repo's `.env`, so set `ALGUA_DATA_DIR` in the service environment if
+  the CLI's data root is not the default.
+- **Extraction.** PDF text (pypdf) and text files are passed to the CLI via
+  `--extracted-text-file` (a temp file, deleted after the call). Article links are fetched once,
+  best effort: http(s) only, every resolved address (and every redirect hop, at most 3, and the
+  connected peer) must be public, 5 s total, 2 MB body cap, proxies ignored. x.com, twitter.com,
+  youtube.com and youtu.be (and subdomains) are never fetched: the link plus the note is the item.
 
 Open **Research → Open latest result** to inspect archived metrics even when the registered
 strategy board is empty. The visible evaluation selector distinguishes parameterized sweeps and
@@ -77,11 +102,22 @@ Assumes the repo at `/opt/algua` (matching the other units) and the env file at
    `migrate()`).
 
 5. Tailscale exposure — one-time: enable **MagicDNS** and **HTTPS
-   certificates** for the tailnet in the admin console, then:
+   certificates** for the tailnet in the admin console. The backend listens on a **Unix
+   socket** in a directory only the service user can open (tailscaled runs as root and still
+   can), so no other process on the box can reach it and forge the owner header:
 
    ```sh
-   tailscale serve --bg https:443 http://127.0.0.1:8787
+   sudo install -d -m 0700 -o algua /run/algua-web
+   ALGUA_WEB_OWNER_LOGIN=you@example.com \
+     uv run --project web uvicorn backend.main:app --uds /run/algua-web/web.sock
+   tailscale serve --bg https:443 unix:/run/algua-web/web.sock
    ```
+
+   Check first that the installed tailscale accepts a `unix:` target (`tailscale serve --help`;
+   recent releases do). If it does not, the spec's fallback applies: a loopback port
+   (`--host 127.0.0.1 --port 8787`, `tailscale serve --bg https:443 http://127.0.0.1:8787`) **plus
+   a confirmed, tested sandbox network denial for agent runs**, since every local process can
+   reach a loopback port and set the header itself.
 
 6. Access the monitor ONLY via `https://<box>.<tailnet>.ts.net`. The service
    worker (and future push) need the ONE stable secure origin — hitting the
@@ -90,9 +126,11 @@ Assumes the repo at `/opt/algua` (matching the other units) and the env file at
 
 ## Network rule
 
-**Bind 127.0.0.1 ONLY. Never bind 0.0.0.0.** Tailnet access goes through
-`tailscale serve` (which terminates on the loopback listener). There is no
-auth layer in this app — loopback + tailscale is the security boundary.
+**Production listens on the Unix socket (`--uds`) ONLY. Never bind 0.0.0.0.** Tailnet access
+goes through `tailscale serve`, which proxies to the socket and stamps `Tailscale-User-Login`.
+Reads have no auth layer (the tailnet is the boundary); writes additionally need that header to
+equal `ALGUA_WEB_OWNER_LOGIN`, which is only trustworthy because nothing but tailscaled can reach
+the socket. The `--host 127.0.0.1` runs above are for local development.
 
 ## Preconditions
 
