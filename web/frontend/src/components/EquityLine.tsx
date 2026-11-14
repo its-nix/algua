@@ -28,7 +28,8 @@ export interface EquityLineProps {
   className?: string
 }
 
-const PAD = 6
+/** Vertical pad: at least the halo radius (8), so a dot on the max or min never clips. */
+const PAD = 8
 const DOT_INSET = 18
 
 /** An equity line scaled to its own min/max, the way Robinhood and Apple Stocks draw it. */
@@ -40,8 +41,9 @@ export default function EquityLine({
   const n = data.length
   const min = lo ?? Math.min(...data, base ?? Infinity)
   const max = hi ?? Math.max(...data, base ?? -Infinity)
-  const span = max - min || 1
-  const y = (v: number) => PAD + (1 - (v - min) / span) * (height - PAD * 2)
+  const span = max - min
+  // A flat series (span 0) sits on the vertical centre rather than the bottom edge.
+  const y = (v: number) => span === 0 ? height / 2 : PAD + (1 - (v - min) / span) * (height - PAD * 2)
   const usable = width - (dot ? DOT_INSET : 0)
   const x = (i: number) => (n < 2 ? usable : (i / (n - 1)) * usable)
   const d = data.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join('')
@@ -51,7 +53,7 @@ export default function EquityLine({
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}
       className={className ? `equity-line ${className}` : 'equity-line'}
-      data-points={n} aria-hidden="true" focusable="false">
+      data-points={n} aria-hidden="true" focusable="false" style={{ overflow: 'visible' }}>
       {fill && n > 1 && (
         <>
           <defs>

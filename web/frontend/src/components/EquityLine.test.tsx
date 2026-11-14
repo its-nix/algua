@@ -31,6 +31,23 @@ it('two fills on one page get distinct gradient ids', () => {
   expect(new Set(ids).size).toBe(2)
 })
 
+it('keeps the end dot halo inside the svg at the series max and min', () => {
+  for (const data of [[0, 5, 10], [10, 5, 0]]) {
+    const { container } = render(<EquityLine data={data} width={200} height={100} color="#2fd27a" />)
+    const halo = container.querySelector('circle[r="8"]')!
+    const cy = Number(halo.getAttribute('cy'))
+    expect(cy - 8).toBeGreaterThanOrEqual(0)
+    expect(cy + 8).toBeLessThanOrEqual(100)
+    expect((container.querySelector('svg') as SVGSVGElement).style.overflow).toBe('visible')
+    cleanup()
+  }
+})
+
+it('centres a flat series vertically', () => {
+  const { container } = render(<EquityLine data={[3, 3, 3]} width={200} height={100} color="#2fd27a" />)
+  expect(Number(container.querySelector('circle[r="4"]')?.getAttribute('cy'))).toBe(50)
+})
+
 it('smooth keeps the last value exact', () => {
   expect(smooth([1, 5, 2, 8, 3])[4]).toBe(3)
 })
