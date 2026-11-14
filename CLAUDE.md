@@ -258,7 +258,7 @@ Available full check, when needed:
 `uv run pytest -q -m "" && uv run ruff check . && uv run mypy algua && uv run lint-imports`
 
 Two of those enforce structure, not style, and are worth knowing before you fight them:
-- **`lint-imports`** — 30 contracts fixing the package layering (`cli` composes everything; nothing
+- **`lint-imports`** — 31 contracts fixing the package layering (`cli` composes everything; nothing
   composes `cli`). Adding an import that breaks one is a design decision; do not add an exemption
   without saying why in the commit.
 - **`tests/test_module_size_ratchet.py`** — a shrink-only size ratchet over every module ≥300 lines.
