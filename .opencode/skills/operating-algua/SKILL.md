@@ -73,7 +73,7 @@ does not prove PIT eligibility; report missing inputs or a refused gate rather t
 ## How you're run
 
 You typically run autonomously inside an isolated git worktree on a `research-run/<stamp>` branch.
-Write your authored files and a report at `kb/research-runs/<stamp>.md` in that worktree. The
+Write your authored files and a report at `algua-kb/research-runs/<stamp>.md` in that worktree. The
 trusted launcher commits both afterward; the worker does not run `git commit`. For any
 hypothesis whose preview passed, name its `merge_back` in the report's trailer (see
 `run-the-research-loop`) — the launcher parses it and enqueues the REAL, authoritative

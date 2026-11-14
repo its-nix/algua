@@ -77,7 +77,7 @@ are taken in. Don't sort or delete Inbox rows while a leap run is taking them in
 6. **Watch one cycle** of forage, leap and research: `journalctl -u algua-leap.service` etc. Every
    Drive request logs one JSON `drive_call` line (`op`, `file`, `tab`, `rows`, `ms`, `ok`,
    `status`) — names only, never ids.
-7. **Retire the files** once a clean cycle has run: move `kb/inspirations/*.md` and
+7. **Retire the files** once a clean cycle has run: move `algua-kb/inspirations/*.md` and
    `_sources.yaml` to a dated backup directory. `.opencode/categories.txt` stays in the repo as the
    file backend's default for tests and local development.
 

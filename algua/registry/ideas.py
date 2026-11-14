@@ -76,7 +76,7 @@ def _row_to_idea(row: sqlite3.Row) -> Idea:
 
 @dataclass(frozen=True)
 class InspirationLink:
-    """One inspiration an idea leaped from (kb/inspirations note id + venue + obscurity)."""
+    """One inspiration an idea leaped from (algua-kb/inspirations note id + venue + obscurity)."""
 
     inspiration_id: str
     venue: str

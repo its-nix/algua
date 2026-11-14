@@ -6,7 +6,7 @@ description: Generate an organized, plotted experiment report for a strategy (sw
 # Reporting experiments
 
 Turn a strategy's raw MLflow runs into a **curated, interpreted, graph-linked** report in the kb:
-plots + your reading of the results, living at `kb/strategies/<name>/reports/<stamp>/`, wikilinked
+plots + your reading of the results, living at `algua-kb/strategies/<name>/reports/<stamp>/`, wikilinked
 into the strategy and family notes. Read `operating-algua` first for the golden rules.
 
 ## The discipline (read before running)
@@ -59,7 +59,7 @@ walk-forward (those don't log a return series; the single-use OOS holdout is nev
    and `uv run algua backtest walk-forward <name> --demo --windows 4 --track` first.
 2. **Generate the figures + skeleton.** Save the reference script below to a temp file and run it:
    `uv run python /tmp/report_experiments.py <name> --family <slug>`. It writes
-   `kb/strategies/<name>/reports/<stamp>/report.md` + the SVGs, with the provenance stamp filled in.
+   `algua-kb/strategies/<name>/reports/<stamp>/report.md` + the SVGs, with the provenance stamp filled in.
 3. **Interpret — this is the point.** Edit the generated `report.md`: under each figure, write the
    *reading* (what the heatmap/sensitivity says about robustness; whether the windows are stable or a
    single window carries it; over/under-fitting tells). Reference `interpret-results` for what
@@ -68,7 +68,7 @@ walk-forward (those don't log a return series; the single-use OOS holdout is nev
 4. **Join the graph.** Add a one-line `[[report]]` pointer from the strategy note's free-text area
    (NOT the registry-owned synced blocks) and, if useful, the family note. The report already
    wikilinks back to `[[<name>]]` / `[[<family>]]`.
-5. **Commit to the vault** (the notes *are* the knowledge): `git add kb/strategies/<name>/reports/...`
+5. **Commit to the vault** (the notes *are* the knowledge): `git add algua-kb/strategies/<name>/reports/...`
    and commit. Keep figures small; one report dir per run.
 
 ## Reference script
@@ -347,7 +347,7 @@ def plot_return_dist(df, strategy: str, out: Path) -> str | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("strategy")
-    ap.add_argument("--kb", default="kb", help="vault root")
+    ap.add_argument("--kb", default="algua-kb", help="vault root")
     ap.add_argument("--family", default=None, help="family slug for the [[wikilink]]")
     ap.add_argument("--backtest-run-id", default=None,
                     help="MLflow run_id of the backtest whose series.parquet to plot (#181)")

@@ -102,7 +102,7 @@ Rules that matter:
   lookback window fabricates fake momentum, and dividends distort returns. `close` is kept only for
   reference / notional sizing, not for return computation. The choice is a **three-way** trichotomy
   (raw contaminated / PIT-adjusted correct / future-restated leaky), not "raw safe vs adjusted
-  leaky" — see `kb/principles/research-methodology.md` and `docs/contracts/bar-schema.md` as the
+  leaky" — see `algua-kb/principles/research-methodology.md` and `docs/contracts/bar-schema.md` as the
   source of truth.
 - **Volume: no adjusted-volume column exists** — raw `volume` carries split discontinuities (the
   share count jumps at a split). If a signal uses volume across a window that may span a split,
@@ -117,9 +117,9 @@ Rules that matter:
   - **Guard the denominator.** Guard zero / non-finite denominators (e.g. a volume-ratio surge) so a
     divide-by-zero doesn't emit `inf`/`NaN` scores.
 - **Read the methodology AND the risk conventions before authoring.**
-  `kb/principles/research-methodology.md` covers the leakage vectors no wall catches — full-sample
+  `algua-kb/principles/research-methodology.md` covers the leakage vectors no wall catches — full-sample
   fitting, target leakage inside a custom feature, the raw/PIT-adjusted/restated price-provenance
-  trichotomy, and the `signal_panel` parity-vs-validity trap. `kb/principles/risk-conventions.md`
+  trichotomy, and the `signal_panel` parity-vs-validity trap. `algua-kb/principles/risk-conventions.md`
   covers weight-space risk — inverse-vol sizing, drawdown-based weight decay, conviction sizing, and
   the "R:R is the wrong yardstick" point. Note **where** that risk now lives: judgment that shapes
   the *score* (e.g. conviction sizing, slow-moving signals) stays in `signal`; judgment that shapes

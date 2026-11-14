@@ -20,7 +20,7 @@ def _add(path: str, mode: str = "100644") -> DiffEntry:
 
 
 def test_strategy_only_diff_passes() -> None:
-    entries = [_add("algua/strategies/momentum/xsec.py"), _add("kb/reports/xsec.md")]
+    entries = [_add("algua/strategies/momentum/xsec.py"), _add("algua-kb/reports/xsec.md")]
     assert evaluate_diff(entries, _CODEOWNERS).ok
 
 

@@ -19,7 +19,7 @@
 # a timer/service is a deliberate operator action, not a side effect of installing files.
 #
 # Also SEEDS the inspirations sources registry: deploy/kb/inspirations/_sources.yaml is copied to
-# ${ALGUA_KNOWLEDGE_DIR:-<repo>/kb}/inspirations/_sources.yaml ONLY when that file is absent. The
+# ${ALGUA_KNOWLEDGE_DIR:-<repo>/algua-kb}/inspirations/_sources.yaml ONLY when that file is absent. The
 # live registry is runtime state (the human curates it, write-yield stamps yields into it), so an
 # existing one is NEVER overwritten.
 #
@@ -117,7 +117,7 @@ fi
 # would silently discard curation. forage.sh performs the same copy-if-absent at startup, so a
 # vault relocated via ALGUA_KNOWLEDGE_DIR self-heals without re-running this installer.
 SEED_SRC="${REPO_ROOT}/deploy/kb/inspirations/_sources.yaml"
-SEED_DEST="${ALGUA_KNOWLEDGE_DIR:-${REPO_ROOT}/kb}/inspirations/_sources.yaml"
+SEED_DEST="${ALGUA_KNOWLEDGE_DIR:-${REPO_ROOT}/algua-kb}/inspirations/_sources.yaml"
 
 seed_sources_registry() {
   if [[ ! -f "${SEED_SRC}" ]]; then

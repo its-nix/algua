@@ -22,6 +22,8 @@ The vault is organised by domain. Each domain is a subdirectory:
 - **`principles/`** — hand-authored methodology / standards notes (no tooling behind them, unlike
   `strategies/`). Start with `principles/research-methodology.md` — the data-science judgment layer
   above the code walls.
+- **`operations/`** — dated operational records worth keeping after the code that produced them
+  is gone (e.g. `operations/paper-mechanics-smoke-2026-11-09.md`).
 
 Future domains (research reports, a news field, pivot/decision logs, …) get their own
 subdirectory when they have real content and tooling behind them — we don't pre-create empty

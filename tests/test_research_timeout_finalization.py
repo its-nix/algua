@@ -101,7 +101,7 @@ def test_real_recovery_archives_completed_rows_before_terminal_outcomes(
     _git(repo, "config", "user.email", "fixture@example.invalid")
     _git(repo, "config", "user.name", "SYNTHETIC_FIXTURE")
     (repo / "algua/strategies/fixture").mkdir(parents=True)
-    old = (Path("kb/principles/methodology.md") if fault == "tracked_kb"
+    old = (Path("algua-kb/principles/methodology.md") if fault == "tracked_kb"
            else Path("algua/strategies/fixture/existing.py"))
     (repo / old).parent.mkdir(parents=True, exist_ok=True)
     (repo / old).write_text("# SYNTHETIC_FIXTURE baseline\n")

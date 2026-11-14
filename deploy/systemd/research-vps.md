@@ -27,7 +27,7 @@ The private environment's research settings are memory 16384 MB (virtual AS, not
 CPU 1200 seconds, one hypothesis and one worker. `MLFLOW_DISABLE_TELEMETRY=true`
 disables anonymous usage telemetry, not experiment tracking.
 
-Registry: `/home/algua/Projects/algua/data/algua.db`; knowledge: checkout `kb/`;
+Registry: `/home/algua/Projects/algua/data/algua.db`; knowledge: checkout `algua-kb/`;
 tracking: checkout `mlruns.db` and `mlruns.artifacts/` (configured prefix `mlruns`);
 pinned pilot data: `/home/algua/datasets/pilot-2026-11-03/data`.
 Preserve these stores, retained research branches and runtime archives during maintenance.

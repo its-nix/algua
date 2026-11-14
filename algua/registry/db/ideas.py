@@ -35,7 +35,7 @@ CREATE INDEX IF NOT EXISTS ix_ideas_status ON ideas(status);
 CREATE INDEX IF NOT EXISTS ix_ideas_family ON ideas(family);
 -- v46 (ideation engine, spec §7). idea_attempts is APPEND-ONLY: one row per claim, its
 -- outcome written once under the claim's fencing token by a trusted driver. idea_inspirations
--- links an idea to every kb/inspirations note it leaped from (full credit each).
+-- links an idea to every algua-kb/inspirations note it leaped from (full credit each).
 CREATE TABLE IF NOT EXISTS idea_attempts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     idea_id INTEGER NOT NULL REFERENCES ideas(id),

@@ -418,7 +418,7 @@ def test_actual_seed_worker_capture_finish_cleanup_and_show(
     driver = DRIVER.read_text()
     source = worker / ".funnel-scratch/data/algua.db"
     source.unlink()
-    report = worker / f"kb/research-runs/{STAMP}.md"
+    report = worker / f"algua-kb/research-runs/{STAMP}.md"
     report.parent.mkdir(parents=True)
     report.write_text('```json\n' + json.dumps({"hypotheses": [{
         "idea_id": 1, "title": "SYNTHETIC_FIXTURE negative hypothesis",
