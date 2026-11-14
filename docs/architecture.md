@@ -42,7 +42,7 @@ edge refuses it). The raw registry go-live route still refuses frozen deployment
 [capped live connector](agent/capped-live.md) accepts an exact frozen deployment under the approved
 experimental profile. It does not mint a strict forward certificate.
 
-On the STRICT route the forward gate is the harsh threshold (Sharpe ≥ max(0.5× holdout, 0.3) over 63 broker-clocked sessions). On the CAPPED experimental route the edge is judged only by the research gate's out-of-sample holdout (Sharpe > 0, ≥63 bars). That is a weak bar. The five paper sessions prove mechanics, not edge. The deflated-Sharpe signal recorded by the research gate is advisory — the quality measure, and a candidate for a future binding bar (an owner decision).
+On the STRICT route the forward gate is the harsh threshold (Sharpe ≥ max(0.5× holdout, 0.3) over 63 broker-clocked sessions). On the CAPPED experimental route the edge is judged only by the research gate's out-of-sample holdout (Sharpe > 0, ≥63 bars). That is a weak bar. The five paper sessions prove mechanics, not edge. The deflated-Sharpe signal (DSR + bootstrap; trials = max(own lifetime sweep combos, funnel-wide combos in the 90-day window)) recorded by the research gate is advisory — the one trial-aware quality measure, and a candidate for a future binding bar (an owner decision).
 
 The shipped frozen-paper slice includes the two-phase planner boundary, verified immutable
 content/environments, child execution and deployment-bound operational evidence/qualification
@@ -109,8 +109,8 @@ research database, MLflow instance, execution fork or speculative service split.
 | `features` / `portfolio` | signal computation; weight construction | I/O, registry, cli |
 | `backtest` | `simulate`/`run`, PIT masking (`pit_view`), the fast/canonical dual path + parity guard (`decision_path`), windowing (`walkforward`) | registry access, tracking, live/execution |
 | `calendar` | `MarketCalendar` + the settings-honouring `get_calendar()` factory | cli or registry imports |
-| `research` | the statistical gate: DSR, breadth deflation, regime robustness, forward gates | registry imports (`research` never imports `registry`) |
-| `registry` | **the lifecycle authority**: stages, transitions, gate tokens, allocations, approvals, families, the SQLite schema | live-lane imports |
+| `research` | the statistical gate: the integrity floor, DSR (the advisory trial-aware signal), forward gates | registry imports (`research` never imports `registry`) |
+| `registry` | **the lifecycle authority**: stages, transitions, gate tokens, allocations, approvals, the SQLite schema | live-lane imports |
 | `execution` | broker adapters, order state, ledgers, sizing, flatten/drain | cli imports |
 | `live` | the shared tick engine (`run_tick`), book exposure | cli imports |
 | `risk` | limits, breaches, kill-switch, global halt, peaks, book breaker | cli or live-lane imports |
@@ -271,6 +271,12 @@ Source retry identities bind content, verified profile and an explicit capabilit
 (`operator/source_selection.py`), so unrelated deployments do not erase retry history. Extend that
 manifest when implementing a new recipe capability. Migration from old commit-based keys resets
 advisory retry counters once; durable criticism and experiment evidence are retained.
+The manifest also binds leap's skill review policy: changing that file legitimately reopens
+advisory source reviews; unrelated deployments still do not. Forage receives up to six prior
+review gaps for its selected categories, each bounded to 1,000 characters, as untrusted search
+context. Missing feedback is visible but does not stop forage. Leap separately assesses faithful
+replication and at most one source-motivated, explicitly labelled extension per offered source;
+the existing feasibility, semantic dedup/refutation and qualification checks remain binding.
 Conceptual `auto:leap_critic` / `CRITIC:untestable` discards without strategy/evaluation links remain
 required context for an unattempted idea's first trial rather than a permanent veto. Current-data
 preflight must recheck them. Actual attempts, empirical/manual and other critic rejections retain

@@ -426,10 +426,10 @@ when only the paper operator shipped. It uses the **explore-isolated** topology.
 - seeds a **per-run scratch funnel** from the real registry via sqlite's consistent online backup, and
   wires the agent to it — `ALGUA_DB_PATH`, `ALGUA_KNOWLEDGE_DIR`, `ALGUA_MLFLOW_TRACKING_URI` point at
   scratch; only `ALGUA_DATA_DIR` (the immutable snapshots) is the real one, shared read-only. So the
-  agent's walk-forward/sweep/promote see the REAL accumulated breadth, families, and burned holdouts (a
+  agent's walk-forward/sweep/promote see the REAL accumulated breadth and burned holdouts (a
   realistic pass/fail **preview**), but every write lands on the copy — **exploration can never mutate
-  the authoritative FDR ledger / family graph / holdout rows**, and wasted search never taxes the real
-  funnel;
+  the authoritative breadth / gate / holdout rows**, and wasted search never inflates the real DSR
+  trial count;
 - runs `opencode run` (bounded by `TIMEOUT`, default 45m) to drive ideate → author → walk-forward/sweep →
   `research promote` (preview) up to `candidate`, then writes a report to `kb/research-runs/<stamp>.md`
   on the branch, ending in a machine-readable trailer naming, per hypothesis, its verdict and — for a
@@ -439,7 +439,7 @@ when only the paper operator shipped. It uses the **explore-isolated** topology.
   drainer (factory slice 3) to run for real — see "Auto merge-back" below.
 
 **Why isolated and not "direct authoritative".** `opencode run` runs unsandboxed and could edit
-`promotion.py`/`gates.py`/`fdr_lord.py` in its mutable worktree; strategy code and gate code are the
+`promotion.py`/`gates.py` in its mutable worktree; strategy code and gate code are the
 same Python package, so if the agent ran against the real funnel it could execute altered gate logic
 against the real registry. CODEOWNERS only gates *merges to main*, not a live agent's local execution.
 Exploration therefore runs on a throwaway copy, and the **only** path to the authoritative funnel is
@@ -454,23 +454,22 @@ worktree). Enable with `sudo systemctl enable --now algua-research.timer`.
 not a promotion. The launcher enqueues every valid `merge_back` it parses from the report trailer;
 the merge-back drainer (`algua-mergeback-drain.timer`, every 30m) runs the REAL
 `paper merge-back --branch research-run/<stamp> --strategy <name> --universe <u> --start D --end D`
-for it through `algua operator lock-run`. That is the trusted, authoritative promote (real breadth
-tax, real single-use holdout burn, family mint) + gated code merge + paper intake. The agent
+for it through `algua operator lock-run`. That is the trusted, authoritative promote (real recorded
+breadth, real single-use holdout burn) + gated code merge + paper intake. The agent
 **cannot go live** (human-signed cryptographic wall) and cannot merge the CODEOWNERS-protected
 integrity files. A human can still force one through immediately instead of waiting for the next
 drain cycle: `uv run algua paper merge-back --branch <b> --strategy <s> --universe <u> --start D
 --end D` (see "Direct-invocation residual risk" above for why that bypasses the shared lock).
 
-**Cadence and the FDR budget.** The timer runs at **factory cadence: every 2h, 12 runs/day**
+**Cadence and the trial count.** The timer runs at **factory cadence: every 2h, 12 runs/day**
 (`OnCalendar=*-*-* 00/2:00:00 UTC`). That rate is safe for the funnel *because* exploration is
 scratch: a cycle's `research promote` is a preview that records NO breadth and burns NO holdout on
-the authoritative funnel, so it never consumes the FDR budget (**≤16 promotion-eligible binding
-tests / rolling 365 days**). That budget is spent only by an actual `paper merge-back` run — which
-records a metered breadth tax that raises the promotion Sharpe bar for ALL future strategies. So the
-producer can run as often as configured; the drainer paces the *merge-backs* (one per 30-minute
-cycle). The holdout is single-use *per strategy*, so the loop keeps authoring new strategies on the
-existing snapshot — the breadth/FDR tax at merge-back, not the holdout, is what makes it
-progressively harder. The real per-cycle costs are compute/API (tune `N_HYPOTHESES` / `TIMEOUT` in
+the authoritative funnel. Breadth is recorded only by an actual `paper merge-back` run, and every
+recorded sweep raises the DSR trial count (max of a strategy's own lifetime combos and the
+funnel-wide combos in the 90-day window) that the advisory deflated-Sharpe signal is computed
+against for ALL future strategies. So the producer can run as often as configured; the drainer
+paces the *merge-backs* (one per 30-minute cycle). The holdout is single-use *per strategy*, so the
+loop keeps authoring new strategies on the existing snapshot. The real per-cycle costs are compute/API (tune `N_HYPOTHESES` / `TIMEOUT` in
 the env file; provider rate-limit hits are recorded per run and are recorded per run in the
 digest — see below) and disk (auto-pruned; see below).
 

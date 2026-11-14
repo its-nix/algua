@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Collection, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime
 
 from algua.backtest.bootstrap import stable_bootstrap_seed, stationary_bootstrap_dsr
@@ -12,14 +12,8 @@ from algua.backtest.walkforward import WalkForwardResult
 from algua.contracts.lifecycle import Actor, Stage, TransitionError, validate_transition
 from algua.contracts.types import DataProvider, assert_gated_costs
 from algua.registry.approvals import compute_artifact_hashes
-from algua.registry.family_assignment import classify_and_assign_family
 from algua.registry.gate_comparison_record import capture_gate_comparison
-from algua.registry.repository import (
-    FamilyGraphDriftError,
-    FunnelSnapshot,
-    PendingNovelFamily,
-    StrategyRepository,
-)
+from algua.registry.repository import FunnelSnapshot, StrategyRepository
 from algua.registry.runs import provenance_of, record_walk_forward_run, walk_forward_metrics
 from algua.research.dsr import (
     DSR_ALPHA,
@@ -59,11 +53,6 @@ class BreadthContext:
     own: int
     windowed_total: int
     provenance: str
-    family_id: int | None = field(default=None)         # resolved family after classification
-    expected_family_id: int | None = field(default=None)  # CAS token for run_gate (Task 5)
-    # #524: a deferred agent-NOVEL family spec (family created only at the pass moment, never in
-    # preflight). None for every non-agent-NOVEL case.
-    pending_novel_family: PendingNovelFamily | None = field(default=None)
 
 
 def promotion_preflight(
@@ -82,8 +71,7 @@ def promotion_preflight(
     (3) stage legality (BACKTESTED -> CANDIDATE must be legal — never mint a passing token for an
     illegal source stage); (4) cost floor; (5) exhaustive signal_panel parity gate (raises
     BacktestError on divergence, no-op when no signal_panel); (6) declared feature_lookback;
-    (7) family classification; (8) breadth resolution (refuse "no measured breadth" here);
-    (9) gated-universe subset.
+    (7) breadth resolution (refuse "no measured breadth" here); (8) gated-universe subset.
 
     ``actor`` is an audit label: every wall applies to every actor. There is no human override
     (spec 2026-11-13 — the signed go-live is the only approval)."""
@@ -122,7 +110,7 @@ def promotion_preflight(
     except StrategyNotFound:
         _loaded = None
     # Transaction-cost floor (#325): a promote may only gate a backtest evaluated at a realistic
-    # transaction cost. The whole statistical stack (Sharpe/DSR/bootstrap/FDR/regime) is calibrated
+    # transaction cost. The whole statistical stack (Sharpe/DSR/bootstrap) is calibrated
     # on the return stream this promote will peek; if that stream were (near-)cost-free, a strategy
     # whose only edge is a cost illusion could clear every gate. assert_gated_costs fails closed on
     # a sub-floor fees+slippage BEFORE the holdout is touched, so a frictionless config can't mint
@@ -149,13 +137,6 @@ def promotion_preflight(
             f"trailing history its signal reads) so the walk-forward embargo can purge the "
             f"in-sample/holdout boundary (#345). Declare it on the strategy CONFIG (0 if the "
             f"signal has no rolling feature window).")
-    # --- Family classification (clustering verdict, #222 / #524) ---
-    # Runs BEFORE breadth resolution and BEFORE the holdout is touched. A strategy already assigned
-    # to a family is left as-is. An agent NOVEL verdict is DEFERRED (#524): no family is created
-    # here — classification returns a PendingNovelFamily spec, and the seeded family is minted only
-    # at the pass moment inside the atomic promote tx. A human-labelled NOVEL is refused here
-    # (nobody mints a fresh 0-prior family any more).
-    classify = classify_and_assign_family(repo, name, actor=actor)
     windowed_total = repo.windowed_search_combos(FUNNEL_WINDOW_DAYS)
     measured = repo.total_search_combos(name)
     if measured <= 0:
@@ -172,7 +153,7 @@ def promotion_preflight(
     # was produced on (e.g. a 5-symbol template incl. NVDA gated on liquid10); at deployment the
     # tick binds to the GATE universe, so a config symbol outside it was never validated at all.
     # Applies to every actor. Placed AFTER the structural refusals above so the established refusal
-    # precedence (stage, costs, parity, lookback, classification, breadth) is unchanged.
+    # precedence (stage, costs, parity, lookback, breadth) is unchanged.
     if _loaded is not None and universe_by_date:
         gated_members: set[str] = set().union(*universe_by_date.values())
         offending = sorted(set(_loaded.config.universe) - gated_members)
@@ -183,48 +164,8 @@ def promotion_preflight(
                 f"bound to the gated universe (#559) — fix CONFIG.universe or gate on a universe "
                 f"that covers it."
             )
-    ctx = BreadthContext(effective_funnel_breadth(own, windowed_total), own, windowed_total,
-                         provenance)
-    ctx.family_id = classify.family_id
-    ctx.expected_family_id = classify.family_id  # run_gate will CAS-verify this (Task 5)
-    ctx.pending_novel_family = classify.pending_novel_family
-    # #524: as the LAST preflight step BEFORE the holdout peek, re-validate a pending agent-NOVEL
-    # spec so every hard refusal burns NO holdout and mints NO consumable gate row (R6-HIGH-3,
-    # R7-HIGH-1, R8-HIGH): (1) the per-window rate cap, and (2) still-unassigned + the
-    # full-classifier-read-set fingerprint unchanged since classification. The under-lock re-checks
-    # in record_gate_with_fdr_and_maybe_promote remain the authoritative race-safe guards.
-    if classify.pending_novel_family is not None:
-        _revalidate_pending_novel(repo, name, classify.pending_novel_family)
-    return ctx
-
-
-def _revalidate_pending_novel(
-    repo: StrategyRepository, name: str, pending: PendingNovelFamily,
-) -> None:
-    """Fail-closed re-check of a deferred agent-NOVEL spec: the per-window rate cap AND the
-    still-unassigned + graph-fingerprint snapshot (#524). Raises ``AgentMintCapError`` /
-    ``FamilyGraphDriftError``. All are pure DB reads (no holdout, no gate row), safe to call both
-    pre-peek and at the atomic burn."""
-    repo.check_agent_novel_mint_bounds()
-    # #532 (Finding 3a): fail closed on a non-positive funnel-lifetime breadth seed BEFORE the
-    # holdout peek. The authoritative guard lives under the promote write lock in
-    # _mint_agent_novel_family (step 5a), but that runs AFTER the holdout is burned; a promote that
-    # is certain to fail the seed guard would otherwise spend its single-use holdout before the mint
-    # rejects it. This pure read is the early advisory copy (defense-in-depth, not a replacement — a
-    # concurrent search_trials change between here and commit is still caught under the lock).
-    if repo.agent_novel_mint_seed() <= 0:
-        raise ValueError(
-            f"strategy {name!r}: agent-NOVEL mint requires a strictly-positive funnel-lifetime "
-            "breadth seed; the funnel has no well-typed in-range search_trials (fail closed)"
-        )
-    if repo.strategy_family(name) is not None:
-        raise FamilyGraphDriftError(
-            f"strategy {name!r} assigned to a family since NOVEL classification; re-run promote",
-            axis="still_assigned")
-    if repo.family_graph_fingerprint() != pending.graph_fingerprint:
-        raise FamilyGraphDriftError(
-            f"family graph changed since {name!r} was classified NOVEL; re-run promote",
-            axis="graph_fingerprint")
+    return BreadthContext(effective_funnel_breadth(own, windowed_total), own, windowed_total,
+                          provenance)
 
 
 @dataclass
@@ -258,38 +199,10 @@ def run_gate(
     matches against (NOT wf.code_hash, which is git-HEAD-based and would never match)."""
     pit_ok = resolve_pit_ok(universe_name, universe_snapshots, period_start)
     holdout_n_bars = int(wf.holdout_metrics["n_bars"])
-    # Resolve family breadth for the 3-way max (breadth snapshotted here, not in preflight).
-    # Re-query live DB state (not in-memory BreadthContext) so the CAS below detects concurrent
-    # re-assignments between preflight and run_gate (R2-F5 concurrency safety).
-    family_id = repo.strategy_family(name)
-    family_lifetime_effective = (
-        repo.family_lifetime_combos(family_id) if family_id is not None else 0
-    )
-    # #524: pending agent-NOVEL — pre-lock mirror of the under-lock step-1 CAS (a fast, lock-free
-    # early reject). The founder is evaluated with family arm 0 / family_id None (the family does
-    # not exist yet); require it is STILL unassigned AND the classifier read-set fingerprint is
-    # unchanged since classification, else re-run preflight. The authoritative re-checks are the
-    # under-lock step-1 in record_gate_with_fdr_and_maybe_promote and the atomic on_peek re-check.
-    if breadth.pending_novel_family is not None:
-        if family_id is not None:
-            raise FamilyGraphDriftError(
-                f"strategy {name!r} was assigned to a family since NOVEL classification; re-run "
-                "promote", axis="still_assigned")
-        if repo.family_graph_fingerprint() != breadth.pending_novel_family.graph_fingerprint:
-            raise FamilyGraphDriftError(
-                f"family graph changed since {name!r} was classified NOVEL; re-run promote",
-                axis="graph_fingerprint")
-    # CAS: verify the family hasn't changed since preflight (concurrent-preflight safety R2-F5).
-    elif breadth.expected_family_id is not None and family_id != breadth.expected_family_id:
-        raise ValueError(
-            f"family assignment changed between preflight and gate evaluation "
-            f"(expected {breadth.expected_family_id}, got {family_id}); re-run promote."
-        )
-    # 3-way max: recompute final n_funnel including family dimension (overrides breadth.n_funnel,
-    # which was computed in preflight without the family component).
-    n_funnel = effective_funnel_breadth(
-        breadth.own, breadth.windowed_total, family_lifetime_effective,
-    )
+    # The DSR trial count (spec 2026-11-12 §4.7): max(own lifetime combos, funnel-wide windowed
+    # combos), both exactly as preflight read them. The #339 funnel CAS below re-verifies them
+    # under the write lock.
+    n_funnel = effective_funnel_breadth(breadth.own, breadth.windowed_total)
     # DSR evidence (#211): armed/evaluated iff breadth is MEASURED (the advisory dsr_evidence
     # check is appended only then). Declared breadth (human, no sweep) omits DSR entirely.
     dsr_binding = breadth.provenance == "measured"
@@ -323,22 +236,13 @@ def run_gate(
         dsr_funnel_floor_n_total_rows=(funnel_floor.n_total_rows if funnel_floor else None),
         bootstrap_binding=bootstrap_binding, bootstrap_lower_confidence=boot_lower,
         bootstrap_seed=boot_seed, bootstrap_b=boot_b, bootstrap_block_len=boot_block,
-        market_returns=wf.market_returns,
     )
-    # Factory soft gate (2026-08-10 spec): the statistical stack is ADVISORY. The LORD++
-    # FDR-binding branch itself was deleted (simplification stage 4a — it was provably dead here,
-    # this path never supplied a real p_value); record_gate_with_fdr_and_maybe_promote's
-    # final_passed is now always the provisional integrity-floor verdict. dsr_confidence is still
-    # computed and recorded in the decision above (advisory telemetry).
-    decision.fdr_binding = False
-    decision.fdr_skip_reason = "stats_advisory"
-
     identity = compute_artifact_hashes(name)
     rec = repo.get(name)
 
     # Effective independent trials N_eff (#221 Slice 3) — SHADOW-ONLY: recorded for the audit trail,
-    # NEVER passed as the binding DSR trial count (a lower N_eff would loosen the gate; it goes
-    # binding only at Slice 5 with haircut retirement). Sibling-only read (excludes own vector).
+    # NEVER passed as the DSR trial count (a lower N_eff would loosen the deflation). Sibling-only
+    # read (excludes own vector).
     # Guarded on holdout_metrics["start"/"end"] presence (omit-not-fail for legacy fixtures
     # that pre-date Slice 1 and don't carry the OOS interval in the WalkForwardResult).
     h_start_neff = wf.holdout_metrics.get("start")
@@ -405,8 +309,6 @@ def run_gate(
         "period_end": period_end.isoformat(),
         "holdout_frac": holdout_frac,
         "decision_json": json.dumps(decision.to_dict(), sort_keys=True),
-        "family_id": family_id,
-        "family_lifetime_effective": family_lifetime_effective,
         # PIT sidecar provenance (#132): the snapshot ids the walk-forward/holdout consumed, so the
         # gate audit row records exactly which fundamentals/news snapshot fed a needs_* promotion.
         "fundamentals_snapshot": wf.fundamentals_snapshot,
@@ -421,7 +323,7 @@ def run_gate(
     # #339 — capture the funnel-wide MUTABLE snapshot this decision was computed against, so the
     # commit can CAS-verify it under the write lock and refuse to serialize a mixed-snapshot
     # (stale-breadth / stale-variance) outcome. own/windowed are the exact values evaluate_gate
-    # used (from preflight); family + variances are the run_gate reads above; the search_trials
+    # used (from preflight); the variances are the run_gate reads above; the search_trials
     # fingerprint (captured here) is the append-only row-identity guard. Any drift by commit -> the
     # store rolls back and raises FunnelDriftError, and the operator re-runs against fresh state.
     st_count, st_max = repo.search_trials_fingerprint()
@@ -431,8 +333,6 @@ def run_gate(
         dsr_binding=dsr_binding,
         own_lifetime_combos=breadth.own,
         windowed_total_combos=breadth.windowed_total,
-        family_id=family_id,
-        family_lifetime_effective=family_lifetime_effective,
         dsr_trial_var_ann=dsr_trial_var_ann,
         funnel_floor_var_ann=(funnel_floor.var_ann if funnel_floor else None),
         funnel_floor_n_strategies=(funnel_floor.n_strategies if funnel_floor else 0),
@@ -440,10 +340,9 @@ def run_gate(
         search_trials_count=st_count,
         search_trials_max_id=st_max,
     )
-    fdr_outcome = repo.record_gate_with_fdr_and_maybe_promote(
+    outcome = repo.record_gate_and_maybe_promote(
         rec, gate_row=gate_row, funnel=funnel, actor=actor,
         reason=_gate_reason(decision) if decision.passed else None,
-        pending_novel_family=breadth.pending_novel_family,  # #524: minted only on pass, in-tx
         # The same decision as an economic-layer run row. PASS AND FAIL — the rejections are the
         # dataset the IS-vs-OOS scatter is mostly made of.
         run_row={
@@ -468,7 +367,7 @@ def run_gate(
             },
             "metrics": walk_forward_metrics(wf) | _sample(wf.holdout_metrics, "_oos")
                        | {"n_obs_oos": holdout_n_bars},
-            # The ~40 DSR / IR / regime diagnostics: queryable, but deliberately outside the fixed
+            # The DSR / bootstrap diagnostics: queryable, but deliberately outside the fixed
             # vocabulary. Finite scalars only — decision.to_dict() also carries strings, lists and
             # bools, and `bool` is an `int` subclass so it must be excluded explicitly.
             "extra_metrics": {
@@ -481,12 +380,11 @@ def run_gate(
         },
     )
 
-    # With the LORD++ binding branch retired (stage 4a), final_passed == provisional_passed (the
-    # integrity floor) unconditionally. Kept as an assignment (not an assert) so the decision
-    # always mirrors what the store committed.
-    decision.passed = fdr_outcome.final_passed
+    # final_passed == provisional_passed (the integrity floor). Kept as an assignment (not an
+    # assert) so the decision always mirrors what the store committed.
+    decision.passed = outcome.final_passed
 
-    return PromotionOutcome(decision=decision, promoted=fdr_outcome.final_passed)
+    return PromotionOutcome(decision=decision, promoted=outcome.final_passed)
 
 
 def _gate_reason(decision: GateDecision) -> str:
@@ -503,7 +401,6 @@ def _gate_reason(decision: GateDecision) -> str:
         f"; own={decision.own_lifetime_combos}, windowed={decision.windowed_total_combos}"
         f", window={decision.funnel_window_days}d)"
         f"; min_holdout_sharpe={decision.base_min_holdout_sharpe:.4g}"
-        f"->{decision.effective_min_holdout_sharpe:.4g}"
         if decision.n_combos is not None else ""
     )
     return "gate pass: " + ", ".join(parts) + breadth

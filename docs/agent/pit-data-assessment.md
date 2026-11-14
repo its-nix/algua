@@ -3,6 +3,30 @@
 Assessment date: 2026-11-08. Scope: daily, long-only liquid US midcaps; assessment only.
 No purchase, signup, source rollout, gate change or strategy qualification was performed.
 
+## No-spend sample check — 2026-11-14
+
+Fetched the documented public `demo` API without signup: four AAPL daily rows for
+2024-01-02 through 2024-01-05, plus one August 2020 split record. Price fields are
+`date/open/high/low/close/adjusted_close/volume`; the split provides `date/split`.
+Retained original bytes, retrieval times and SHA-256 hashes outside this public repository.
+The samples establish response shape only: AAPL is not the selected midcap universe, and
+neither payload supplies historical availability/revision clocks, membership or terminal economics.
+Capabilities not exercised by these payloads remain unverified; this does not establish that
+the vendor lacks them in other products.
+[Documented demo access](https://eodhd.com/financial-apis/api-for-historical-data-and-volumes),
+[corporate actions](https://eodhd.com/financial-apis/splits-and-dividends-api).
+
+Next sample must cover continuing and removed midcap members, dated identity/membership changes,
+and a terminal event, with the original knowledge/revision evidence explicitly supplied or marked
+unavailable. Do not buy an annual package or implement a production importer on this price-only
+sample. Norgate advertises a three-week trial limited to two years of data and account registration;
+it is a separate possible sample path, not a completed evaluation.
+[Trial terms](https://norgatedata.com/freetrial.php).
+
+The main qualification gap is also software: the reserved verified-PIT provenance path needs a
+separately reviewed verifier. This work changes neither that path nor a frozen data contract.
+No new purchase is required for reproduction, source-fit improvements or this initial assessment.
+
 **Recommendation:** keep the current snapshot for machinery work. Before paying, obtain a small
 source sample proving historical membership, security identity, price vintages and terminal events;
 then implement one bounded importer/verifier through the existing store. Neither reviewed retail

@@ -50,6 +50,8 @@ def _assert_unknown_option(result) -> None:
     ["--allow-non-pit"],
     ["--assume-terminal-last-close"],
     ["--new-family", "fam"],
+    ["--min-pct-positive", "0.5"],
+    ["--min-window-sharpe", "0.0"],
 ])
 def test_research_promote_refuses_removed_flag(flag):
     _assert_unknown_option(runner.invoke(app, [*_PROMOTE, *flag]))
@@ -62,6 +64,8 @@ def test_research_promote_refuses_removed_flag(flag):
     ("assume_terminal_last_close", True),
     ("new_family", "fam"),
     ("actor_signature", "x.sig"),
+    ("min_pct_positive", 0.5),
+    ("min_window_sharpe", 0.0),
 ])
 def test_batch_promote_task_refuses_removed_key(key, value):
     from algua.cli.research_batch_cmd import _validate_tasks
@@ -76,13 +80,6 @@ def test_human_label_cli_promote_hits_agent_breadth_refusal():
     reg = runner.invoke(app, ["backtest", "run", "cross_sectional_momentum", "--demo",
                               "--start", "2022-01-01", "--end", "2023-12-31", "--register"])
     assert reg.exit_code == 0, reg.output
-    from algua.registry.db import registry_conn
-    with registry_conn() as conn:  # pre-assign a family so breadth is the refusal under test
-        repo = SqliteStrategyRepository(conn)
-        fam_id = repo.create_family("csm_family", actor="agent")
-        repo.assign_strategy_to_family(
-            "cross_sectional_momentum", fam_id, "agent", verdict="NOVEL", similarity_score=0.0,
-            clustering_version="v0", clustering_config_json="{}", axis_json="{}")
     errors = {}
     for actor in ("agent", "human"):
         r = runner.invoke(app, ["research", "promote", "cross_sectional_momentum", "--demo",
@@ -104,13 +101,9 @@ def _repo(tmp_path):
     return SqliteStrategyRepository(conn)
 
 
-def _backtested_in_family(repo, name="alpha"):
+def _backtested(repo, name="alpha"):
     rec = repo.add(name)
     repo.apply_transition(rec, Stage.BACKTESTED, Actor.AGENT, "bt")
-    fam_id = repo.create_family(f"{name}_family", actor="agent")
-    repo.assign_strategy_to_family(
-        name, fam_id, "agent", verdict="NOVEL", similarity_score=0.0,
-        clustering_version="v0", clustering_config_json="{}", axis_json="{}")
 
 
 def _stub_strategy(monkeypatch, *, fees=None, feature_lookback=0, universe=("AAPL",)):
@@ -144,7 +137,7 @@ def test_human_actor_gets_agent_preflight(tmp_path, monkeypatch, case):
     messages = {}
     for actor in (Actor.AGENT, Actor.HUMAN):
         repo = _repo(tmp_path / actor.value)
-        _backtested_in_family(repo)
+        _backtested(repo)
         if case != "breadth":
             repo.record_search_trial("alpha", 4, "{}")
         kw: dict = {}
@@ -166,21 +159,18 @@ def test_human_actor_gets_agent_preflight(tmp_path, monkeypatch, case):
     assert messages[Actor.HUMAN] == messages[Actor.AGENT]
 
 
-def test_human_label_cannot_found_a_family(tmp_path):
-    """A NOVEL verdict founds a family only through the agent's deferred, rate-capped mint. A
-    human-labelled run is refused before the holdout instead of minting a fresh 0-prior family."""
-    repo = _repo(tmp_path)
-    rec = repo.add("alpha")
-    repo.apply_transition(rec, Stage.BACKTESTED, Actor.AGENT, "bt")
-    repo.record_search_trial("alpha", 4, "{}")
-    with pytest.raises(ValueError, match="NOVEL"):
-        _preflight(repo, Actor.HUMAN)
-    assert repo._conn.execute("SELECT COUNT(*) c FROM families").fetchone()["c"] == 0
-    assert repo.strategy_family("alpha") is None
-    # The agent on the same state gets the deferred spec (no family created in preflight).
-    ctx = _preflight(repo, Actor.AGENT)
-    assert ctx.pending_novel_family is not None
-    assert repo._conn.execute("SELECT COUNT(*) c FROM families").fetchone()["c"] == 0
+def test_human_and_agent_preflight_agree_with_no_families(tmp_path):
+    """Strategy-family governance is gone (lean trim step 7): on a registry with no families a
+    human-labelled preflight resolves exactly the breadth an agent's does, and neither writes a
+    family row."""
+    ctxs = {}
+    for actor in (Actor.AGENT, Actor.HUMAN):
+        repo = _repo(tmp_path / actor.value)
+        _backtested(repo)
+        repo.record_search_trial("alpha", 4, "{}")
+        ctxs[actor] = _preflight(repo, actor)
+        assert repo._conn.execute("SELECT COUNT(*) c FROM families").fetchone()["c"] == 0
+    assert ctxs[Actor.HUMAN] == ctxs[Actor.AGENT]
 
 
 # --- paper promote and the rest of the signed path ----------------------------------------------

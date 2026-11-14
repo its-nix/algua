@@ -412,8 +412,8 @@ forbidden_modules = ["algua.cli"]
 # hide them; leaving it unwritten keeps them visible.)
 #
 # Sized properly (the linter prints CHAINS, not edges, so an earlier note here said "two"): there
-# are several direct edges across five modules -- research/{dsr,haircut,forward_gates,gates,regime}
-# -> backtest._constants (all five just for `ANN`), gates -> backtest.walkforward
+# are several direct edges across three modules -- research/{dsr,forward_gates,gates}
+# -> backtest._constants (all three just for `ANN`), gates -> backtest.walkforward
 # (WalkForwardResult). Whoever closes this boundary should know that most of it is one shared constant, not deep coupling.
 name = "backtest lane stays off the registry"
 type = "forbidden"

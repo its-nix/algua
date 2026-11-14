@@ -123,43 +123,26 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   universe required (`--universe`; non-PIT fails closed), a minimum holdout-observations floor
   (63 — underpowered holdouts fail closed), and **raw holdout Sharpe > 0**
   (`holdout_sharpe_floor`), plus the preflight raises (measured breadth via `backtest sweep`,
-  default-on costs, declared feature_lookback, reproducible source, signal-panel parity, delisting
-  handling). The whole statistical stack — the breadth-DEFLATED holdout-Sharpe bar, window
-  stability, DSR evidence + bootstrap, regime robustness, idiosyncratic alpha — still computes and
-  is RECORDED on every run as **ADVISORY** (`"advisory": true` on the check; `*_binding` fields
-  mean armed/evaluated, NOT veto). The **LORD++ FDR ledger is FROZEN**: rows land with
-  `fdr_binding` NULL + skip reason `stats_advisory`, the throttle is no longer consulted, and
-  `--fdr-throttle-override` is REMOVED (the ledger machinery is preserved for re-tightening — FDR
-  mechanics live in the #529 spec). On the STRICT route the forward gate is the harsh threshold (Sharpe ≥ max(0.5× holdout, 0.3) over
-  63 broker-clocked sessions). On the CAPPED experimental route the edge is judged only by this
-  gate's out-of-sample holdout (Sharpe > 0, ≥63 bars) — a weak bar — while the five paper sessions
-  prove mechanics, not edge. The deflated-Sharpe signal recorded here is advisory — the quality
-  measure, and a candidate for a future binding bar (an owner decision).
-  A passing run is the ONLY way an agent reaches `candidate`
+  default-on costs, declared feature_lookback, reproducible source, signal-panel parity, gated-
+  universe subset, delisting handling). Everything statistical is RECORDED on every run as
+  **ADVISORY** (`"advisory": true` on the check; `*_binding` fields mean armed/evaluated, NOT
+  veto): `holdout_sharpe` (base `--min-holdout-sharpe`), `holdout_return`, and the ONE
+  trial-aware quality signal — **deflated Sharpe (`dsr_evidence`) plus its bootstrap
+  (`dsr_bootstrap`)**, whose trial count is `max(own lifetime sweep combos, funnel-wide combos in
+  the 90-day window)`, every recorded sweep counting (failed gates and human-labelled runs
+  included; `dsr_n_trials` on the decision). Making DSR binding is a separate owner decision. The
+  FDR ledger, strategy-family governance (#222/#524, incl. `AGENT_NOVEL_MINT_CAP`), the breadth
+  haircut, window stability, regime robustness and the idiosyncratic-alpha screen were removed
+  (lean trim step 7, spec 2026-11-12 §4.7–4.9); their DB columns/tables stay and old gate rows
+  still show their values. On the STRICT route the forward gate is the harsh threshold (Sharpe ≥
+  max(0.5× holdout, 0.3) over 63 broker-clocked sessions). On the CAPPED experimental route the
+  edge is judged only by this gate's out-of-sample holdout (Sharpe > 0, ≥63 bars) — a weak bar —
+  while the five paper sessions prove mechanics, not edge; DSR is the quality measure there and the
+  candidate binding bar. A passing run is the ONLY way an agent reaches `candidate`
   — `registry transition`
   REFUSES `backtested -> candidate` and `paper -> forward_tested` for EVERY actor
   (code `raw_edge_refused`, #682); the promote commands are the only paths. Breadth is always
   measured (`backtest sweep`), the universe always PIT, and a burned holdout stays burned.
-  **Family governance (#222, #524):** at preflight, the strategy is empirically classified into a
-  family via code-ancestry + factor-lineage + return-correlation clustering; MERGE verdict → assign
-  into the incumbent family (inherits its breadth); PARENTAGE → folded into the parent family
-  (nobody mints a child family); NOVEL + agent → **the family is NOT created in
-  preflight**: classification returns a deferred spec and the seeded family is minted **only if the
-  gate passes, AT THE PASS MOMENT**, inside the atomic promote transaction — seeded with the
-  funnel-wide **LIFETIME** search total (a durable prior that survives the 90-day window roll, so a
-  future sibling can never wait out the window to reset the tax). The founder itself pays family arm
-  0 (a no-op). Agent minting is bounded SOLELY by an automatic
-  per-window rate cap (`AGENT_NOVEL_MINT_CAP` ≈ 8 mints / 90 days, fail-closed, canonical-UTC,
-  CODEOWNERS-protected `algua/registry/store/family.py` constant — no human budget, no human
-  top-up: zero-human autonomy).
-  The rate cap is the retained count-bound because the deferred pass-time seed alone can't stop a
-  repeated-founder attack (the founder passes and escapes the tax before its family is seeded). The
-  mint re-checks a still-NOVEL family-graph fingerprint CAS under the write lock (drift →
-  `FamilyGraphDrift` re-run; no holdout burned for drift caught at/before the `on_peek` burn — the
-  post-peek/pre-lock re-check is a narrowed, monitored residual, release-on-failure + WARNING audit,
-  not fully closed). A run labelled `--actor human` cannot found a family: its NOVEL verdict is
-  refused before the holdout. Family-scoped lifetime breadth feeds the 3-way
-  `effective_funnel_breadth(own, windowed_total, family_lifetime_effective)` tighten-only max.
 - `uv run algua data ingest ... --from-file PATH` — register a local immutable snapshot.
 - `uv run algua data ingest-bars --provider yfinance --symbols AAPL --start D --end D` — fetch
   historical bars into a parquet snapshot.
@@ -183,7 +166,7 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   file (no corporate-action math yet).
 - `--summary` (context-rot defense #349) — `backtest walk-forward`, `backtest sweep`, and
   `research promote` accept `--summary` to emit ONLY the decision-relevant scalars (drops the
-  per-window/per-combo lists and the deep dsr_*/fdr_*/regime gate diagnostics); the projected
+  per-window/per-combo lists and the deep dsr_* gate diagnostics); the projected
   payload carries `"summary": true`. Prefer it for unattended operation; omit for full detail.
 - `uv run algua data inspect [--summary|--dataset NAME|--snapshot-id ID]` — inspect data snapshots.
 - `uv run algua data verify [--snapshot-id ID]` — power-loss backstop: read each snapshot's

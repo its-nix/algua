@@ -1,6 +1,4 @@
 import json
-import os
-import sqlite3
 
 import pytest
 from typer.testing import CliRunner
@@ -24,51 +22,6 @@ def _tmp(monkeypatch, tmp_path):
     DataStore(tmp_path).ingest_universe(
         universe="demo_pit", symbols=["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL"],
         effective_date="2021-01-01", as_of="2021-01-02T00:00:00+00:00", source="test")
-
-
-def _ensure_family(strategy_name: str = "cross_sectional_momentum",
-                   family_name: str = "csm_family") -> None:
-    """Pre-assign a strategy to a family. Task 4 (#222) prerequisite for promote tests."""
-    from datetime import UTC, datetime
-    db_path = os.environ["ALGUA_DB_PATH"]
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    now = datetime.now(UTC).isoformat()
-    try:
-        row = conn.execute(
-            "SELECT family_id FROM family_members WHERE strategy_name=? AND removed_at IS NULL",
-            (strategy_name,),
-        ).fetchone()
-        if row is not None:
-            return
-        with conn:
-            cur = conn.execute(
-                "INSERT INTO families(name, created_at, created_by_actor, created_by_strategy)"
-                " VALUES (?,?,?,?)",
-                (family_name, now, "agent", strategy_name),
-            )
-            fam_id = cur.lastrowid
-            conn.execute(
-                "INSERT INTO family_events(event_type, family_id, actor, created_at)"
-                " VALUES (?,?,?,?)",
-                ("family_created", fam_id, "agent", now),
-            )
-            conn.execute(
-                "INSERT INTO family_members(family_id, strategy_name, joined_at, joined_by_actor)"
-                " VALUES (?,?,?,?)",
-                (fam_id, strategy_name, now, "agent"),
-            )
-            conn.execute(
-                "INSERT INTO family_events"
-                "(event_type, family_id, strategy_name, actor,"
-                " clustering_verdict, similarity_score, clustering_version,"
-                " clustering_config_json, axis_json, matched_family_id, created_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                ("strategy_assigned", fam_id, strategy_name, "agent",
-                 "NOVEL", 0.0, "v0", "{}", "{}", None, now),
-            )
-    finally:
-        conn.close()
 
 
 def test_sweep_demo_emits_ranked():
@@ -121,12 +74,10 @@ def test_pre_registration_sweep_breadth_used_by_promote():
     backtested = runner.invoke(app, ["backtest", "run", "cross_sectional_momentum", "--demo",
                                      "--start", "2022-01-01", "--end", "2023-12-31", "--register"])
     assert backtested.exit_code == 0, backtested.stdout
-    _ensure_family()
 
     promote = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                   "--start", "2022-01-01", "--end", "2023-12-31",
                                   "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-                                  "--min-pct-positive", "0", "--min-window-sharpe", "-100",
                                   "--universe", "demo_pit"])
     assert promote.exit_code == 0, promote.stdout
     payload = json.loads(promote.stdout)
@@ -147,11 +98,9 @@ def _promote_to_backtested_with_breadth():
     backtested = runner.invoke(app, ["backtest", "run", "cross_sectional_momentum", "--demo",
                                      "--start", "2022-01-01", "--end", "2023-12-31", "--register"])
     assert backtested.exit_code == 0, backtested.stdout
-    _ensure_family()
     return ["research", "promote", "cross_sectional_momentum", "--demo",
             "--start", "2022-01-01", "--end", "2023-12-31",
             "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
-            "--min-pct-positive", "0", "--min-window-sharpe", "-100",
             "--universe", "demo_pit"]
 
 
@@ -163,8 +112,7 @@ def test_promote_full_emits_deep_diagnostics():
     assert res.exit_code == 0, res.stdout
     payload = json.loads(res.stdout)
     # full output is unchanged: deep gate diagnostics present, no summary marker
-    assert "dsr_confidence" in payload and "haircut_would_have_blocked" in payload
-    assert "per_regime_sharpes" in payload
+    assert "dsr_confidence" in payload and "dsr_trial_sr_var_ann" in payload
     assert "summary" not in payload
 
 
@@ -173,9 +121,9 @@ def test_promote_summary_drops_deep_diagnostics():
     res = _promote(base + ["--summary"])
     assert res.exit_code == 0, res.stdout
     payload = json.loads(res.stdout)
-    # summary drops the ~25 deep dsr_*/fdr_*/regime/shadow-audit fields
-    assert "dsr_confidence" not in payload and "haircut_would_have_blocked" not in payload
-    assert "per_regime_sharpes" not in payload and "own_lifetime_combos" not in payload
+    # summary drops the deep dsr_*/shadow-audit fields
+    assert "dsr_confidence" not in payload and "dsr_trial_sr_var_ann" not in payload
+    assert "own_lifetime_combos" not in payload
     # keeps the decision essence + marker
     assert payload["summary"] is True and payload["ok"] is True
     assert "promoted" in payload and "checks" in payload and "passed" in payload

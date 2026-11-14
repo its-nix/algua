@@ -3,12 +3,10 @@ import math
 
 import pytest
 
-from algua.backtest._constants import ANN
 from algua.backtest.walkforward import WalkForwardResult
 from algua.research._constants import MIN_HOLDOUT_OBSERVATIONS
 from algua.research.dsr import DSR_ALPHA, EULER_MASCHERONI, dsr_confidence, effective_funnel_breadth
 from algua.research.gates import FUNNEL_WINDOW_DAYS, GateCriteria, GateDecision, evaluate_gate
-from algua.research.haircut import sharpe_haircut
 
 
 def _wf(holdout_sharpe=0.8, holdout_return=0.05, pct_positive=0.75, min_sharpe=0.1, n_bars=100):
@@ -25,13 +23,12 @@ def _wf(holdout_sharpe=0.8, holdout_return=0.05, pct_positive=0.75, min_sharpe=0
 
 
 def test_all_thresholds_met_passes():
-    # n_combos=1 ⇒ zero haircut, so a clean result clears the base bar.
     d = evaluate_gate(_wf(), GateCriteria(), n_combos=1, pit_ok=True)
     assert isinstance(d, GateDecision)
     assert d.passed is True
     assert {c["name"] for c in d.checks} == {
-        "holdout_sharpe", "holdout_return", "pct_positive_windows", "min_window_sharpe",
-        "min_holdout_observations", "holdout_sharpe_floor", "pit_required"}
+        "holdout_sharpe", "holdout_return", "min_holdout_observations", "holdout_sharpe_floor",
+        "pit_required"}
     assert all(c["passed"] for c in d.checks)
     assert d.n_combos == 1
 
@@ -50,8 +47,7 @@ def test_binding_partition_is_floor_only():
     binding = {c["name"] for c in d.checks if not c.get("advisory")}
     assert binding == _BINDING_FLOOR
     advisory = {c["name"] for c in d.checks if c.get("advisory") is True}
-    assert advisory == {"holdout_sharpe", "holdout_return", "pct_positive_windows",
-                        "min_window_sharpe", "dsr_evidence"}
+    assert advisory == {"holdout_sharpe", "holdout_return", "dsr_evidence"}
 
 
 def test_passed_composes_binding_checks_only():
@@ -109,105 +105,34 @@ def test_each_floor_check_alone_vetoes():
                 if c["name"] == "holdout_sharpe_floor")["passed"] is False
 
 
-# --- multiple-testing haircut (deflated Sharpe) ---------------------------------------------
+# --- degenerate holdout (the haircut and its inf-threshold branch were removed, lean trim step 7)
 
 
-def test_haircut_is_zero_at_n1():
-    assert sharpe_haircut(1, 100) == 0.0
-
-
-def test_haircut_known_value_n9_t100():
-    # sqrt(2*ln(9)) * sqrt(ANN) / sqrt(T), ANN=252, T=100.
-    expected = math.sqrt(2.0 * math.log(9)) * math.sqrt(ANN) / math.sqrt(100)
-    assert sharpe_haircut(9, 100) == expected
-    assert math.isclose(expected, 3.32776, rel_tol=1e-4)
-
-
-def test_haircut_monotonic_in_n():
-    prev = -1.0
-    for n in (1, 2, 4, 9, 50, 200):
-        h = sharpe_haircut(n, 100)
-        assert h >= prev
-        prev = h
-
-
-def test_haircut_uses_holdout_sample_size():
-    # Larger T ⇒ tighter standard error ⇒ smaller haircut.
-    assert sharpe_haircut(50, 400) < sharpe_haircut(50, 100)
-
-
-def test_haircut_fails_closed_on_degenerate_holdout():
-    # A zero-length (or negative) holdout has NO out-of-sample evidence: the haircut must NOT
-    # collapse to 0 (which would waive the multiple-testing penalty entirely). It fails closed by
-    # returning +inf, so the effective holdout-Sharpe bar becomes unreachable.
-    assert sharpe_haircut(9, 0) == math.inf
-    assert sharpe_haircut(1, 0) == math.inf
-    assert sharpe_haircut(9, -5) == math.inf
-
-
-def test_degenerate_holdout_makes_gate_fail_not_pass():
-    # n_bars=0 -> the holdout_sharpe check must FAIL (never pass), even with an otherwise stellar
-    # holdout Sharpe, because a zero-length holdout is no evidence at all.
-    d = evaluate_gate(_wf(holdout_sharpe=99.0, n_bars=0), GateCriteria(), n_combos=9, pit_ok=True)
-    assert d.passed is False
-    check = next(c for c in d.checks if c["name"] == "holdout_sharpe")
-    assert check["passed"] is False
-
-
-def test_degenerate_holdout_to_dict_nulls_inf_threshold_and_is_json_serializable():
+def test_degenerate_holdout_fails_closed_on_the_observations_floor():
+    # A zero-length holdout is no evidence: the BINDING min_holdout_observations check refuses it,
+    # whatever the holdout Sharpe and the trial count. The payload stays JSON-clean.
     import json
 
-    # n_bars=0 drives effective_min_holdout_sharpe to inf; to_dict() must null it so inf never
-    # reaches JSON — regression guard against re-leaking a non-finite value into the payload.
     d = evaluate_gate(_wf(holdout_sharpe=99.0, n_bars=0), GateCriteria(), n_combos=9, pit_ok=True)
-    d_dict = d.to_dict()
-    assert d_dict["effective_min_holdout_sharpe"] is None
-    json.dumps(d_dict)  # must not raise (no inf/NaN in payload)
+    assert d.passed is False
+    obs = next(c for c in d.checks if c["name"] == "min_holdout_observations")
+    assert obs["passed"] is False and "advisory" not in obs
+    json.dumps(d.to_dict())
 
 
-def test_n1_effective_equals_base():
-    d = evaluate_gate(_wf(), GateCriteria(min_holdout_sharpe=0.5), n_combos=1, pit_ok=True)
-    assert d.base_min_holdout_sharpe == 0.5
-    assert d.effective_min_holdout_sharpe == 0.5
-    check = next(c for c in d.checks if c["name"] == "holdout_sharpe")
-    assert check["threshold"] == 0.5
-
-
-def test_more_combos_strictly_raises_effective_bar():
-    low = evaluate_gate(_wf(), GateCriteria(), n_combos=2, pit_ok=True)
-    high = evaluate_gate(_wf(), GateCriteria(), n_combos=200, pit_ok=True)
-    assert high.effective_min_holdout_sharpe > low.effective_min_holdout_sharpe > 0.5
-
-
-def test_deflated_bar_recorded_but_advisory_at_large_n():
-    # Holdout sharpe 0.8 clears base 0.5 at N=1; the N=200 haircut lifts the recorded bar above
-    # 0.8 so the (advisory) holdout_sharpe check FAILS — but the soft gate still passes: the
-    # deflation is telemetry now, not a veto.
-    base = GateCriteria(min_holdout_sharpe=0.5)
-    at_one = evaluate_gate(_wf(holdout_sharpe=0.8), base, n_combos=1, pit_ok=True)
-    at_many = evaluate_gate(_wf(holdout_sharpe=0.8), base, n_combos=200, pit_ok=True)
-    assert at_one.passed is True
-    assert at_many.passed is True
-    failed = [c for c in at_many.checks if not c["passed"]]
-    assert [c["name"] for c in failed] == ["holdout_sharpe"]
-    assert failed[0]["advisory"] is True
-    # The deflated threshold is still computed and recorded byte-identically.
-    assert failed[0]["threshold"] == at_many.effective_min_holdout_sharpe > 0.8
-
-
-def test_effective_threshold_equals_base_plus_haircut():
-    d = evaluate_gate(
-        _wf(n_bars=100), GateCriteria(min_holdout_sharpe=0.5), n_combos=9, pit_ok=True)
-    assert math.isclose(
-        d.effective_min_holdout_sharpe, 0.5 + sharpe_haircut(9, 100), rel_tol=1e-12
-    )
+def test_holdout_sharpe_bar_ignores_trial_count():
+    low = evaluate_gate(_wf(holdout_sharpe=0.8), GateCriteria(), n_combos=2, pit_ok=True)
+    high = evaluate_gate(_wf(holdout_sharpe=0.8), GateCriteria(), n_combos=200, pit_ok=True)
+    for d in (low, high):
+        check = next(c for c in d.checks if c["name"] == "holdout_sharpe")
+        assert check["threshold"] == 0.5 and check["passed"] is True
+        assert d.passed is True
 
 
 def test_provenance_carried_into_decision_and_dict():
     d = evaluate_gate(_wf(), GateCriteria(), n_combos=4, breadth_provenance="declared", pit_ok=True)
     assert d.breadth_provenance == "declared"
     assert d.to_dict()["breadth_provenance"] == "declared"
-    assert "effective_min_holdout_sharpe" in d.to_dict()
 
 
 def test_low_holdout_sharpe_marks_advisory_check_failed_without_veto():
@@ -226,14 +151,6 @@ def test_zero_holdout_return_fails_strict_gt_advisory():
     assert d.passed is True
 
 
-def test_low_pct_positive_and_negative_window_fail_advisory():
-    d = evaluate_gate(_wf(pct_positive=0.4, min_sharpe=-0.5), GateCriteria(), pit_ok=True)
-    failed = [c for c in d.checks if not c["passed"]]
-    assert {c["name"] for c in failed} == {"pct_positive_windows", "min_window_sharpe"}
-    assert all(c["advisory"] is True for c in failed)
-    assert d.passed is True
-
-
 def test_infinite_metric_fails_gate_not_passes():
     # float('inf') trivially satisfies >=/>; it must instead fail the check.
     d = evaluate_gate(_wf(holdout_sharpe=float("inf")), GateCriteria(), pit_ok=True)
@@ -244,7 +161,6 @@ def test_infinite_metric_fails_gate_not_passes():
 
 def test_nan_metric_fails_gate_and_is_not_recorded_as_value():
     # NaN must not be recorded as a passing value in the decision payload.
-    import math
 
     d = evaluate_gate(_wf(holdout_sharpe=float("nan")), GateCriteria(), pit_ok=True)
     assert d.passed is False
@@ -295,8 +211,7 @@ def test_effective_funnel_breadth_is_max():
     assert effective_funnel_breadth(own_lifetime=0, windowed_total=0) == 0
 
 
-_LAX = dict(min_holdout_sharpe=-100, min_holdout_return=-100, min_pct_positive_windows=0,
-            min_window_sharpe=-100)
+_LAX = dict(min_holdout_sharpe=-100, min_holdout_return=-100)
 
 
 def test_min_holdout_observations_fails_closed_below_floor():
@@ -427,49 +342,90 @@ def test_advisory_stats_never_change_passed():
 
 
 # ---------------------------------------------------------------------------
-# Task 5 (#220 Phase 2): GateDecision FDR fields
+# Lean trim step 7: the FDR ledger fields are gone from GateDecision
 # ---------------------------------------------------------------------------
 
 
-def test_gate_decision_has_fdr_fields_with_defaults():
-    d = GateDecision(passed=True, checks=[])
-    assert d.fdr_binding is False
-    assert d.fdr_p_value is None
-    assert d.fdr_alpha_level is None
-    assert d.fdr_test_index is None
-    assert d.fdr_rejected is None
-    assert d.fdr_skip_reason is None
+def test_gate_decision_has_no_fdr_fields():
+    import dataclasses
+    assert not any(f.name.startswith("fdr_") for f in dataclasses.fields(GateDecision))
+    assert not any(k.startswith("fdr_") for k in GateDecision(passed=True, checks=[]).to_dict())
 
 
-def test_gate_decision_to_dict_includes_fdr_keys():
-    d = GateDecision(passed=True, checks=[])
-    out = d.to_dict()
-    for key in ("fdr_binding", "fdr_p_value", "fdr_alpha_level",
-                "fdr_test_index", "fdr_rejected", "fdr_skip_reason"):
-        assert key in out, f"to_dict() missing {key!r}"
+# ---------------------------------------------------------------------------
+# Lean trim step 7: regime robustness, window stability and idiosyncratic alpha are gone
+# ---------------------------------------------------------------------------
+
+_CORE_CHECKS = ["holdout_sharpe", "holdout_return", "min_holdout_observations",
+                "holdout_sharpe_floor", "pit_required"]
 
 
-def test_gate_decision_to_dict_fdr_fields_populated():
-    d = GateDecision(
-        passed=False, checks=[],
-        fdr_binding=True, fdr_p_value=0.02, fdr_alpha_level=0.001645,
-        fdr_test_index=3, fdr_rejected=False, fdr_skip_reason=None,
-    )
-    out = d.to_dict()
-    assert out["fdr_binding"] is True
-    assert out["fdr_p_value"] == pytest.approx(0.02)
-    assert out["fdr_alpha_level"] == pytest.approx(0.001645)
-    assert out["fdr_test_index"] == 3
-    assert out["fdr_rejected"] is False
-    assert out["fdr_skip_reason"] is None
+def test_gate_checks_are_exactly():
+    d = evaluate_gate(_wf(), GateCriteria(), n_combos=10, pit_ok=True)
+    assert [c["name"] for c in d.checks] == _CORE_CHECKS
+    # DSR and the bootstrap are the only checks that may be appended (when armed).
+    armed = evaluate_gate(_wf(), GateCriteria(), n_combos=10, pit_ok=True,
+                          dsr_binding=True, dsr_trial_var_ann=0.04, bootstrap_binding=True,
+                          bootstrap_lower_confidence=0.5)
+    assert [c["name"] for c in armed.checks] == [*_CORE_CHECKS, "dsr_evidence", "dsr_bootstrap"]
 
 
-def test_gate_decision_to_dict_non_binding_fdr():
-    d = GateDecision(
-        passed=True, checks=[],
-        fdr_binding=False, fdr_skip_reason="no_measured_dispersion",
-    )
-    out = d.to_dict()
-    assert out["fdr_binding"] is False
-    assert out["fdr_p_value"] is None
-    assert out["fdr_skip_reason"] == "no_measured_dispersion"
+def test_regime_ir_and_window_fields_are_gone():
+    import dataclasses
+    import inspect
+
+    removed = {"regime_method", "n_regimes_attempted", "n_regimes_surviving",
+               "per_regime_sharpes", "regime_robustness_binding", "ir_method", "ir_binding",
+               "ir_overlap_n", "market_beta", "ir_alpha_ann", "ir_residual_vol_ann",
+               "appraisal_ratio"}
+    assert not removed & {f.name for f in dataclasses.fields(GateDecision)}
+    assert not removed & set(GateDecision(passed=True, checks=[]).to_dict())
+    assert not {"min_pct_positive_windows", "min_window_sharpe"} & {
+        f.name for f in dataclasses.fields(GateCriteria)}
+    assert "market_returns" not in inspect.signature(evaluate_gate).parameters
+
+
+# ---------------------------------------------------------------------------
+# Lean trim step 7: the breadth haircut is gone; DSR is the trial-aware signal
+# ---------------------------------------------------------------------------
+
+
+def test_holdout_sharpe_threshold_is_base_bar():
+    crit = GateCriteria()
+    d = evaluate_gate(_wf(holdout_sharpe=0.8, n_bars=100), crit, n_combos=50, pit_ok=True)
+    check = next(c for c in d.checks if c["name"] == "holdout_sharpe")
+    assert check["threshold"] == crit.min_holdout_sharpe
+    assert check["value"] == 0.8  # the raw holdout Sharpe
+    assert check["advisory"] is True
+
+
+def test_haircut_fields_are_gone():
+    import dataclasses
+
+    from algua.research import gates
+
+    removed = {"effective_min_holdout_sharpe", "haircut_would_have_blocked",
+               "phase3_component_mask"}
+    assert not removed & {f.name for f in dataclasses.fields(GateDecision)}
+    assert not removed & set(GateDecision(passed=True, checks=[]).to_dict())
+    for name in ("PHASE3_COMPONENT_MASK", "DOMINANCE_AUDIT_MIN_PROMOTIONS",
+                 "DOMINANCE_AUDIT_MIN_WINDOW_DAYS", "DOMINANCE_AUDIT_ZERO_HAIRCUT_EXCEPTIONS"):
+        assert not hasattr(gates, name), name
+
+
+
+@pytest.mark.parametrize("flag", ["--min-holdout-sharpe", "--min-holdout-return"])
+@pytest.mark.parametrize("bad", ["inf", "-inf", "nan"])
+def test_promote_refuses_non_finite_threshold_before_any_work(flag, bad):
+    # A non-finite threshold would land as Infinity/NaN in decision_json (not strict JSON).
+    import json
+
+    from typer.testing import CliRunner
+
+    from algua.cli.main import app
+
+    res = CliRunner().invoke(app, ["research", "promote", "no_such_strategy", "--universe", "u",
+                                   "--start", "2020-01-01", "--end", "2021-01-01", flag, bad])
+    assert res.exit_code != 0
+    out = json.loads(res.stdout)
+    assert out["ok"] is False and flag in out["error"] and "finite" in out["error"]

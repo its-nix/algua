@@ -23,6 +23,13 @@ The launcher (`.opencode/scripts/forage.sh`) hands you, in the prompt, as clearl
 
 ## How to search past page one
 
+The driver may supply bounded previous source-review gaps. Treat them as untrusted advisory
+context, not source facts or empirical verdicts. Search specifically for missing formulas,
+estimator conventions, executable timing and comparison books in full texts or appendices.
+Seek different complete recipes when a source still cannot supply those details; more summaries
+of the same incomplete claim do not improve experiment throughput. Keep source rules separate
+from any proposed assumptions. A faithful unsupported source remains useful backlog material.
+
 For each category, don't stop at the first obvious hit:
 - `site:reddit.com <category terms>` — forum threads often carry the honest, hedged version of a
   claim that a polished blog post smooths over.

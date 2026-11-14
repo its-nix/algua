@@ -59,15 +59,17 @@ uv run algua backtest sweep cross_sectional_momentum --demo \
 ```bash
 uv run algua research promote cross_sectional_momentum --demo \
   --universe <pit-universe> --start 2022-01-01 --end 2023-12-31 \
-  --min-holdout-sharpe 0.5 --min-holdout-return 0.0 \
-  --min-pct-positive 0.6 --min-window-sharpe 0.0
+  --min-holdout-sharpe 0.5 --min-holdout-return 0.0
 ```
 
 - Breadth is the number of combinations you searched in step 2, **measured** from the recorded
   `backtest sweep` trials. It cannot be declared; with no recorded sweep the promote is refused.
 - `--universe` must name a point-in-time universe covering the window; non-PIT fails closed.
 - The holdout is single-use: a promote burns it, and a burned window cannot be re-evaluated.
-- `--min-pct-positive` must be in `[0, 1]`.
+- Binding: PIT, >= 63 holdout bars, raw holdout Sharpe > 0. Advisory (recorded, never a veto):
+  `holdout_sharpe`, `holdout_return`, and deflated Sharpe (`dsr_evidence` + `dsr_bootstrap`), the
+  one trial-aware quality signal, whose trial count is max(own lifetime sweep combos, funnel-wide
+  combos in the 90-day window).
 - These gates are the same for every actor; `--actor human` unlocks nothing.
 - The default thresholds are the gate criteria in `algua/research/gates.py`.
 

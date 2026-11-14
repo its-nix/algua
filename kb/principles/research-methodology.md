@@ -22,19 +22,18 @@ damage.
 | **Execution-timing look-ahead** | Central `t→t+1` decision lag; the optional `signal_panel` fast path is guarded by a fail-closed **weight-level** parity check against the per-bar `construct(signal(view), view)` path. | `algua/backtest/engine.py::simulate` (shifts by `decision_lag_bars`), `algua/backtest/decision_path.py::_assert_parity`; contract floor `algua/contracts/types.py::ExecutionContract` (`decision_lag_bars >= 1`) | **Execution timing only.** It does NOT catch feature/data leakage inside your signal — see "Leaks no wall can catch". |
 | **Survivorship** | Point-in-time universe: membership is masked as-of each decision date, with snapshot provenance recorded. | `algua/backtest/pit_view.py::members_as_of`, `algua/backtest/decision_path.py::_decision_weights`; CLI resolution + provenance `algua/evaluation/inputs.py::resolve_universe_inputs` | **Static backtests stay opt-out.** A raw backtest with no `--universe` runs a static universe — but the `research promote` gate REQUIRES `--universe` for every actor (non-PIT fails closed; there is no override), so no promotion can rest on a survivorship-exposed run. |
 | **Holdout peeking** | `holdout_metrics` is withheld from every command except `research promote`, which reveals AND burns it (single-use). There is no reuse override for any actor. | `algua/backtest/walkforward.py` (`holdout_metrics` is the SENSITIVE field; stripped by `algua/cli/backtest_cmd.py::walk_forward_cmd` and `algua/tracking/mlflow_tracker.py`); burn identity in `algua/registry/promote_run.py::promote_task` (`overlapping_holdout_evaluations` → `record_holdout_evaluation`) | **Re-evaluating the same window.** Nothing stops you forming a *new* hypothesis after seeing a burn result, or peeking at the holdout "to debug". |
-| **Multiple testing (funnel-wide)** | The holdout-Sharpe bar is deflated by `sqrt(2·ln N)·sqrt(ANN)/sqrt(T)`, where N is the **funnel-wide effective breadth** — the tighten-only max of this strategy's measured sweep trials, the windowed funnel total, and the family-lifetime breadth (#137/#222), **measured** from recorded trials (breadth can no longer be declared); promotion refuses if none exist; a degenerate (0-bar) holdout fails closed (`inf`). A second, INDEPENDENT **LORD++ online-FDR** AND-check then requires the per-strategy DSR p-value to clear a running alpha-wealth level (`FDR_ALPHA=0.05`, `W0=0.025`). | `algua/research/haircut.py::sharpe_haircut`, `algua/research/dsr.py::effective_funnel_breadth`, `algua/research/gates.py::evaluate_gate`; applied in `algua/registry/promotion.py`; breadth recording `algua/registry/search_breadth.py::record_search_breadth` | A thesis deliberately split across families to dodge family-lifetime breadth has no automated detector at all — the advisory cross-family gaming scan (#228) was removed along with the rest of the factory-era `research` diagnostics; this is now purely a human judgment call (see "Residual judgment gaps" below). |
+| **Multiple testing (funnel-wide)** | The gate records **deflated Sharpe (DSR) + its bootstrap** on every measured promote: the probability the holdout Sharpe beats the expected best of N trials, where N = `max(own lifetime sweep combos, funnel-wide combos in the 90-day window)` (every recorded sweep counts — failed gates and human-labelled runs included). Breadth is **measured** from recorded trials (never declared); promotion refuses if none exist. The DSR checks are **ADVISORY** (recorded, never a veto); making them binding is an owner decision. | `algua/research/dsr.py::effective_funnel_breadth` / `dsr_confidence`, `algua/research/gates.py::evaluate_gate`; applied in `algua/registry/promotion.py::run_gate`; breadth recording `algua/registry/search_breadth.py::record_search_breadth` | **Advisory, not a wall.** A failed `dsr_evidence` does not stop a promote; the binding floor is only PIT, 63 holdout bars and holdout Sharpe > 0. Weighing the DSR result is your judgment. An old burst of funnel-wide trials stops counting after 90 days (a strategy's own lifetime combos still count). |
 | **Underpowered holdout** | A minimum holdout-observations floor — an OOS tail too short to carry statistical weight fails closed rather than passing on noise. | `algua/research/_constants.py::MIN_HOLDOUT_OBSERVATIONS` (63), enforced in `evaluate_gate` / `algua/registry/promotion.py` | **A power floor, not a power guarantee.** 63 observations clears the floor; whether your period is *economically* long enough (regimes, turnover) is still judgment. |
 
 ## Residual judgment gaps — what the walls still do NOT cover
 
 The three gaps this section once listed — funnel-level multiple-testing, PIT-by-default, and a
-minimum-sample floor — are **now code walls** (built by #137, extended by #211/#220's LORD++ FDR and
-#222's family breadth); see the table above. What the walls still leave to your judgment:
+minimum-sample floor — were built (#137, #211). PIT and the 63-bar floor are binding code walls;
+multiple testing is now an advisory DSR signal (lean trim step 7 removed the breadth haircut, the
+LORD++ FDR ledger and strategy-family breadth). What the walls still leave to your judgment:
 
-- **Cross-family gaming has no detector.** Family-lifetime breadth (#222) is evaded by deliberately
-  splitting one thesis across families. The advisory scan that used to flag such clusters
-  (`research family-audit`, #228) has been removed; spotting a deliberate split is now entirely a
-  human call, not a gate or a tool.
+- **Multiple testing is advisory.** Read `dsr_evidence` / `dsr_bootstrap` on every promote; a pass
+  on the floor with a failed DSR after a wide search is weak evidence.
 - **Everything in "Leaks no wall can catch" below.** The unbounded space — full-sample fitting,
   in-feature look-ahead, provenance leaks — is still prevention, not enforcement.
 
@@ -85,9 +84,11 @@ methodologically-aware author avoids them:
 - **In-sample ↔ holdout gap** is the overfitting smell. A backtest that sparkles in-sample and
   collapses out-of-sample was fit to noise.
 - **Parameter stability** matters more than a single peak: `pct_positive_windows` and the worst
-  window's `min_sharpe` tell you whether the edge is consistent or one lucky window.
-- **Deflated vs raw Sharpe.** After a wide search, the raw winner is inflated; the deflated bar is
-  the honest one. A thin margin over the deflated bar is weak evidence.
+  window's `min_sharpe` (walk-forward `stability`, not a gate check) tell you whether the edge is
+  consistent or one lucky window.
+- **Deflated vs raw Sharpe.** After a wide search, the raw winner is inflated; the deflated Sharpe
+  (`dsr_evidence`) is the honest read. A low DSR confidence is weak evidence however good the raw
+  Sharpe looks.
 - **Small samples lie.** Short or flat periods produce noisy metrics — prefer multi-year data.
 
 ## Design for generalization
@@ -99,12 +100,12 @@ methodologically-aware author avoids them:
 
 ## Search-breadth honesty
 
-- **Record every combo and hypothesis you try.** The deflated bar can only correct for the breadth
-  it is told about; an unrecorded search silently lowers the bar.
+- **Record every combo and hypothesis you try.** The deflated Sharpe can only correct for the
+  breadth it is told about; an unrecorded search silently inflates the result.
 - **Never re-run a refuted idea.** Capture the verdict in the strategy/family doc (`## Open
   questions` / `## Verdict & next`) so the funnel moves forward, not in circles (ties #126).
 - **Breadth raises the bar by design.** Every extra combo makes a lucky winner more likely, so the
-  honest holdout it must clear is higher (the haircut row above).
+  DSR trial count rises and the deflated Sharpe falls (the multiple-testing row above).
 
 ## Related principles
 
