@@ -71,3 +71,26 @@ midcap coverage. A subscription does not make these snapshots verified PIT or ch
 Sources: [daily API](https://eodhd.com/financial-apis/api-for-historical-data-and-volumes),
 [splits API](https://eodhd.com/financial-apis/api-splits-dividends),
 [adjustment and revision methodology](https://eodhd.com/help/methodology).
+
+## Next-session handoff
+
+The free path has been exercised on the VPS using an isolated source copy: 1,000 genuine demo
+bars (250 expected 2025 NYSE sessions for each of AAPL, AMZN, TSLA and VTI), snapshot integrity
+verification, two network-disabled backtests with identical metrics, and 32 focused EODHD tests.
+Under a one-CPU limit, backtests took about 36 seconds cold and 7 seconds cached, with peak
+process RSS about 551 MiB. This is a small mechanics benchmark, not a full-universe capacity test.
+
+After purchasing a monthly subscription:
+
+1. Install the API token privately as `ALGUA_EODHD_API_KEY`; never paste it into a chat, task,
+   public report or Git. Do not replace any existing broker credentials.
+2. Check paid price/split entitlements on representative midcaps. Then implement the historical
+   constituents importer through the existing universe seam; it is **not** part of this adapter.
+3. Freeze the intended date range and reconstruct membership, including removed securities.
+   Audit gaps, action economics, identities and missing terminal proceeds before qualification.
+4. Re-evaluate the intended strategy with new snapshot identities and existing holdout rules.
+   Do not silently treat today's corrected history as historically available data.
+
+The EODHD provider remains an explicit ingestion choice. Existing paper/live refresh defaults,
+scheduled research inputs and qualification/trading gates are not switched to it by installing
+the adapter. Configure operational adoption separately after dataset acceptance.
