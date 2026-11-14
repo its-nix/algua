@@ -14,6 +14,10 @@ from algua.registry.drawdown_store import account_state, write_state
 from algua.risk.layered import DrawdownPolicy
 from tests.test_drawdown_controller import Venue
 
+# Paper risk state is account-wide; under xdist this module failed beside other registry suites
+# while passing serially, so it runs on the serial lane.
+pytestmark = pytest.mark.serial
+
 
 @pytest.fixture
 def world(tmp_path, monkeypatch):
