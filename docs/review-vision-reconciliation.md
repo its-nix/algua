@@ -46,7 +46,7 @@ ceilings remain distinct; signed live activation, existing merge allowlists and 
 review remain binding. Capability descriptions distinguish package existence from unattended
 operation and explicitly retain artifact-freeze slices 2–7 as incomplete.
 
-## BMAD PRD Update rubric
+## Product review rubric
 
 | Dimension | Assessment |
 |---|---|

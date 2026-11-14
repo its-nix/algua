@@ -7,7 +7,7 @@
 
 Building a mostly autonomous quantitative trading company, with net trading profit as the product.
 Start with the [vision of record](docs/PRD.md), the [current architecture](docs/architecture.md),
-and the [implementation gaps and roadmap reconciliation](docs/vision-reconciliation.md).
+and the [dated September roadmap reconciliation](docs/vision-reconciliation.md).
 See `docs/agent/` for operating docs. Dated material in `docs/superpowers/` preserves design history.
 Brand assets and usage guidance live in [`docs/brand/`](docs/brand/README.md).
 

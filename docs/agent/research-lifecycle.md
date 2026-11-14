@@ -1,9 +1,10 @@
 # Research lifecycle — the canonical command sequence
 
-This is the end-to-end path an agent (or the human operator) drives to take a strategy from
-**idea** to **candidate**, and the wall that stops it from going further unaided. Every step
-is a `uv run algua ...` command that emits JSON on stdout. The flow below is the one exercised by
-`tests/test_e2e_lifecycle.py`; if you change a command's surface, update both.
+This describes research commands through **candidate**, then the separate operational path toward
+paper and forward qualification. Isolated research workers stop at `candidate`; trusted drivers
+and operational commands own subsequent steps. Every data command emits JSON on stdout.
+`tests/test_e2e_lifecycle.py` exercises lifecycle controls using synthetic fixtures and signed test
+ceremonies; those fixtures are not an autonomous economic-qualification recipe.
 
 Stages: `idea -> backtested -> candidate -> paper -> forward_tested -> live -> retired`
 (allowed edges live in `algua/contracts/lifecycle.py`). An agent may operate the lifecycle
@@ -11,16 +12,19 @@ Stages: `idea -> backtested -> candidate -> paper -> forward_tested -> live -> r
 it requires a human actor, a verified approval, AND a fresh forward-test certificate, enforced in
 `algua/registry/store/` and `algua/registry/transitions.py`.
 
-The examples use `--demo` (the synthetic provider) so the whole loop runs offline. Swap in real
-bars with `--snapshot <id>` from `data ingest-bars` once you want real data.
+Before using these templates, set `SNAPSHOT_ID`, `UNIVERSE`, `START` and `END` to the assigned
+real bars snapshot, PIT universe and evaluation interval. Keep them identical across commands.
+Missing PIT eligibility or insufficient evidence is a valid refusal; do not fabricate it.
+`--demo` is for explicitly requested synthetic smoke tests, not economic qualification.
 
 ## 1. Backtest and register (`idea -> backtested`)
 
 A single backtest that also registers the strategy and advances it to `backtested`:
 
 ```bash
-uv run algua backtest run cross_sectional_momentum --demo \
-  --start 2022-01-01 --end 2023-12-31 --register
+uv run algua backtest run cross_sectional_momentum \
+  --snapshot "$SNAPSHOT_ID" --universe "$UNIVERSE" \
+  --start "$START" --end "$END" --register
 ```
 
 `--register` is what advances the stage; without it the run is exploratory and the registry is
@@ -39,16 +43,20 @@ These do **not** change the stage — they generate the evidence the gate will j
 Walk-forward (holdout + K equal out-of-sample windows + stability):
 
 ```bash
-uv run algua backtest walk-forward cross_sectional_momentum --demo \
-  --start 2022-01-01 --end 2023-12-31 --windows 4 --holdout-frac 0.2
+uv run algua backtest walk-forward cross_sectional_momentum \
+  --snapshot "$SNAPSHOT_ID" --universe "$UNIVERSE" \
+  --start "$START" --end "$END" --windows 4 --holdout-frac 0.2
 ```
 
-Parameter sweep (optional; a bounded grid, each combo walk-forwarded and ranked). The holdout is
-the search-breadth defense — the more you search here, the more the gate's holdout check matters:
+Run a bounded parameter sweep to record the measured breadth required by agent promotion.
+Use a predeclared grid within the assigned budget; a singleton trial can record breadth but does
+not demonstrate parameter robustness. Breadth-deflated statistics remain advisory:
 
 ```bash
-uv run algua backtest sweep cross_sectional_momentum --demo \
-  --param lookback=20,40,60 --param top_k=3,5 --rank-by mean_sharpe
+uv run algua backtest sweep cross_sectional_momentum \
+  --snapshot "$SNAPSHOT_ID" --universe "$UNIVERSE" \
+  --start "$START" --end "$END" \
+  --param lookback=20,40,60 --param construction.top_k=3,5 --rank-by mean_sharpe
 ```
 
 ## 3. Promotion gate (`backtested -> candidate`)
@@ -57,9 +65,9 @@ uv run algua backtest sweep cross_sectional_momentum --demo \
 `candidate` **only on pass**. On failure it reports why and leaves the stage untouched.
 
 ```bash
-uv run algua research promote cross_sectional_momentum --demo \
-  --universe <pit-universe> --start 2022-01-01 --end 2023-12-31 \
-  --min-holdout-sharpe 0.5 --min-holdout-return 0.0
+uv run algua research promote cross_sectional_momentum \
+  --snapshot "$SNAPSHOT_ID" --universe "$UNIVERSE" \
+  --start "$START" --end "$END"
 ```
 
 - Breadth is the number of combinations you searched in step 2, **measured** from the recorded
@@ -72,22 +80,30 @@ uv run algua research promote cross_sectional_momentum --demo \
   combos in the 90-day window).
 - These gates are the same for every actor; `--actor human` unlocks nothing.
 - The default thresholds are the gate criteria in `algua/research/gates.py`.
+- Raw `registry transition --to candidate` is refused for every actor. Use `research promote`.
 
 Output carries `passed`, `promoted`, the per-check breakdown, the config hash, and the snapshot
 id. After a pass, `registry show` reports `"stage": "candidate"`.
 
 ## 4. Toward paper (`candidate -> paper`)
 
-An agent may take a candidate strategy to paper:
+The isolated research worker stops here and writes its report for the trusted driver. Eligible
+merge-backs are queued for the trusted drainer, which runs authoritative promotion and intake.
+Outside that worker role, an authorized operational caller can run paper intake:
 
 ```bash
-uv run algua registry transition cross_sectional_momentum \
-  --to paper --actor agent --reason "passed gate; paper-trading next"
+uv run algua paper intake
 ```
+
+Intake considers eligible candidates in FIFO order, verifies/prepares frozen planner content,
+and binds paper admission to a deployment and allocation under book limits. It can leave a
+candidate queued or refuse unsupported content. A raw stage transition does not perform this
+operational preparation and is not a substitute. Paper credentials and a reachable venue are required.
 
 ## 5. Forward-test gate (`paper -> forward_tested`)
 
-An agent advances from `paper` to `forward_tested` only via `paper promote`:
+An operational agent advances from `paper` to `forward_tested` only via `paper promote`;
+this command is outside the isolated research worker's role:
 
 ```bash
 uv run algua paper promote cross_sectional_momentum
@@ -99,6 +115,10 @@ The gate requires ≥63 broker-clocked daily return observations, ≥90% session
 Sharpe ≥ max(0.5 × holdout_sharpe, 0.3), vol/drawdown bounds, clean integrity, and account
 hygiene. Evidence must be ≤5 trading sessions stale. The threshold flags may only tighten a
 threshold, for every actor; loosening one is refused.
+
+The separate [capped route](capped-live.md) qualifies five actual scheduled paper sessions and
+requires exact human-signed live activation. It does not replace the strict `paper promote` gate
+or manufacture a strict forward certificate. Research workers still stop at `candidate`.
 
 Re-running `paper promote` on a strategy already at `forward_tested` refreshes the live-wall
 certificate without a stage change (exit 0 on pass).

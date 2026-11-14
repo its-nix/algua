@@ -5,8 +5,9 @@ description: The autonomous research loop playbook — work the ideas claimed fr
 
 # Running the research loop
 
-You operate algua autonomously to take strategy ideas to **candidate**, then hand back a branch
-for human review. Read `operating-algua` first for the golden rules. Delegate authoring to the
+You operate algua autonomously to take strategy ideas to **candidate** in a scratch funnel, then
+write a report for the trusted launcher's gated merge-back queue. Read `operating-algua` first
+for the golden rules. Delegate authoring to the
 `author` subagent and results-judgement to the `interpret` subagent.
 
 ## The thesis
@@ -101,9 +102,10 @@ For each claimed idea:
    for real snapshots (advances `idea →
    backtested`).
 4. **Out-of-sample evidence.** `uv run algua backtest walk-forward <name> <data-options>` (K windows +
-   stability; the holdout is withheld until `research promote`). Optionally `uv run algua backtest sweep <name> <data-options> --param KEY=v1,v2,...`
-   to scan parameters — but remember every combo you search raises the bar the holdout must clear
-   (see `interpret-results` on search breadth).
+   stability; the holdout is withheld until `research promote`). If matching measured breadth is
+   not already recorded, run `uv run algua backtest sweep <name> <data-options> --param KEY=v1,v2,...`
+   within the predeclared budget. Count every attempted variant;
+   breadth-deflated statistics remain advisory (see `interpret-results`).
 5. **Interpret.** Delegate the results JSON to the `interpret` subagent for a promote/discard
    recommendation with reasoning, and assess the idea's own `falsification` statement against the
    walk-forward evidence -> `falsification_assessment` (`refuted` | `survived` | `untested`).
@@ -136,7 +138,8 @@ recorded as `run_error` / `missing_from_trailer` anyway; saying why yourself is 
 
 ## Finishing a run
 
-1. Ensure every authored strategy file is committed on the current `research-run/<stamp>` branch.
+1. Finish writing every authored strategy file in the current `research-run/<stamp>` worktree.
+   The trusted launcher commits authored files and the report afterward; do not run `git commit`.
 2. Write your report to `kb/research-runs/<stamp>.md` (create the directory if it doesn't exist):
    one section per hypothesis (name, params, backtest + walk-forward + gate results, decision +
    why), then a summary of what you promoted to candidate.
@@ -162,5 +165,5 @@ recorded as `run_error` / `missing_from_trailer` anyway; saying why yourself is 
    idea, and for every valid `merge_back` enqueues the REAL, authoritative `paper merge-back` for
    the automated drainer to run — the merge-back you'd otherwise hand a human is now automatic; do
    not run it yourself.
-4. Commit the report (the launcher does this for you). Review the branch afterward with
+4. Leave the completed report for the trusted launcher to commit. Review the branch afterward with
    `git diff main...<branch>` if you want to double-check what shipped.

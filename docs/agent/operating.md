@@ -2,11 +2,16 @@
 
 This expands `CLAUDE.md` with the why behind the rules.
 
-Product direction comes from [the vision of record](../PRD.md); current implementation gaps and
-historical references are tracked in [the reconciliation record](../vision-reconciliation.md).
-The vision does not itself change runtime controls or grant a new merge/deployment permission.
-The owner-approved opt-in policy reduces exposure at 10% drawdown and halts at 20%; see
-[layered risk](layered-risk.md). Unconfigured accounts retain their legacy default.
+Product intent comes from [the vision of record](../PRD.md); implementation status is evidenced in
+[architecture](../architecture.md) and source/tests. This playbook, `CLAUDE.md` and `AGENTS.md`
+define present operating permissions. The [September reconciliation](../vision-reconciliation.md)
+is a dated assessment, not a current gap register. Product targets do not change runtime controls
+or grant merge/deployment permission.
+
+The opt-in capped route implements historical qualification plus five actual scheduled paper
+sessions; see [capped live](capped-live.md). The owner-approved opt-in account policy reduces
+exposure at 10% drawdown and halts at 20%; see [layered risk](layered-risk.md). Unconfigured
+accounts retain their legacy default. The strict forward route retains its existing gate.
 
 ## The live gate
 Lifecycle stage lives in the SQLite registry (`algua/registry`). State is a *record*,
@@ -47,7 +52,9 @@ The full implemented package map is in [architecture](../architecture.md). The o
 foundation responsibilities below remain useful orientation, not an exhaustive system inventory.
 
 - `contracts/` — pure types/protocols. No I/O, no other algua imports.
-- `calendar/` — market sessions; depended on by both backtest and live.
+- `calendar/market_calendar.py` — config-free session calculations; depended on by backtest and live.
+  `calendar/factory.py::get_calendar` reads settings per call for operational exchange selection;
+  calendar imports neither CLI nor registry.
 - `registry/` — lifecycle source of truth (`db`, `store`, `approvals`).
 - `config/` — pydantic settings (env prefix `ALGUA_`).
 - `cli/` — the shared command surface; `main.py` is the entry point.

@@ -471,4 +471,4 @@ minor test/wording concerns. No missing Phase 1 requirement, UX dependency, forw
 authority expansion or story-sizing defect remains. The correction is local to Story 1.3a and does
 not require changing the canonical PRD, architecture, approved parent outcome or decomposition.
 
-**Assessed:** 2026-09-25 by the BMAD Implementation Readiness workflow (Codex).
+**Assessed:** 2026-09-25 by Codex.

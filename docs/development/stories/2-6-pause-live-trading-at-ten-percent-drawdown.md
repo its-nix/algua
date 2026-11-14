@@ -12,6 +12,10 @@ halt/cancel/reconcile/controlled exit, with signed restoration. See
 [current controls](../../agent/layered-risk.md). The historical must-not-liquidate/constant-threshold
 requirements below are not current operating instructions. Deployment acceptance remains separate.
 
+Alignment note: the earlier 10% pause-only interpretation is historical. Current main includes
+the owner amendment above and the opt-in layered controller. Follow
+[the implemented risk guide](../../agent/layered-risk.md), retaining separate legacy defaults.
+
 Prepared: 2026-10-04. Baseline: `e875b6d` (main after PR #686). Epic: 2.
 Requirements: FR11 (10% pause), NFR2, NFR4, NFR6, NFR8. PRD §§15, 19, 21.
 Owner decision: [#624, comment of 2026-10-04, item 1](https://github.com/Lior-Nis/algua/issues/624).

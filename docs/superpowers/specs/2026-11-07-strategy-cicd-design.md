@@ -4,6 +4,12 @@ Date: 2026-11-07. Source baseline: `9f4fbce`.
 Status: written design approved by the owner in conversation on 2026-11-07.
 This document changes no executable policy, lifecycle edge, approval, allocation or service.
 
+Owner reconfirmation, 2026-11-14: the historical-economic plus short-paper operational route is
+the adopted experimental-delivery direction, incorporated in PRD §16. The original proposal
+status below is historical: current main implements the separate capped route and opt-in
+layered risk controller under subsequent owner amendments. See the November 8 addendum below
+and `docs/agent/capped-live.md` / `docs/agent/layered-risk.md` for current behavior.
+
 ## 1. Agreed objective and constraints
 
 Deliver strategies quickly through one reproducible research-to-execution path. Judge economic

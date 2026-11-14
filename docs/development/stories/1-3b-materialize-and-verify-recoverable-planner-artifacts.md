@@ -827,7 +827,7 @@ error origin, uv's URL spelling) were already implemented and tested
 inventory `test_a_walk_cleanup_error_raised_by_the_*_body_is_not_relabeled` tests,
 `test_uvs_normalized_spelling_of_a_locked_alias_is_retryable_evidence`) and are now checked.
 
-#### BMAD review of the rescope (2026-09-30)
+#### review of the rescope (2026-09-30)
 
 Codex was unavailable, so the `docs/agent/story-delivery.md` fallback ran: Blind Hunter, Edge Case
 Hunter and Acceptance Auditor as independent Claude subagents over the uncommitted rescope diff.
@@ -1864,7 +1864,7 @@ uv run lint-imports
   non-retryable. The `--no-env-file` defect stays deferred, and the keyed argv, identity
   schemas, golden digests and every live, authority, deployment and capital wall are unchanged.
 
-- Rescope of 2026-09-30 complete (see the Rescope decision and its BMAD review). Red first: the
+- Rescope of 2026-09-30 complete (see the Rescope decision and its review). Red first: the
   first privacy guard failed on the public `bounded_walk`; a `--help` parse of the keyed sync argv
   failed with uv's `unexpected argument '--no-env-file'`; both abandoned-scope failure tests failed
   with `DID NOT RAISE`. A real `provision_environment` from the committed build inputs failed with
@@ -1950,7 +1950,7 @@ uv run lint-imports
 
 - 2026-09-27: Rebased on Story 1.3a, added the normative artifact/environment contract and prepared
   the bounded non-activating implementation story for readiness review.
-- 2026-09-27: Passed BMAD implementation readiness and moved to `ready-for-dev`.
+- 2026-09-27: Passed implementation readiness and moved to `ready-for-dev`.
 - 2026-09-27: Started implementation and completed the pure frozen identity/manifest contract.
 - 2026-09-27: Added exact Git-object source/build-input export and source-only admission checks.
 - 2026-09-27: Added durable content-addressed bundle publication and offline verification.
@@ -2057,7 +2057,7 @@ uv run lint-imports
   effect cache keys projected onto a function's actual reads); 16 new cases (303 to 319 guard-file
   tests), all passing; the full 5,394-test root gate, ruff, mypy, all 28 import contracts and
   `git diff --check` pass.
-- 2026-09-28: Recorded 11 findings from an independent BMAD review against `3c338bc` and mirrored
+- 2026-09-28: Recorded 11 findings from an independent review against `3c338bc` and mirrored
   them to Todoist; not yet fixed. Story moved back to `in-progress`.
 - 2026-09-28: Addressed 10 of the 11 review findings against `3c338bc` test-first, in
   `tests/primitives/test_scoped_walk.py` only: near-linear alive-state materialization with no
@@ -2090,5 +2090,5 @@ uv run lint-imports
 - 2026-09-30: Rescoped the scoped-walk guard to accidental use (module-private raw walk, flow
   analyzer removed, 29 open analyzer findings superseded), fixed the keyed `uv sync` argv so real
   provisioning succeeds, surfaced abandoned-scope cleanup failures, and applied all 13 patches of
-  the BMAD fallback review (Codex unavailable). All review findings are resolved; the story is
+  the review fallback review (Codex unavailable). All review findings are resolved; the story is
   `done` pending merge.

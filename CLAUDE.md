@@ -4,6 +4,11 @@ Algua is being built into a mostly autonomous quantitative trading company. You 
 drive the system through the **same** CLI. Every data command emits JSON on stdout.
 
 ## Orientation — where to look
+Document roles: the PRD governs product intent; this guide, `AGENTS.md` and the operating
+playbook govern present permissions; architecture records evidenced implementation status.
+Dated assessments preserve history. An approved target requires reviewed implementation before
+it changes runtime controls or permissions.
+
 - **THE VISION OF RECORD:** `docs/PRD.md` — what Algua is for, how success is measured, the
   economic thesis, capital constraints, human authority and eight-phase development sequence.
   It governs product direction. A conflict with current controls is work to reconcile through
@@ -14,19 +19,20 @@ drive the system through the **same** CLI. Every data command emits JSON on stdo
   It also lists the walls (PIT,
   single-use holdout, the paper→live gate, lane parity, executable CODEOWNERS) so you know why a
   change might be refused.
-- **Vision-to-implementation gaps and issue migration:** `docs/vision-reconciliation.md`.
+- **Dated September gaps and issue migration:** `docs/vision-reconciliation.md`; use architecture
+  and current source/tests for implementation status.
 - **Historical architecture rationale:** `docs/superpowers/specs/2026-05-29-algua-platform-architecture-design.md`.
   Dated plans preserve earlier decisions; the current roadmap is PRD §25.
 - **Why the rules exist (detail):** `docs/agent/operating.md`
 - **Delivering changes:** `docs/agent/story-delivery.md` — small runnable slices, focused checks
-  and a bounded review proportional to the change. BMAD planning and Todoist mirroring are optional.
+  and a bounded review proportional to the change. No planning framework or Todoist mirror is required.
 - **How this foundation was built (task plan):** `docs/superpowers/plans/2026-05-29-foundation-command-surface.md`
 - **Reviewing/fixing the system?** Read `AGENTS.md` first (review mandate + invariants + deferred scope).
 - **Data contract:** `docs/contracts/bar-schema.md` — the shape of bars crossing the
   data↔research seam.
 - **Current state:** data, research/backtesting, paper/live execution, portfolio/risk,
   knowledge/tracking and operator machinery are implemented. The architecture map describes
-  these packages; the reconciliation record distinguishes partial capabilities from targets.
+  these packages and distinguishes partial capabilities from targets.
 
 ## Knowledgebase and Drive assets
 
@@ -194,10 +200,12 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   `source_kind: human` inspiration) and project the pool back (`research idea publish`). Agents
   never call Drive; trading/gates/capital/data never touch it. Driver-facing, like `idea` ops.
 - **The agent runtime is OpenCode, reached through ONE seam.** `.opencode/scripts/run_agent.sh` is
-  the only file in the repo that names a runtime, a model or a sandbox flag. Models live in
+  the only invocation seam for the loop drivers. Models live in
   `.opencode/opencode.json`; agent definitions (research / leap / forage, plus the `author` and `interpret`
-  subagents) live in `.opencode/agents/`. The seam re-imposes a kernel write wall with bwrap,
-  forbids every `ask` permission so an unattended run cannot block, and kills a run early on a
+  subagents) live in `.opencode/agents/`. With `ALGUA_AGENT_SANDBOX=bwrap`, the seam adds a
+  kernel write boundary; `auto` falls back to `none` when bwrap is unavailable. It does not
+  isolate the network. The seam forbids every `ask` permission so an unattended run cannot
+  block, and kills a run early on a
   terminal provider error instead of burning the whole timeout. Changing how an agent is launched
   means changing the seam, never a driver.
 ## Lifecycle stages

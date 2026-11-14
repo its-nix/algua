@@ -1,27 +1,26 @@
 #!/usr/bin/env bash
 #
 # Leap: turn fresh inspiration notes into STRUCTURED, falsifiable hypotheses in the idea pool
-# (ideation engine spec 2026-09-08 §6). A sandboxed Codex agent does the creative half against a
-# THROWAWAY SCRATCH copy of the registry; this script — the TRUSTED DRIVER, after codex exits —
+# (ideation engine spec 2026-09-08 §6). An agent does the creative half against a
+# THROWAWAY SCRATCH copy of the registry; this script — the TRUSTED DRIVER, after the agent exits —
 # does every authoritative write.
 #
-# Three walls keep the agent off the authoritative funnel:
-#   1. FILESYSTEM CONTAINMENT, imposed by the run_agent.sh seam (bwrap: everything outside the
-#      worktree read-only, /tmp a private tmpfs). The working root is the throwaway worktree
-#      ${REPO_ROOT}/.runs/leap-<stamp>. The private /tmp closes the hole the 2026-09-08 spike found,
-#      where /tmp and $TMPDIR stayed agent-writable under the old sandbox — see
-#      docs/superpowers/plans/2026-09-08-ideation-engine-spike-findings.md.
+# Controls separating exploration from authoritative writes:
+#   1. OPTIONAL FILESYSTEM CONTAINMENT through run_agent.sh. In bwrap mode most host paths are
+#      read-only and /tmp is private; the worktree and runtime-state paths remain writable.
+#      auto falls back to none without bwrap. The working root is the throwaway worktree
+#      ${REPO_ROOT}/.runs/leap-<stamp>; this is not a network or read-isolation guarantee.
 #   2. SCRATCH REGISTRY. The agent's ALGUA_DB_PATH points at ${WORKTREE}/.leap-scratch/data/algua.db,
 #      a consistent sqlite online-backup copy of the real pool: its `research idea dedup-check` /
 #      `research idea add` see the real pool's history (so a duplicate really is caught) but write
 #      only scratch. Those scratch env vars are passed to the agent through an `env` PREFIX rather than
 #      exported into this shell, so the driver's OWN commands below always run against authority —
 #      no scrub step to forget.
-#   3. NO NETWORK, NO WEB. `sandbox_workspace_write.network_access=false` (shell) and
-#      `web_search=disabled` (codex's own tool); no MCP servers. Leap reads what forage already
-#      brought home; it does not go looking.
+#   3. WEB TOOLS DENIED by the leap agent profile. Shell access is allowed and run_agent.sh does
+#      not disable shell networking. Leap is instructed to use notes forage already brought home;
+#      that instruction is not a kernel network boundary.
 #
-# The trusted driver's step list, all AFTER codex exits and all against the real DB:
+# The trusted driver's step list, all AFTER the agent exits and all against the real DB:
 #   `research idea import --from <scratch> --seeded-max-id N --critic-file leap-critic.jsonl`
 #   (re-runs collision + eligibility per row, files the critic's rejections into the negative
 #   ledger) -> `research inspirations mark-used <note> --idea <id>` per cited note of every

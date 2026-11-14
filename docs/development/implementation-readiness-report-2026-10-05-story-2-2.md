@@ -18,7 +18,6 @@ baseline: e875b6d (main after PR #686); contracts at 047d6d0
 # Implementation Readiness Assessment Report
 
 **Date:** 2026-10-05 · **Project:** Algua, Story 2.2 · **Assessor:** independent reviewer (Claude),
-BMAD method, run non-interactively with default answers.
 
 **Method.** Every contract claim was checked against the code at `047d6d0`, which matches `e875b6d`
 for every file cited. The contract's planned edges were built as a scratch prototype in a separate

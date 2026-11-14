@@ -88,7 +88,7 @@ Implementers and reviewers must read both, and the Story 1.3c contract they buil
 ### Review Findings
 
 Independent review round 1 (2026-10-01): Codex was out of quota, so the story-delivery fallback ran
-BMAD Blind Hunter + Edge Case Hunter over three bounded file groups (schema, store and evidence
+Blind Hunter + Edge Case Hunter over three bounded file groups (schema, store and evidence
 filter; attempt recording and CLI wiring; promotion, human actor and transitions), and an
 Acceptance Auditor over the whole story. The schema reviewer also migrated a copy of the production
 registry (v47, 1,025 legacy ticks) to v48: clean, idempotent, all rows preserved, no measurable tick
