@@ -92,18 +92,6 @@ class SearchBreadthLedgerMixin:
         ).fetchone()
         return int(row["total"])
 
-    def funnel_lifetime_search_combos(self) -> int:
-        # v37 (#524, R9-M3): funnel-wide LIFETIME search effort. WHERE-filtered to well-typed
-        # in-range rows so each summand is <= MAX_N_COMBOS (overflow-safe) and a corrupt/overlarge
-        # legacy row is EXCLUDED (contributes 0) rather than overflowing or coercing. This is the
-        # EXACT summation the §5.1 mint seed uses, so the accessor and the seed agree. Always >= 0.
-        row = self._conn.execute(
-            "SELECT COALESCE(SUM(n_combos), 0) AS total FROM search_trials"
-            " WHERE typeof(n_combos)='integer' AND n_combos BETWEEN 1 AND ?",
-            (MAX_N_COMBOS,),
-        ).fetchone()
-        return int(row["total"])
-
     def search_trials_fingerprint(self) -> tuple[int, int]:
         # search_trials is append-only (INSERT-only, AUTOINCREMENT PK), so (COUNT(*), MAX(id))
         # strictly increases on every insert and uniquely fingerprints the whole row set — the

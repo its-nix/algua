@@ -1,7 +1,7 @@
 """Forward-test evidence assembly (#124): DB + broker -> ``ForwardEvidence``.
 
 The I/O half of the protected ``paper -> forward_tested`` gate, split out of
-``registry/forward_promotion.py`` (mirroring ``registry/promotion.py`` / ``family_assignment.py``
+``registry/forward_promotion.py`` (mirroring ``registry/promotion.py`` / ``promote_run.py``
 for the shortlist gate). This module reads the paper-lane tick rows, partitions them into
 admissible observations vs per-filter exclusions, builds the daily return series with the SHARED
 backtest metrics (same Sharpe/vol/drawdown definitions as the holdout the gate compares against),

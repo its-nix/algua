@@ -66,41 +66,6 @@ def test_full_research_lifecycle_to_shortlist_and_live_wall(capsys):
     assert code == 0, payload
     assert _stage(capsys) == "backtested"
 
-    # Task 4 (#222): pre-assign family so the clustering guard passes.
-    import sqlite3
-    from datetime import UTC, datetime
-    db_path = os.environ["ALGUA_DB_PATH"]
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    now = datetime.now(UTC).isoformat()
-    with conn:
-        cur = conn.execute(
-            "INSERT INTO families(name, created_at, created_by_actor, created_by_strategy)"
-            " VALUES (?,?,?,?)",
-            ("csm_family", now, "agent", STRATEGY),
-        )
-        fam_id = cur.lastrowid
-        conn.execute(
-            "INSERT INTO family_events(event_type, family_id, actor, created_at)"
-            " VALUES (?,?,?,?)",
-            ("family_created", fam_id, "agent", now),
-        )
-        conn.execute(
-            "INSERT INTO family_members(family_id, strategy_name, joined_at, joined_by_actor)"
-            " VALUES (?,?,?,?)",
-            (fam_id, STRATEGY, now, "agent"),
-        )
-        conn.execute(
-            "INSERT INTO family_events"
-            "(event_type, family_id, strategy_name, actor,"
-            " clustering_verdict, similarity_score, clustering_version,"
-            " clustering_config_json, axis_json, matched_family_id, created_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            ("strategy_assigned", fam_id, STRATEGY, "agent",
-             "NOVEL", 0.0, "v0", "{}", "{}", None, now),
-        )
-    conn.close()
-
     # Measured breadth and a PIT universe: the gates are the same for every actor and have no
     # override (spec 2026-11-13).
     code, payload = _run(capsys, "backtest", "sweep", STRATEGY, "--demo",

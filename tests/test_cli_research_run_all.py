@@ -152,20 +152,6 @@ def test_holdout_single_use_preserved_across_warm_batch(tmp_path):
          "start": "2025-01-01", "end": end_iso, "universe": "csm_uni", "windows": 2,
          "param": ["lookback=20,40"], "top": 3},
     ]).exit_code == 0
-    # Pre-seed an existing family membership so the agent promote classifies MERGE (an agent
-    # cannot mint a NOVEL family — the separate #222 human wall, out of scope here).
-    from algua.registry.store import SqliteStrategyRepository
-    _c = sqlite3.connect(tmp_path / "r.db")
-    _c.row_factory = sqlite3.Row
-    try:
-        _repo = SqliteStrategyRepository(_c)
-        _fid = _repo.create_family("csm", actor="human")
-        _repo.assign_strategy_to_family(
-            "cross_sectional_momentum", _fid, actor="human", verdict="MERGE",
-            similarity_score=1.0, clustering_version="t", clustering_config_json="{}",
-            axis_json="{}")
-    finally:
-        _c.close()
     relax = {"min_holdout_sharpe": -100.0, "min_holdout_return": -100.0, "min_pct_positive": 0.0,
              "min_window_sharpe": -100.0, "windows": 2, "universe": "csm_uni",
              "snapshot": bid, "start": "2025-01-01", "end": end_iso}

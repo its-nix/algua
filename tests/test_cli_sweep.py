@@ -1,6 +1,4 @@
 import json
-import os
-import sqlite3
 
 import pytest
 from typer.testing import CliRunner
@@ -24,51 +22,6 @@ def _tmp(monkeypatch, tmp_path):
     DataStore(tmp_path).ingest_universe(
         universe="demo_pit", symbols=["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL"],
         effective_date="2021-01-01", as_of="2021-01-02T00:00:00+00:00", source="test")
-
-
-def _ensure_family(strategy_name: str = "cross_sectional_momentum",
-                   family_name: str = "csm_family") -> None:
-    """Pre-assign a strategy to a family. Task 4 (#222) prerequisite for promote tests."""
-    from datetime import UTC, datetime
-    db_path = os.environ["ALGUA_DB_PATH"]
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    now = datetime.now(UTC).isoformat()
-    try:
-        row = conn.execute(
-            "SELECT family_id FROM family_members WHERE strategy_name=? AND removed_at IS NULL",
-            (strategy_name,),
-        ).fetchone()
-        if row is not None:
-            return
-        with conn:
-            cur = conn.execute(
-                "INSERT INTO families(name, created_at, created_by_actor, created_by_strategy)"
-                " VALUES (?,?,?,?)",
-                (family_name, now, "agent", strategy_name),
-            )
-            fam_id = cur.lastrowid
-            conn.execute(
-                "INSERT INTO family_events(event_type, family_id, actor, created_at)"
-                " VALUES (?,?,?,?)",
-                ("family_created", fam_id, "agent", now),
-            )
-            conn.execute(
-                "INSERT INTO family_members(family_id, strategy_name, joined_at, joined_by_actor)"
-                " VALUES (?,?,?,?)",
-                (fam_id, strategy_name, now, "agent"),
-            )
-            conn.execute(
-                "INSERT INTO family_events"
-                "(event_type, family_id, strategy_name, actor,"
-                " clustering_verdict, similarity_score, clustering_version,"
-                " clustering_config_json, axis_json, matched_family_id, created_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                ("strategy_assigned", fam_id, strategy_name, "agent",
-                 "NOVEL", 0.0, "v0", "{}", "{}", None, now),
-            )
-    finally:
-        conn.close()
 
 
 def test_sweep_demo_emits_ranked():
@@ -121,7 +74,6 @@ def test_pre_registration_sweep_breadth_used_by_promote():
     backtested = runner.invoke(app, ["backtest", "run", "cross_sectional_momentum", "--demo",
                                      "--start", "2022-01-01", "--end", "2023-12-31", "--register"])
     assert backtested.exit_code == 0, backtested.stdout
-    _ensure_family()
 
     promote = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                   "--start", "2022-01-01", "--end", "2023-12-31",
@@ -147,7 +99,6 @@ def _promote_to_backtested_with_breadth():
     backtested = runner.invoke(app, ["backtest", "run", "cross_sectional_momentum", "--demo",
                                      "--start", "2022-01-01", "--end", "2023-12-31", "--register"])
     assert backtested.exit_code == 0, backtested.stdout
-    _ensure_family()
     return ["research", "promote", "cross_sectional_momentum", "--demo",
             "--start", "2022-01-01", "--end", "2023-12-31",
             "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",

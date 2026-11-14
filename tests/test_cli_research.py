@@ -1,5 +1,4 @@
 import json
-import os
 import sqlite3
 
 import pytest
@@ -32,58 +31,6 @@ def _ingest_demo_universe(data_dir):
         effective_date="2021-01-01", as_of="2021-01-02T00:00:00+00:00", source="test")
 
 
-def _ensure_family(strategy_name: str = "cross_sectional_momentum",
-                   family_name: str = "csm_family") -> None:
-    """Pre-assign a strategy to a family in the DB.
-
-    Task 4 (#222) adds family classification to promotion_preflight. Tests that probe
-    non-family behavior (breadth, holdout, PIT) need the strategy already assigned so the
-    clustering guard passes. Call this after the strategy is registered (e.g., after
-    _backtest_to_backtested()).
-    """
-    from datetime import UTC, datetime
-    db_path = os.environ["ALGUA_DB_PATH"]
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    now = datetime.now(UTC).isoformat()
-    try:
-        # Check if already assigned.
-        row = conn.execute(
-            "SELECT family_id FROM family_members WHERE strategy_name=? AND removed_at IS NULL",
-            (strategy_name,),
-        ).fetchone()
-        if row is not None:
-            return  # already assigned
-        with conn:
-            cur = conn.execute(
-                "INSERT INTO families(name, created_at, created_by_actor, created_by_strategy)"
-                " VALUES (?,?,?,?)",
-                (family_name, now, "agent", strategy_name),
-            )
-            fam_id = cur.lastrowid
-            conn.execute(
-                "INSERT INTO family_events(event_type, family_id, actor, created_at)"
-                " VALUES (?,?,?,?)",
-                ("family_created", fam_id, "agent", now),
-            )
-            conn.execute(
-                "INSERT INTO family_members(family_id, strategy_name, joined_at, joined_by_actor)"
-                " VALUES (?,?,?,?)",
-                (fam_id, strategy_name, now, "agent"),
-            )
-            conn.execute(
-                "INSERT INTO family_events"
-                "(event_type, family_id, strategy_name, actor,"
-                " clustering_verdict, similarity_score, clustering_version,"
-                " clustering_config_json, axis_json, matched_family_id, created_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                ("strategy_assigned", fam_id, strategy_name, "agent",
-                 "NOVEL", 0.0, "v0", "{}", "{}", None, now),
-            )
-    finally:
-        conn.close()
-
-
 def _stage(name="cross_sectional_momentum"):
     show = runner.invoke(app, ["registry", "show", name])
     return json.loads(show.stdout)["stage"]
@@ -100,13 +47,8 @@ def _sweep():
                                "--param", "lookback=20,40", "--param", "construction.top_k=1,3"])
 
 
-
-
-
-
 def test_agent_promote_blocked_without_pit():
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0
     r = runner.invoke(app, ["research", "promote", "cross_sectional_momentum", "--demo",
                             "--start", "2022-01-01", "--end", "2023-12-31",
@@ -120,7 +62,6 @@ def test_agent_promote_blocked_without_pit():
 
 def test_promote_passes_and_shortlists():
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     result = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
@@ -140,7 +81,6 @@ def test_promote_passes_and_shortlists():
 
 def test_promote_uses_measured_breadth_from_sweep():
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # records a 4-combo search_trial
     result = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
@@ -153,11 +93,8 @@ def test_promote_uses_measured_breadth_from_sweep():
     assert payload["n_funnel"] == 4
 
 
-
-
 def test_two_sweeps_accumulate_breadth():
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0
     assert _sweep().exit_code == 0  # second sweep accumulates
     result = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
@@ -171,7 +108,6 @@ def test_two_sweeps_accumulate_breadth():
 
 def test_promote_refuses_with_no_breadth():
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     result = runner.invoke(app, ["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
                                  "--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
@@ -187,7 +123,6 @@ def test_promote_fails_does_not_transition():
     # Soft gate: force a BINDING failure via pit_required (no --universe fails closed); a raised
     # holdout-Sharpe bar is advisory now and cannot fail the gate.
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     result = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31"])
@@ -208,8 +143,6 @@ def test_promote_from_idea_is_json_error():
     assert json.loads(result.stdout)["ok"] is False
 
 
-
-
 def test_promote_rejects_out_of_range_pct_positive():
     result = runner.invoke(app, ["research", "promote", "cross_sectional_momentum",
                                  "--demo", "--min-pct-positive", "1.5"])
@@ -224,7 +157,6 @@ _PASS = ["--min-holdout-sharpe", "-100", "--min-holdout-return", "-100",
 
 
 def _holdout_rows(tmp_path):
-    import sqlite3
     conn = sqlite3.connect(tmp_path / "r.db")
     try:
         return conn.execute(
@@ -236,7 +168,6 @@ def _holdout_rows(tmp_path):
 
 
 def _gate_rows(tmp_path):
-    import sqlite3
     conn = sqlite3.connect(tmp_path / "r.db")
     try:
         return conn.execute("SELECT passed FROM gate_evaluations ORDER BY id").fetchall()
@@ -265,7 +196,6 @@ def test_gate_row_written_on_both_pass_and_fail(tmp_path):
     # audit row with passed=0; a PASSING gate records one with passed=1. The strategy stays
     # `backtested` after the fail so the second (passing) promote on the same lifecycle is legal.
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     fail = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                "--start", "2022-01-01", "--end", "2023-12-31"])
@@ -288,7 +218,6 @@ def test_gate_row_written_on_both_pass_and_fail(tmp_path):
 
 def test_first_promote_records_holdout_evaluation(tmp_path):
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     result = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31",
@@ -302,7 +231,6 @@ def test_first_promote_records_holdout_evaluation(tmp_path):
 
 def test_second_promote_same_window_refused(tmp_path):
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     # First promote FAILS the gate (binding pit_required fail: no universe) so the strategy
     # stays `backtested`; this isolates the holdout-reuse refusal on the second run from the
@@ -324,7 +252,6 @@ def test_second_promote_same_window_refused(tmp_path):
 
 def test_failing_first_promote_still_burns_holdout(tmp_path):
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     # Binding pit_required fail (no universe) -> gate fails, but the holdout was looked at
     # and is now burned.
@@ -341,11 +268,8 @@ def test_failing_first_promote_still_burns_holdout(tmp_path):
     assert len(_holdout_rows(tmp_path)) == 1
 
 
-
-
 def test_non_overlapping_window_allowed(tmp_path):
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     # Both gates fail (impossible Sharpe) so the strategy stays `backtested` and neither call
     # attempts a same-stage transition -- this isolates the holdout pre-check from the lifecycle.
@@ -365,7 +289,6 @@ def test_non_overlapping_window_allowed(tmp_path):
 
 def test_config_change_alone_does_not_bypass(tmp_path):
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     first = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                 "--start", "2022-01-01", "--end", "2023-12-31",
@@ -436,7 +359,6 @@ def test_promote_with_universe_threads_pit_provenance(tmp_path, monkeypatch):
     snap = _ingest_snapshot(tmp_path)
     first_u, second_u = _ingest_pit_universe(tmp_path)
     assert _register_backtested_on_snapshot(snap).exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     result = _promote(["research", "promote", "cross_sectional_momentum",
                                  "--snapshot", snap, "--universe", "pit_core",
@@ -470,7 +392,6 @@ def test_promote_pit_membership_changes_holdout_outcome(tmp_path, monkeypatch):
 
     def _ready():
         assert _register_backtested_on_snapshot(snap).exit_code == 0
-        _ensure_family()
         assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
 
     _ready()
@@ -500,7 +421,6 @@ def test_promote_without_universe_has_null_universe_provenance(tmp_path, monkeyp
     monkeypatch.setenv("ALGUA_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "r.db"))
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     result = _promote(["research", "promote", "cross_sectional_momentum", "--demo",
                                  "--start", "2022-01-01", "--end", "2023-12-31", *_PASS])
@@ -532,7 +452,6 @@ def test_promote_universe_burn_keyed_on_window_not_universe(tmp_path, monkeypatc
     snap = _ingest_snapshot(tmp_path)
     _ingest_pit_universe(tmp_path)
     assert _register_backtested_on_snapshot(snap).exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     # First promote FAILS the gate (binding pit_required fail: no universe) so
     # the strategy stays `backtested`; this isolates the holdout-burn refusal on the second run
@@ -555,7 +474,6 @@ def test_walk_forward_does_not_burn_holdout_then_promote_succeeds(tmp_path):
     """`backtest walk-forward` must NOT consume the holdout: it records no holdout_evaluations row,
     and a later `promote` on the SAME window still succeeds (walk-forward didn't burn it)."""
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     wf = runner.invoke(app, ["backtest", "walk-forward", "cross_sectional_momentum", "--demo",
                              "--start", "2022-01-01", "--end", "2023-12-31"])
@@ -580,7 +498,6 @@ def test_promote_with_universe_refuses_with_no_breadth_before_walkforward(tmp_pa
     snap = _ingest_snapshot(tmp_path)
     _ingest_pit_universe(tmp_path)
     assert _register_backtested_on_snapshot(snap).exit_code == 0
-    _ensure_family()
     result = runner.invoke(app, ["research", "promote", "cross_sectional_momentum",
                                  "--snapshot", snap, "--universe", "pit_core",
                                  "--start", "2022-01-01", "--end", "2023-12-31", *_PASS])
@@ -594,7 +511,6 @@ def test_promote_with_universe_refuses_with_no_breadth_before_walkforward(tmp_pa
 
 def _holdout_committed(tmp_path):
     """(id, committed_at) for every holdout_evaluations row — committed_at is None while pending."""
-    import sqlite3
     conn = sqlite3.connect(tmp_path / "r.db")
     try:
         return conn.execute(
@@ -607,7 +523,6 @@ def test_pre_burn_failure_frees_window(tmp_path, monkeypatch):
     # A failure BEFORE the burn boundary (provenance runs before on_peek) must release the
     # reservation, so the window is reusable: no row left behind, and a clean retry succeeds.
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     import algua.backtest.walkforward as wfmod
     with monkeypatch.context() as m:
@@ -637,7 +552,6 @@ def test_post_peek_failure_keeps_burn(tmp_path, monkeypatch):
     # case uses a ValueError (in promote's @json_errors set) so the JSON envelope is also exercised;
     # test_post_peek_unhandled_failure_keeps_burn proves burn-survival does NOT depend on that.
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     import algua.backtest.walkforward as wfmod
 
@@ -671,7 +585,6 @@ def test_post_peek_unhandled_failure_keeps_burn(tmp_path, monkeypatch):
     # release inside walk_forward stays a no-op on the already-committed row, so burn-survival is
     # independent of whether the error is JSON-wrapped (the real invariant behind #193).
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     import algua.backtest.walkforward as wfmod
 
@@ -698,7 +611,6 @@ def test_post_peek_holdout_eval_failure_keeps_burn(tmp_path, monkeypatch):
     # on_peek already committed the burn. The burn (committed on entry to the peek) must survive —
     # the conservative over-burn direction of "no computed holdout metric is ever released".
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     import algua.backtest.walkforward as wfmod
     orig = wfmod._segment_record
@@ -730,7 +642,6 @@ def test_promote_different_holdout_frac_is_refused_as_reburn(tmp_path):
     holdout_frac parameter differs — the guard matches on the ACTUAL bar interval, not the fraction.
     """
     assert _backtest_to_backtested().exit_code == 0
-    _ensure_family()
     assert _sweep().exit_code == 0  # measured breadth (it can no longer be declared)
     # First promote: binding pit_required fail (no universe) -> gate fails, strategy stays
     # `backtested`. But the holdout IS peeked (walk_forward ran), so the burn is committed before

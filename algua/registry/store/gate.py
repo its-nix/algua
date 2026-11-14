@@ -1,22 +1,18 @@
 """``GateLedger`` — research/shortlist gate evaluations, the funnel-snapshot CAS, and the
-atomic record-gate-and-maybe-promote transaction (plus the #524 agent-NOVEL family mint, whose
-sole caller lives here)."""
+atomic record-gate-and-maybe-promote transaction."""
 from __future__ import annotations
 
 import json
 import sqlite3
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
 
 from algua.contracts.lifecycle import Actor, Stage, TransitionError
 from algua.registry.gate_comparison_write import seal_gate_comparison
 from algua.registry.repository import (
-    FamilyGraphDriftError,
     FunnelDriftError,
     FunnelFloor,
     FunnelSnapshot,
     GateOutcome,
-    PendingNovelFamily,
     StrategyRecord,
 )
 from algua.registry.store._util import _now
@@ -28,7 +24,7 @@ class GateLedgerMixin(TransitionMixin):
 
     if TYPE_CHECKING:
         # Cross-file calls: the real implementations live in SIBLING mixins (search_breadth.py,
-        # family.py) and are composed by the facade. Declared TYPE_CHECKING-only — unlike
+        # runs.py) and are composed by the facade. Declared TYPE_CHECKING-only — unlike
         # algua/data/store/bars.py, whose stub points at the FACADE (which always wins the MRO),
         # a runtime stub here would SHADOW a sibling mixin declared later in the facade's base
         # list. Signatures are copied from repository.py's Protocol declarations.
@@ -37,11 +33,6 @@ class GateLedgerMixin(TransitionMixin):
         def total_search_combos(self, strategy_name: str) -> int: ...
         def pooled_trial_sharpe_var(self, strategy_name: str) -> float | None: ...
         def funnel_trial_sharpe_var(self, window_days: int) -> FunnelFloor: ...
-        def strategy_family(self, strategy_name: str) -> int | None: ...
-        def family_lifetime_combos(self, family_id: int) -> int: ...
-        def family_graph_fingerprint(self) -> tuple[int, ...]: ...
-        def agent_novel_mint_seed(self) -> int: ...
-        def check_agent_novel_mint_bounds(self) -> None: ...
         # runs.py (RunLedgerMixin) — not a repository.py Protocol method (it is store-internal:
         # only the gate's own BEGIN IMMEDIATE calls it, never CLI/research code).
         def _insert_run_locked(self, kind: str, strategy_name: str, **kwargs: Any) -> int: ...
@@ -72,8 +63,6 @@ class GateLedgerMixin(TransitionMixin):
         decision_json: str,
         fundamentals_snapshot: str | None = None,
         news_snapshot: str | None = None,
-        family_id: int | None = None,
-        family_lifetime_effective: int | None = None,
         universe_name: str | None = None,
     ) -> int:
         """Persist one gate evaluation (pass or fail) and return its row id. A passing AGENT row is
@@ -85,15 +74,13 @@ class GateLedgerMixin(TransitionMixin):
                 " funnel_window_days, breadth_provenance, pit_ok, pit_override, holdout_n_bars,"
                 " min_holdout_observations, code_hash, config_hash, dependency_hash, data_source,"
                 " snapshot_id, period_start, period_end, holdout_frac, actor, decision_json,"
-                " fundamentals_snapshot, news_snapshot, consumed, created_at,"
-                " family_id, family_lifetime_effective, universe_name)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?)",
+                " fundamentals_snapshot, news_snapshot, consumed, created_at, universe_name)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)",
                 (strategy_id, int(passed), n_funnel, own_lifetime_combos, windowed_total_combos,
                  funnel_window_days, breadth_provenance, int(pit_ok), int(pit_override),
                  holdout_n_bars, min_holdout_observations, code_hash, config_hash, dependency_hash,
                  data_source, snapshot_id, period_start, period_end, holdout_frac, actor,
-                 decision_json, fundamentals_snapshot, news_snapshot, _now(),
-                 family_id, family_lifetime_effective, universe_name),
+                 decision_json, fundamentals_snapshot, news_snapshot, _now(), universe_name),
             )
         rowid = cur.lastrowid
         assert rowid is not None
@@ -142,8 +129,7 @@ class GateLedgerMixin(TransitionMixin):
           * the append-only ``search_trials`` row-identity fingerprint (pins the whole row set, so
             it pins the measured own-combo count AND the pooled/funnel variances against a
             same-value collision);
-          * ``windowed_search_combos`` + family breadth — feed ``n_funnel`` (the deflated bar) on
-            EVERY path;
+          * ``windowed_search_combos`` — feeds ``n_funnel`` (the DSR trial count) on EVERY path;
           * on the measured (DSR-armed) path, the own-combo count and the two DSR variances that
             feed the recorded DSR evidence."""
         cur_count, cur_max = self.search_trials_fingerprint()
@@ -153,10 +139,6 @@ class GateLedgerMixin(TransitionMixin):
         self._cas_funnel(
             "windowed_search_combos", funnel.windowed_total_combos,
             self.windowed_search_combos(funnel.funnel_window_days))
-        family_id = self.strategy_family(funnel.strategy_name)
-        self._cas_funnel("strategy_family", funnel.family_id, family_id)
-        family_eff = self.family_lifetime_combos(family_id) if family_id is not None else 0
-        self._cas_funnel("family_lifetime_combos", funnel.family_lifetime_effective, family_eff)
         if funnel.dsr_binding:
             self._cas_funnel(
                 "total_search_combos", funnel.own_lifetime_combos,
@@ -182,7 +164,6 @@ class GateLedgerMixin(TransitionMixin):
         funnel: FunnelSnapshot,
         actor: Actor,
         reason: str | None = None,
-        pending_novel_family: PendingNovelFamily | None = None,
         # ``run_row`` is the economic-layer run payload for THIS decision (spec 2026-08-23 §4.1),
         # inserted inside this method's BEGIN IMMEDIATE so it shares the gate row's fate. It cannot
         # be written by the caller: this method refuses to run inside an open transaction, so a
@@ -190,22 +171,7 @@ class GateLedgerMixin(TransitionMixin):
         # rolled-back gate — a phantom evaluation) or trip the top-level guard above.
         run_row: dict[str, Any] | None = None,
     ) -> GateOutcome:
-        # #524: coerce the actor BEFORE the pending-mint boundary guard (callers may pass a raw
-        # string; an identity test against an un-coerced string would mis-evaluate).
         actor = Actor(actor)
-        # #524: the mint is an AGENT-only capability and THIS method is the safety boundary, not
-        # just the (trusted) caller path. Fail-closed unless the method actor is the agent AND the
-        # pending spec's own actor/verdict are internally consistent (a caller bug must not write
-        # mismatched audit/classification metadata). 'novel' is a plain-string literal so the store
-        # never imports algua.research.SimVerdict (registry→research boundary stays clean).
-        if pending_novel_family is not None and not (
-            actor is Actor.AGENT
-            and pending_novel_family.actor == Actor.AGENT.value
-            and pending_novel_family.verdict == "novel"
-        ):
-            raise ValueError(
-                "record_gate_and_maybe_promote: a pending_novel_family mint requires "
-                "actor=agent and a consistent agent/novel pending spec")
         # TOP-LEVEL ONLY — mirrors reserve_holdout's contract. A manual BEGIN IMMEDIATE inside an
         # already-open transaction would raise "cannot start a transaction within a transaction";
         # catching that instead of pre-checking would leave the caller's surrounding tx open in a
@@ -233,23 +199,6 @@ class GateLedgerMixin(TransitionMixin):
         # BaseException (not Exception) so KeyboardInterrupt/SystemExit still rolls back.
         try:
             self._conn.execute("BEGIN IMMEDIATE")
-            # #524 step 1 — pending-NOVEL CAS UNDER the write lock (R3-HIGH + R5-HIGH-1). Before any
-            # other work, prove the agent-NOVEL verdict is still valid against the graph
-            # at commit: (a) the strategy is STILL unassigned (no concurrent assignment landed), and
-            # (b) the full-classifier-read-set fingerprint EQUALS the one the NOVEL verdict was
-            # computed on (captured before==after classification, §7.1). A mismatch means a family
-            # was minted / a member (re)assigned or removed / a parentage edge added / a member's
-            # returns refreshed since classification, so the verdict is stale and might now be
-            # MERGE/PARENTAGE — fail closed (the CLI re-runs preflight against the current graph).
-            if pending_novel_family is not None:
-                if self.strategy_family(rec.name) is not None:
-                    raise FamilyGraphDriftError(
-                        f"strategy {rec.name!r} was assigned to a family since NOVEL "
-                        "classification; re-run promote", axis="still_assigned")
-                if self.family_graph_fingerprint() != pending_novel_family.graph_fingerprint:
-                    raise FamilyGraphDriftError(
-                        f"family graph changed since {rec.name!r} was classified NOVEL; re-run "
-                        "promote", axis="graph_fingerprint")
             # #339 — serializability CAS: re-read the funnel-wide MUTABLE state the (lock-free)
             # decision was computed against and abort if any of it drifted, so a committed decision
             # is provably a pure function of ONE funnel snapshot. Runs BEFORE the INSERT/stage-CAS,
@@ -272,9 +221,8 @@ class GateLedgerMixin(TransitionMixin):
                 " min_holdout_observations, code_hash, config_hash, dependency_hash, data_source,"
                 " snapshot_id, period_start, period_end, holdout_frac, actor, decision_json,"
                 " consumed, created_at,"
-                " family_id, family_lifetime_effective,"
                 " fundamentals_snapshot, news_snapshot, attempt_token, universe_name)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 # Agent passing rows are born-consumed: the stage has already advanced inside
                 # this transaction, so the token is spent. Leaving consumed=0 would let a
                 # future `registry transition --to candidate --actor agent` reuse the old row
@@ -290,9 +238,8 @@ class GateLedgerMixin(TransitionMixin):
                  gate_row["period_start"], gate_row["period_end"], gate_row["holdout_frac"],
                  actor.value, decision_json,
                  int(actor is Actor.AGENT and final_passed), _now(),
-                 # The fdr_* columns are historical (lean trim step 7): omitted here, so new rows
-                 # leave them NULL. Rows written before keep their recorded values.
-                 gate_row.get("family_id"), gate_row.get("family_lifetime_effective"),
+                 # The fdr_* and family_* columns are historical (lean trim step 7): omitted
+                 # here, so new rows leave them NULL. Rows written before keep their values.
                  gate_row.get("fundamentals_snapshot"), gate_row.get("news_snapshot"),
                  gate_row.get("attempt_token"), gate_row.get("universe_name")),
             )
@@ -329,11 +276,6 @@ class GateLedgerMixin(TransitionMixin):
                     code_hash=gate_row["code_hash"], config_hash=gate_row["config_hash"],
                     dependency_hash=gate_row.get("dependency_hash"),
                     consume_gate_id=None, consume_forward_gate_id=None, now=_now())
-                # #524 step 5 — mint the seeded agent-NOVEL family, IN THIS SAME TRANSACTION, only
-                # on a pass. All-or-nothing with the gate row + stage CAS: a crash before commit
-                # leaves no orphan family/membership.
-                if pending_novel_family is not None:
-                    self._mint_agent_novel_family(pending_novel_family, rec.name, gate_id)
 
             self._conn.commit()
         except BaseException:
@@ -378,71 +320,3 @@ class GateLedgerMixin(TransitionMixin):
             (strategy, attempt_token),
         ).fetchone()
         return row is not None
-
-    def _mint_agent_novel_family(
-        self, pending: PendingNovelFamily, founder_name: str, gate_id: int,
-    ) -> int:
-        """Mint the seeded agent-NOVEL family + assign the founder, via RAW locked INSERTs INSIDE
-        the caller's open promote transaction (#524 step 5). NOT to be called on its own — it does
-        no BEGIN/commit and relies on the caller's BEGIN IMMEDIATE. Order: (5a) seed>0, (5b) the
-        per-window rate cap, (5c) uuid-suffixed name + raw INSERTs. Returns the family id."""
-        # (5a) filter-before-sum seed + positivity guard. A corrupt/overlarge legacy row is EXCLUDED
-        # by the WHERE filter (contributes 0), never overflowing or shrinking the seed below the sum
-        # of the legitimate rows; an all-corrupt/empty funnel legitimately fails closed.
-        seed = self.agent_novel_mint_seed()
-        if seed <= 0:
-            raise ValueError(
-                "agent-NOVEL mint requires a strictly-positive funnel-lifetime breadth seed; the "
-                "funnel has no well-typed in-range search_trials to seed (fail closed)")
-        # (5b) authoritative under-lock per-window rate cap (fail-closed).
-        self.check_agent_novel_mint_bounds()
-        # (5c) collision-RESISTANT uuid mint name (no bounded probe → no DoS on a passed gate),
-        # regenerate-and-retry on the astronomically-unlikely UNIQUE clash so correctness never
-        # depends on uuid uniqueness. RAW INSERTs (NOT create_family/assign helpers, which
-        # open their own transactions and would break this single BEGIN IMMEDIATE).
-        now = _now()
-        family_id: int | None = None
-        for _ in range(8):
-            candidate = f"{pending.slug_base}__{uuid4().hex}"
-            try:
-                cur = self._conn.execute(
-                    "INSERT INTO families(name, created_at, created_by_actor, created_by_strategy,"
-                    " seeded_prior_combos, founder_gate_id) VALUES (?,?,?,?,?,?)",
-                    (candidate, now, Actor.AGENT.value, founder_name, seed, gate_id),
-                )
-                family_id = cur.lastrowid
-                break
-            except sqlite3.IntegrityError as exc:
-                # ONLY a families.name UNIQUE clash is a retryable uuid collision. Any OTHER
-                # integrity failure (a bad founder_gate_id FK, the seeded_prior_combos CHECK, an
-                # append-only trigger, schema corruption) is a real invariant break — re-raise it
-                # so the mint fails LOUDLY, never masked as "could not obtain a unique name".
-                if "families.name" not in str(exc):
-                    raise
-                continue  # UNIQUE name clash — regenerate the uuid and retry (statement-scoped)
-        if family_id is None:
-            raise ValueError("agent-NOVEL mint could not obtain a unique family name (fail closed)")
-        # family_created event (strategy_name = founder for audit clarity).
-        self._conn.execute(
-            "INSERT INTO family_events(event_type, family_id, strategy_name, actor, created_at)"
-            " VALUES ('family_created', ?, ?, ?, ?)",
-            (family_id, founder_name, Actor.AGENT.value, now),
-        )
-        # founding member row, with the founder's classified profile DB-persisted from birth.
-        self._conn.execute(
-            "INSERT INTO family_members(family_id, strategy_name, joined_at, joined_by_actor,"
-            " removed_at, member_code_hash, member_factors_json) VALUES (?,?,?,?,NULL,?,?)",
-            (family_id, founder_name, now, Actor.AGENT.value,
-             pending.founder_code_hash, pending.founder_factors_json),
-        )
-        # strategy_assigned event with the classification metadata.
-        self._conn.execute(
-            "INSERT INTO family_events(event_type, family_id, strategy_name, actor,"
-            " clustering_verdict, similarity_score, clustering_version, clustering_config_json,"
-            " axis_json, matched_family_id, created_at)"
-            " VALUES ('strategy_assigned', ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)",
-            (family_id, founder_name, Actor.AGENT.value, pending.verdict,
-             pending.similarity_score, pending.clustering_version,
-             pending.clustering_config_json, pending.axis_json, now),
-        )
-        return int(family_id)

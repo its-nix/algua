@@ -117,33 +117,20 @@ def test_reproducible_guard_skipped_for_synthetic_provider(tmp_path):
 
 
 def test_preflight_refuses_agent_without_measured_breadth(tmp_path):
-    # Task 4 (#222): pre-assign strategy to a family so the clustering guard passes and the test
-    # isolates the breadth check (the ORIGINAL intent of this test).
     repo = _repo(tmp_path)
     rec = repo.add("alpha")
     repo.apply_transition(rec, Stage.BACKTESTED, Actor.AGENT, "bt")
-    fam_id = repo.create_family("alpha_family", actor="agent")
-    repo.assign_strategy_to_family(
-        "alpha", fam_id, "agent", verdict="NOVEL", similarity_score=0.0,
-        clustering_version="v0", clustering_config_json="{}", axis_json="{}",
-    )
     with pytest.raises(ValueError, match="search breadth"):
         promotion_preflight(repo, "alpha", actor=Actor.AGENT,
                             provider=SyntheticProvider(seed=0), start=_START, end=_END)
 
 
 def test_preflight_resolves_measured_funnel_breadth(tmp_path):
-    # Task 4 (#222): pre-assign strategy to a family so the clustering guard passes.
     repo = _repo(tmp_path)
     rec = repo.add("alpha")
     repo.apply_transition(rec, Stage.BACKTESTED, Actor.AGENT, "bt")
     repo.record_search_trial("alpha", 4, "{}")
     repo.record_search_trial("beta", 10, "{}")  # sibling effort raises the funnel bar
-    fam_id = repo.create_family("alpha_family", actor="agent")
-    repo.assign_strategy_to_family(
-        "alpha", fam_id, "agent", verdict="NOVEL", similarity_score=0.0,
-        clustering_version="v0", clustering_config_json="{}", axis_json="{}",
-    )
     ctx = promotion_preflight(repo, "alpha", actor=Actor.AGENT,
                               provider=SyntheticProvider(seed=0), start=_START, end=_END)
     assert ctx.own == 4 and ctx.windowed_total == 14 and ctx.n_funnel == 14
@@ -199,16 +186,10 @@ def test_preflight_refuses_divergent_signal_panel_before_holdout(tmp_path):
 def test_preflight_passes_parity_for_faithful_bundled_strategy(tmp_path):
     """A real bundled strategy with a faithful signal_panel passes the parity gate and preflight
     resolves breadth as usual (no false positive)."""
-    # Task 4 (#222): pre-assign strategy to a family so the clustering guard passes.
     repo = _repo(tmp_path)
     rec = repo.add("cross_sectional_momentum")
     repo.apply_transition(rec, Stage.BACKTESTED, Actor.AGENT, "bt")
     repo.record_search_trial("cross_sectional_momentum", 4, "{}")
-    fam_id = repo.create_family("csm_family", actor="agent")
-    repo.assign_strategy_to_family(
-        "cross_sectional_momentum", fam_id, "agent", verdict="NOVEL", similarity_score=0.0,
-        clustering_version="v0", clustering_config_json="{}", axis_json="{}",
-    )
     ctx = promotion_preflight(
         repo, "cross_sectional_momentum", actor=Actor.AGENT,
         provider=SyntheticProvider(seed=7), start=_START, end=_END)
@@ -245,11 +226,6 @@ def test_preflight_accepts_config_universe_subset_of_gated_timeline_union(tmp_pa
     rec = repo.add("cross_sectional_momentum")
     repo.apply_transition(rec, Stage.BACKTESTED, Actor.AGENT, "bt")
     repo.record_search_trial("cross_sectional_momentum", 4, "{}")
-    fam_id = repo.create_family("csm_family", actor="agent")
-    repo.assign_strategy_to_family(
-        "cross_sectional_momentum", fam_id, "agent", verdict="NOVEL", similarity_score=0.0,
-        clustering_version="v0", clustering_config_json="{}", axis_json="{}",
-    )
     gated = {
         date(2020, 1, 1): ["AAPL", "MSFT", "NVDA"],
         date(2021, 1, 1): ["AAPL", "MSFT", "AMZN", "GOOGL", "TSLA"],  # NVDA dropped; union covers
@@ -267,11 +243,6 @@ def test_human_label_refused_config_universe_outside_gated_universe(tmp_path):
     rec = repo.add("cross_sectional_momentum")
     repo.apply_transition(rec, Stage.BACKTESTED, Actor.AGENT, "bt")
     repo.record_search_trial("cross_sectional_momentum", 4, "{}")
-    fam_id = repo.create_family("csm_family", actor="agent")
-    repo.assign_strategy_to_family(
-        "cross_sectional_momentum", fam_id, "agent", verdict="NOVEL", similarity_score=0.0,
-        clustering_version="v0", clustering_config_json="{}", axis_json="{}",
-    )
     gated = {date(2020, 1, 1): ["AAPL", "MSFT", "AMZN", "GOOGL"]}  # no NVDA
     with pytest.raises(ValueError, match=r"NVDA"):
         promotion_preflight(

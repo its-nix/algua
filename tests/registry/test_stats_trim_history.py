@@ -169,3 +169,18 @@ def test_historical_keys_are_disjoint_from_current_fields() -> None:
     assert not GATE_DECISION_HISTORICAL & GATE_DECISION_ALLOWLIST
     assert not GATE_DECISION_HISTORICAL & GATE_DECISION_EXCLUDED
     assert GATE_DECISION_PROJECTION == GATE_DECISION_ALLOWLIST | GATE_DECISION_HISTORICAL
+
+
+def test_old_family_tables_stay_as_history(conn: sqlite3.Connection) -> None:
+    """Strategy-family governance is gone, but its tables and rows stay (no destructive
+    migration): a re-migrate keeps them, and the old gate row keeps its family columns."""
+    _repo, sid, old_id, new_id = _seed(conn)
+    migrate(conn)
+    for table in ("families", "family_members", "family_events"):
+        assert conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 1, table
+    rows = {r["id"]: r for r in conn.execute(
+        "SELECT id, family_id, family_lifetime_effective FROM gate_evaluations")}
+    assert rows[old_id]["family_id"] is not None and rows[old_id]["family_lifetime_effective"] == 40
+    assert rows[new_id]["family_id"] is None
+    gates, _ = strategy_gate_history(conn, sid)
+    assert {g["id"] for g in gates} == {old_id, new_id}

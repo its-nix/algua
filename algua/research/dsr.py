@@ -1,5 +1,6 @@
-"""Deflated-Sharpe-Ratio evidence layer — SR*, DSR confidence, dispersion floor, effective breadth
-(extracted from gates.py, #335).
+"""Deflated-Sharpe-Ratio evidence layer — SR*, DSR confidence, dispersion floor, the trial count
+(extracted from gates.py, #335). DSR + the bootstrap are the one advisory, trial-aware quality
+signal (lean trim step 7); making it binding is a separate owner decision.
 
 Pure-maths leaf: imports the backtest annualization constant and scipy's normal distribution; no
 research-internal imports.
@@ -138,20 +139,12 @@ def dsr_confidence(
     return conf if math.isfinite(conf) else None
 
 
-def effective_funnel_breadth(
-    own_lifetime: int,
-    windowed_total: int,
-    family_lifetime_effective: int = 0,
-) -> int:
-    """3-way max (tighten-only): own lifetime, funnel-wide windowed, family+ancestor lifetime.
+def effective_funnel_breadth(own_lifetime: int, windowed_total: int) -> int:
+    """The DSR trial count: ``max(own lifetime combos, funnel-wide windowed combos)``.
 
-    Effective funnel breadth fed to the haircut (Wall A): ``max`` of this strategy's LIFETIME
-    recorded breadth, the funnel-wide breadth recorded in the rolling window (``windowed_total``
-    INCLUDES this strategy's own windowed sweeps, so no double-count, no name-exclusion subtlety),
-    and the family+ancestor lifetime combos (``family_lifetime_effective``).
-    An *effective funnel-breadth policy*, NOT a literal independent-trial count. A lone hypothesis
-    with no siblings has ``windowed_total <= own_lifetime`` ⇒ returns ``own_lifetime`` ⇒ identical
-    to the prior per-strategy behavior (no regression).
-    ``family_lifetime_effective=0`` (default) is byte-identical to the prior 2-arg behavior:
-    ``max(own, windowed, 0) == max(own, windowed)`` when family=0."""
-    return max(int(own_lifetime), int(windowed_total), int(family_lifetime_effective))
+    ``own_lifetime`` is this strategy's lifetime recorded sweep combos; ``windowed_total`` is every
+    strategy's recorded sweep combos in the rolling ``FUNNEL_WINDOW_DAYS`` window (it INCLUDES this
+    strategy's own windowed sweeps, so nothing is double-counted). The unit is sweep combos, and
+    every recorded sweep counts, whatever the gate verdict or actor label of the strategy that ran
+    it (spec 2026-11-12 §4.7). A lone hypothesis with no siblings returns ``own_lifetime``."""
+    return max(int(own_lifetime), int(windowed_total))
