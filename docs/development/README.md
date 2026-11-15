@@ -17,13 +17,39 @@ qualification plus short scheduled paper operational qualification (PRD §16). S
 blanket unrelaxed-defaults predicate needs policy revision before implementation. Preserve its
 auditability and no-agent-waiver goals; this decision does not relax current executable gates.
 
-GitHub issues track implementation work and reviews. Repository artifacts retain specifications
-and acceptance evidence. The [Algua Todoist board](https://app.todoist.com/app/project/algua-6hGjQph9JgcgpC2G)
-tracks Lior's actual decisions/access actions. Avoid duplicating generic engineering chores onto
-the human board. Respect existing tasks and assignments; do not infer completion from a title.
+The [Algua Todoist board](https://app.todoist.com/app/project/algua-6hGjQph9JgcgpC2G) is the shared
+execution board for agents and Lior. GitHub retains code, review and implementation evidence;
+repository artifacts retain technical contracts and dated acceptance records. Respect existing
+claims and link related deliverables rather than maintaining a competing sprint/task queue.
+Do not infer completion from a title.
 
 The 72-hour exercise and actual live sign-off are later acceptance events. Until they occur,
 reports must distinguish tests passing, code merged, deployment verified and capital authorized.
+
+## Integration reconciliation — 2026-11-15
+
+The approved daily milestone and shared-board direction are merged in
+[PR #839](https://github.com/its-nix/algua/pull/839). Older proposal branches and PR evidence remain
+available; closure is not implementation or acceptance. The canonical local `main` checkout was
+fast-forwarded to that merge; historical worktrees remain retained snapshots, not deployment inputs.
+Uncommitted historical qualification notes were preserved on
+[`archive/qualification-docs-2026-11-15`](https://github.com/its-nix/algua/tree/archive/qualification-docs-2026-11-15),
+not merged into current operating instructions. No source or user audio was discarded.
+
+| Retained proposal | Disposition / next action |
+|---|---|
+| [#713](https://github.com/its-nix/algua/pull/713), [#715](https://github.com/its-nix/algua/pull/715) | Closed as superseded integration proposals. Current PRD/architecture/operating guides replace the old status, coordination and preparation workflow; historical story evidence remains dated. |
+| [#714](https://github.com/its-nix/algua/pull/714), [#716](https://github.com/its-nix/algua/pull/716) | Closed historical audits/inventories. Their old results are not current readiness or implementation admission. |
+| [#717](https://github.com/its-nix/algua/pull/717) | Closed/deferred CI-contract proposal. Reuse relevant evidence requirements during scoped release work; current manual-CI/proportional-check policy remains. |
+| [#718](https://github.com/its-nix/algua/pull/718) | Closed/deferred wheel-identity proposal. Reproduce the reported failure on current source before a protected correction; the old proposed contract is not normative. |
+| [#707](https://github.com/its-nix/algua/pull/707) | Closed/deferred Allure acceptance-report framework, distinct from the merged operational dashboard. Retain useful scenarios for later scoped reuse, without adding a framework prerequisite. |
+| [#670](https://github.com/its-nix/algua/pull/670), [#694](https://github.com/its-nix/algua/pull/694) | Closed/deferred optional pandas/Arrow major-version widening. Current constraints/lock remain; reopen justified upgrades against current source. |
+| [#730](https://github.com/its-nix/algua/pull/730) | Open blocked runtime-isolation draft. Conflicts with current main; requires scoped current-source assessment and applicable human review. Historical test claims are not current-head acceptance. |
+
+After reconciliation, resume the shared board's ordered research/data and operations/recovery
+tracks. Security/accounting defects interrupt either track. The pending comparison with external
+trading frameworks may inform the next roadmap discussion; no new functionality or changed
+authority is inferred from it. Git synchronization does not establish the VPS's installed revision.
 
 ## Artifact-freeze delivery record
 

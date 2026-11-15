@@ -1,3 +1,7 @@
+# HISTORICAL DELIVERY SNAPSHOT — routing reconciled 2026-11-15.
+# Current execution/ownership lives in the shared Todoist board; PRD §25 gives priorities.
+# Values below retain their dated meaning, not current readiness or an instruction to resume work.
+# See docs/development/README.md for retained PR dispositions; do not maintain a second active queue.
 # generated: 2026-09-25
 # last_updated: 2026-09-30
 # project: Algua
