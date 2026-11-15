@@ -61,7 +61,11 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
-ReadWritePaths=/opt/algua/data /opt/algua/web/.state
+# Push state (VAPID key, subscriptions): systemd creates /var/lib/algua-web owned by algua-web, 0700.
+StateDirectory=algua-web
+StateDirectoryMode=0700
+Environment=ALGUA_WEB_STATE=/var/lib/algua-web
+ReadWritePaths=/opt/algua/data
 
 [Install]
 WantedBy=multi-user.target
