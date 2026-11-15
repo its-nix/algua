@@ -1,6 +1,7 @@
 # algua-monitor — web monitor
 
-A web monitor for the algua fleet, **read-only except the owner's Inbox** (see "Inbox writes"). This directory is a
+A web monitor for the algua fleet, **read-only except the owner's Inbox and push subscriptions**.
+Both write paths require the owner identity and same-origin guard (see "Inbox writes"). This directory is a
 **standalone uv project** (own `web/uv.lock`) — slice B is the backend: a small
 FastAPI app whose only seam to the platform is running the `algua` CLI as a
 subprocess and serving its JSON (with a short TTL cache, singleflight, and loud

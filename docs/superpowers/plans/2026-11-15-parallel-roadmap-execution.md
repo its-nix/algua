@@ -1,8 +1,8 @@
 # Parallel daily-roadmap execution plan
 
 > For agentic workers: use subagent-driven development for bounded independent tasks, subject to
-> `AGENTS.md` and the proportional delivery policy. This is an orchestration plan for owner review;
-> worker dispatch, claims and implementation have not started.
+> `AGENTS.md` and the proportional delivery policy. The owner approved execution on 2026-11-15;
+> claims and verification evidence live on the shared Todoist board and linked PRs.
 
 **Goal:** complete small verified roadmap slices in parallel without competing writers or expanding authority.
 
@@ -62,8 +62,8 @@ without changing accepted scope or losing the worker's commit/evidence.
 | Web/Inbox security — Claude; card `6j2cp5Xj8crhC6JG` | `web/backend/extract.py`, push routes in `web/backend/main.py`, `web/backend/push.py`; reserve any Inbox CLI/store change before editing | Reproduce and address fetcher address-binding/NAT64, push ownership and intake-lock reports in separate small commits. Use `web/backend/tests/test_extract.py`, `test_push_api.py`, and affected Inbox tests. No network-policy or authority relaxation; no authenticated external messages. |
 | Fleet P&L accounting — Codex; card `6j2cp5WXQ8cFvXHG` | `algua/portfolio/equity_curve.py`, `algua/cli/fleet_cmd.py` and existing read-side registry interfaces | Demonstrate allocation cash-in/out is not profit while real gains/losses remain visible. Use `tests/test_equity_curve.py` and `tests/test_cli_fleet_equity.py`; preserve lane/retirement/gap behavior. Protected risk, execution or qualification effects are flagged for review rather than changed. |
 
-- [ ] Dispatch these three workers after the execution plan is accepted and claims/preflight pass.
-- [ ] As a slot frees, assign Grok a read-only scoped review in its own worktree against the exact
+- [x] Dispatch these three workers after the execution plan is accepted and claims/preflight pass.
+- [x] As a slot frees, assign Grok a read-only scoped review in its own worktree against the exact
   implementer diff. Review correctness/acceptance once; use fixes-only follow-up if needed.
 - [ ] The orchestrator verifies actual diffs/test output, resolves shared-file conflicts and
   integrates accepted changes one at a time. Do not rely only on a worker's completion claim.
