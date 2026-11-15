@@ -53,6 +53,15 @@ successful exhaustion. A profile-limited blocked source belongs in the backlog, 
 permanently exhausted list. Configured pilots retain all such report entries in the source
 backlog instead of permanently exhausting notes. Do not shorten the original recipe to manufacture usable history.
 
+Derive `feature_lookback` from the whole signal/state dependency for every leg, not merely the
+largest indicator parameter. A 20-bar return over the last 5 state decisions needs 25 closes;
+declare that conservative history and use the common maximum across controls and sweep values.
+Persistent state needs an explicit finite reconstruction horizon and initialization rule in the
+hypothesis. If it is unbounded or unknown, do not advertise a finite recipe: use `null` and explain
+the incompatibility. `feasible` checks the declared history geometry, not authored state logic.
+The author must verify declared-suffix equivalence and first-decision behavior as described in
+`author-a-strategy`; increasing warmup alone does not repair an understated declaration.
+
 ## From source to experiment
 
 A note says "X works". Turn it into an explicit experiment with a signal, supported construction,

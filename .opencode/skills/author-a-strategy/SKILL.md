@@ -198,6 +198,58 @@ wide = view.reset_index().pivot(index="timestamp", columns="symbol", values="adj
 wide = wide.sort_index()  # never assume the pivot is already sorted before positional .iloc
 ```
 
+### Declare the whole state history, not just the indicator window
+
+`source_recipe.assess_recipe` checks window capacity using the declared `feature_lookback`.
+A `feasible` advisory does not inspect authored code or prove that persistent state fits.
+Derive the history requirement before authoring, for the primary, every control and the largest
+sweep parameters. Include return endpoints, nested rolling windows and the state search horizon.
+For example, a 20-bar return evaluated at each of the last 5 decisions needs **25 closes**,
+not 21. A conservative `feature_lookback=25` covers that entire dependency.
+
+Keep `execution.warmup_bars` consistent with the first valid decision. Warmup only delays calls;
+it does not make an under-declared lookback valid. An expanding backtest prefix is not permission
+to depend on history outside the declaration. Recompute finite state from the declared trailing
+bars on every call; never retain module globals or assume calls arrive in chronological order.
+An unbounded "hold until the next opposite event" latch cannot be represented honestly by the
+indicator's lookback. Report that incompatibility as `run_error`; do not silently impose a reset
+or shorten the hypothesis to pass preflight.
+
+This executable **synthetic example** applies only to an explicitly finite five-decision event
+memory, with neutral state when no event occurs in that window. It is not a replacement for an
+unbounded holding rule, a construction policy or an overlay:
+
+```python
+import pandas as pd
+
+RETURN_BARS = 20
+STATE_BARS = 5
+REQUIRED_BARS = RETURN_BARS + STATE_BARS
+
+
+def bounded_state_scores(view, params):
+    prices = view.reset_index().pivot(
+        index="timestamp", columns="symbol", values="adj_close"
+    ).sort_index().tail(REQUIRED_BARS)
+    if len(prices) < REQUIRED_BARS:
+        return pd.Series(dtype="float64")
+    # Missing observations are not neutral events or zero returns.
+    prices = prices.loc[:, prices.notna().all() & (prices > 0).all()]
+    returns = prices.pct_change(RETURN_BARS, fill_method=None).tail(STATE_BARS)
+    events = pd.DataFrame(float("nan"), index=returns.index, columns=returns.columns)
+    events = events.mask(returns > 0.02, 1.0).mask(returns < -0.02, -1.0)
+    return events.ffill().iloc[-1].fillna(0.0)
+```
+
+For this example declare `feature_lookback=REQUIRED_BARS` and conservatively
+`warmup_bars=REQUIRED_BARS`. Before numerical research, use synthetic fixtures to compare scores
+on a long prefix and its declared suffix, at the first valid decision and later decisions.
+Change discarded older bars and call decisions out of order: results must agree. Exercise short
+and sparse inputs, not only a full-history smoke. See `tests/test_author_state_history.py`.
+Re-run the existing source-recipe preflight with the **true common** lookback. If it no longer
+fits the pinned windows, report the limitation; do not lower the declaration, change the profile,
+rewrite an attempt or force a tried idea back into the campaign.
+
 ## Available features — reuse before you reinvent (the factor catalogue)
 
 `algua/features/` holds pure, composable **factors** (momentum, z-score, …). Before writing a
