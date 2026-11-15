@@ -6,7 +6,7 @@ exactly one `source_kind: human` inspiration in the vault."""
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +23,7 @@ from algua.knowledge.inspirations import (
     parse_note,
     write_note,
 )
+from algua.primitives.flock import file_lock
 from algua.primitives.timeparse import now_iso
 from algua.registry.db import registry_conn
 from algua.registry.idea_links import ideas_by_inspiration, journey
@@ -103,16 +104,24 @@ def _already_written(settings: Settings, item: dict[str, Any],
     return None
 
 
-@inbox_app.command("intake")
-@json_errors
-def intake_cmd() -> None:
-    """Turn each queued item into one `source_kind: human` inspiration and mark it taken."""
-    settings = get_settings()
+def _intake_lock_path(settings: Settings) -> Path:
+    """The lock serializing intake runs, beside the registry DB that holds the queue."""
+    return settings.db_path.with_name(settings.db_path.name + ".inbox-intake.lock")
+
+
+def _intake(settings: Settings, *, today: date) -> dict[str, Any]:
+    """Take every queued item in under one exclusive intake lock.
+
+    Without the lock two concurrent runs read the same queued rows and each writes a note before
+    either marks the item taken; across a UTC date change their note ids differ, so one item
+    became two inspirations (the loser's note orphaned). The queue read, note write and
+    `mark_taken` now happen under a blocking, fail-closed flock (freed by the kernel if the holder
+    dies), so a later run sees only what is still queued; a crash between write and mark is still
+    recovered by `_already_written` on the next run."""
     categories = set(load_categories(categories_file_default()))
-    today = datetime.now(UTC).date()
     taken: list[str] = []
     warnings: list[dict[str, Any]] = []
-    with registry_conn() as conn:
+    with file_lock(_intake_lock_path(settings)), registry_conn() as conn:
         for item in queued_items(conn):
             note_id = _already_written(settings, item, warnings)
             if note_id is None:
@@ -125,4 +134,11 @@ def intake_cmd() -> None:
                 note_id = str(fm["id"])
             if mark_taken(conn, item["id"], inspiration_id=note_id, now=now_iso()):
                 taken.append(note_id)
-    emit(ok({"taken": taken, "warnings": warnings}))
+    return {"taken": taken, "warnings": warnings}
+
+
+@inbox_app.command("intake")
+@json_errors
+def intake_cmd() -> None:
+    """Turn each queued item into one `source_kind: human` inspiration and mark it taken."""
+    emit(ok(_intake(get_settings(), today=datetime.now(UTC).date())))
