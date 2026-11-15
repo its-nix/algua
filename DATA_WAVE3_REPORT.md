@@ -1,45 +1,56 @@
 # Data wave 3 — stable-identity / alias PREPARATION (not the complete pipeline)
 
-Base d28be08, branch wave3/data-20261116. Spec: 2026-11-12-pit-data-pipeline-design.md §4.15, components B/C.
-Synthetic data only; no private/vendor data read; no pushes, deploys, Todoist edits, VPS or broker effects.
+Base d28be08, branch wave3/data-20261116. Spec: `docs/superpowers/specs/2026-11-12-pit-data-pipeline-design.md`
+§4.15, components B/C. Synthetic data only; no private/vendor data read; no pushes, deploys, Todoist edits,
+VPS or broker effects, no Docker, no agents. The acceptance card stays in Review; the initial13-security
+revision comparison and the one unresolved acquisition remain open blockers. The frozen universe
+`deploy/research/us-liquid-common-v1.json` is untouched.
 
-## What this is
-Preparation only: a pure, unwired alias module. It is NOT the Sharadar bar importer, NOT the universe
-materializer, NOT PIT verification, and adds no `verified_pit`. No qualified output, schema, provider/
-importer publication semantics, or protected path changed.
+## Correction to the earlier run
+An earlier commit (449f2bb) added `algua/data/security_identity.py` + `tests/test_security_identity.py`.
+That module built historical aliases from the CURRENT ticker plus first/last price dates, which invents
+alias coverage, and it had no production caller. **Both files are deleted in this change.** Nothing from
+them is a recommendation.
 
-## Changed files
-- `algua/data/security_identity.py` (new, unprotected, pure): `stable_symbol(permaticker)` -> `SHR_<n>`;
-  `AliasInterval` (half-open `[start,end)`); `Rename`; `AliasTable` (`stable_for(ticker, date)`,
-  `ticker_for(stable, date)`, `history`) which refuses overlap per ticker and per security;
-  `alias_table_from_tickers(read_tickers frame, renames)`.
-- `tests/test_security_identity.py` (new): synthetic rename, ticker reuse (ZZRU fixtures), date
-  boundaries (last price date inclusive, next day unowned), overlap/bad-input refusals, missing first date.
-- `DATA_WAVE3_REPORT.md`.
-Commit: see `git log -1` on the branch (scoped commit, message "data: preparatory stable security alias table").
+## What this change contains
+- `tests/test_sharadar_identity_evidence.py` (2 tests, synthetic rows, existing `read_tickers` only): pins
+  that a reused ticker is two distinct permatickers with disjoint price spans, and that TICKERS has one
+  current ticker per permaticker and no prior-name column.
+- This report. No production code, schema, store, importer/provider publication semantics, qualified output,
+  `verified_pit`, or protected path changed.
 
-## Checks actually run (macOS, no Docker, no CLI import needed)
-- `uv run pytest -q tests/test_security_identity.py -n0`: 6 passed.
-- `uv run ruff check` on both files: clean. `uv run mypy algua/data/security_identity.py`: clean.
-- `uv run lint-imports`: 31 kept, 0 broken. `tests/test_module_size_ratchet.py`: 4 passed.
-- NOT run: Linux/Docker CLI tests (none touch the CLI; pending via parent), full suite.
+## Findings (code-located)
+1. `read_tickers` (`algua/data/importers/sharadar_tables.py:95`) yields one row per SEP permaticker with only
+   the current `ticker` and first/last price dates. Renames are not representable, so dated aliases cannot
+   be derived from it. Alias spans from price dates are price spans, not an alias history, and never
+   membership.
+2. `SharadarBarProvider.get_bars` (`algua/data/providers/sharadar.py:24`) is keyed on exact vendor ticker per
+   request and already records `security_identity: exact_vendor_ticker;historical_identity_not_verified`.
+   That label should change only after prerequisite acceptance.
+3. Universe path (`algua/data/constituents.py` `_norm_symbol`/`constituents_to_snapshots`, store
+   `algua/data/store/universe.py`) takes opaque symbol strings. A stable key would pass through unchanged,
+   so component C needs no store change to carry stable keys.
+4. The only current permaticker consumers are the validation checks (`sharadar_check*.py`), which read
+   TICKERS but do not build identity.
+5. Execution edge: `algua/execution/alpaca_broker.py` (~L317-352) matches `intent.symbol` against broker
+   symbols directly. A stable-key to broker-ticker mapping there is protected/authority-bearing.
 
-## Design notes / limits
-- TICKERS gives one current ticker per permaticker plus first/last price dates, so earlier names need
-  explicit `Rename` records. Where those come from (ACTIONS ticker changes? vendor related-ticker field?)
-  is unresolved; I did not read vendor data to decide.
-- Alias spans are price-trading spans, not membership. Nothing infers historical membership.
-- `SHR_` prefix is my choice (owner may override); keys are alnum+underscore so safe as bar `symbol`.
+## Prospective seams (all deferred)
+- B (importer/provider): emit `SHR_<permaticker>`-style stable key as bar `symbol`; needs a trusted dated
+  alias source. Open question: whether the vendor exposes ticker-change history (ACTIONS ticker-change rows
+  or a related-ticker field). Decide from the acceptance sample, not from this synthetic work.
+- Alias persistence: a new snapshot dataset plus manifest entry (schema/manifest change).
+- Execution edge: `ticker_for`/`stable_for` at broker submit and broker-held reconciliation
+  (CODEOWNERS/authority review).
+- Refusal rules any future alias builder needs: explicit dated inputs only, no gaps, no overlap per ticker
+  or per security, unknown ticker/date refuses.
 
-## Blockers / for human review (not done here)
-1. Wiring: the Sharadar bar importer (component B; `algua/data/importers/`, provider `sharadar.py`) must
-   emit `stable_symbol` as `symbol`, and the execution edge (broker ticker <-> stable key, incl.
-   broker-held positions) must call `ticker_for`/`stable_for`. Execution/registry paths are CODEOWNERS-
-   protected or authority-bearing -> human review. Deferred until prerequisite acceptance (revision
-   comparison and the one unresolved acquisition from the initial13-security sample).
-2. Alias persistence: no store or schema exists; storing the table (new snapshot dataset) is a schema/
-   manifest change, deferred.
-3. Universe materializer (C) must emit stable keys into `data import-universe`; the frozen
-   deploy/research/us-liquid-common-v1.json definition is untouched.
-4. `algua/data/store/delistings.py` / `backtest/delisting.py` (component D) and PIT verifier (I) remain
-   protected future work.
+## Checks actually run (macOS, uv, `-n0`)
+- `pytest -q -n0 tests/test_sharadar_identity_evidence.py`: 2 passed.
+- `ruff check` on that file: clean.
+- NOT run: Linux/Docker CLI tests (none touch the CLI), mypy, lint-imports, size ratchet, full suite.
+
+## Blockers
+Prerequisite acceptance (revision comparison, one acquisition) unresolved; trusted dated alias source
+unidentified; execution-edge and delisting/PIT-verifier work are protected human-reviewed scope. This is
+preparation only. No completion or real-money readiness claim.
