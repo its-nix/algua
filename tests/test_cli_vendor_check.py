@@ -34,6 +34,16 @@ def test_vendor_check_passes_and_writes_private_report(tmp_path):
     assert body["report_out"] == str(out.resolve())
     full = json.loads(out.read_text())
     assert full["passed"] is True and "findings" in full["checks"][0]
+    terminal = next(c for c in full["checks"] if c["name"] == "terminal")
+    assert terminal["counts"]["zero_recovery"] == 0
+    assert terminal["counts"]["bankruptcy_unresolved"] == 1
+    bankruptcy = next(f for f in terminal["findings"] if f["class"] == "bankruptcy_unresolved")
+    assert bankruptcy["limitation"] == "zero_recovery_or_equity_cancellation_not_verified"
+    assert terminal["counts"]["acquisition_resolved"] == 0
+    assert terminal["counts"]["acquisition_unresolved"] == 1
+    acquisition = next(f for f in terminal["findings"] if f["class"] == "acquisition_unresolved")
+    assert acquisition["limitation"] == "consideration_and_effective_date_prices_not_verified"
+    assert "limitation" not in res.stdout
     assert oct(out.stat().st_mode & 0o777) == "0o600"
 
 
