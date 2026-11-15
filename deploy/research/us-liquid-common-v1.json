@@ -1,0 +1,78 @@
+{
+  "schema_version": "daily-universe-rules/v1",
+  "rule_id": "us-liquid-common/v1",
+  "status": "definition_only",
+  "calendar": "XNYS",
+  "timeframe": "1d",
+  "decision_timing": {
+    "inputs_through": "completed_session_t_close",
+    "metadata_known_by": "session_t_close",
+    "membership_label": "session_t",
+    "earliest_execution": "next_eligible_session_after_t",
+    "recompute": "every_XNYS_session"
+  },
+  "eligibility": {
+    "issuer_domicile": "US",
+    "listing_venues": ["XASE", "XNAS", "XNYS"],
+    "instrument": "ordinary_common_stock_including_REIT_and_BDC_common_shares",
+    "currency": "USD",
+    "listing_status_at_t": "listed",
+    "multiple_common_share_classes": "separate_security_ids",
+    "index_membership_filter": null,
+    "market_cap_filter": null,
+    "sector_filter_or_quota": null,
+    "broker_tradability_filter": false
+  },
+  "history_floor": {
+    "minimum_valid_observed_sessions": 252,
+    "scope": "same_security_id_and_uninterrupted_listing_episode_through_t",
+    "session_count": "distinct_XNYS_session_dates_with_valid_canonical_bar",
+    "contiguous_history_required": false,
+    "exact_IPO_date_claim": false,
+    "reset_on_relisting": true
+  },
+  "price": {
+    "field": "raw_close_on_t",
+    "minimum_USD_inclusive": 10
+  },
+  "liquidity": {
+    "sessions": 60,
+    "window": "XNYS_sessions_t_minus_59_through_t_inclusive",
+    "require_every_window_session": true,
+    "measure": "median_of_raw_close_times_raw_share_volume",
+    "even_sample_median": "arithmetic_mean_of_sorted_values_30_and_31",
+    "minimum_USD_inclusive": 20000000,
+    "zero_volume": "valid_zero_dollar_volume",
+    "arithmetic": "exact_decimal_from_shortest_round_trip_canonical_float64_strings",
+    "round_before_threshold_or_rank": false
+  },
+  "selection": {
+    "maximum_securities": 1000,
+    "primary_sort": "median_dollar_volume_descending",
+    "tie_break": "canonical_security_id_ASCII_lexicographic_ascending",
+    "fewer_than_cap": "retain_all_eligible_without_relaxing_rules",
+    "output_order": "canonical_security_id_ASCII_lexicographic_ascending",
+    "hysteresis": false
+  },
+  "missingness": {
+    "unknown_required_historical_input": "refuse_date_materialization_and_qualification",
+    "certified_absent_bar_in_liquidity_window": "exclude_incomplete_window",
+    "certified_absent_bar_outside_liquidity_window": "does_not_count_toward_history_floor",
+    "invalid_or_duplicate_bar": "refuse_date_materialization_and_qualification",
+    "unknown_coverage_or_identity": "refuse_date_materialization_and_qualification",
+    "imputation_or_current_survivor_substitution": false
+  },
+  "membership": {
+    "add_date": "inclusive_session_t",
+    "drop_date": "exclusive_first_session_t_no_longer_selected",
+    "on_rank_or_threshold_exit": "remove_from_selection_without_erasing_existing_holdings",
+    "terminal_dependency": "reviewed_actions_and_terminal_outcomes_or_backtest_refusal",
+    "corrections": "new_content_bound_universe_identity"
+  },
+  "authority": {
+    "creates_universe_timeline": false,
+    "confers_verified_pit": false,
+    "confers_qualification_or_trading_authority": false,
+    "strategy_return_based_rule_tuning": false
+  }
+}
