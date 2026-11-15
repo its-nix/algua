@@ -1,4 +1,4 @@
-"""/api/push endpoints: key shape, subscribe validation/limit, idempotent delete."""
+"""/api/push endpoints: key shape, subscribe validation/limit, idempotent delete, owner gate."""
 
 from __future__ import annotations
 
@@ -6,13 +6,22 @@ from typing import Any
 
 import backend.main as main_mod
 import httpx
+import pytest
 from backend import push
 from py_vapid import b64urldecode
 
+OWNER = "owner@example.com"
+OWNER_HEADERS = {"Tailscale-User-Login": OWNER}
 
-def _client() -> httpx.AsyncClient:
+
+@pytest.fixture(autouse=True)
+def owner_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALGUA_WEB_OWNER_LOGIN", OWNER)
+
+
+def _client(headers: dict[str, str] | None = OWNER_HEADERS) -> httpx.AsyncClient:
     transport = httpx.ASGITransport(app=main_mod.app)
-    return httpx.AsyncClient(transport=transport, base_url="http://test")
+    return httpx.AsyncClient(transport=transport, base_url="http://test", headers=headers)
 
 
 def _sub(i: int = 0) -> dict[str, Any]:
@@ -116,3 +125,64 @@ async def test_delete_is_idempotent() -> None:
     assert first.status_code == 200 and first.json() == {"ok": True}
     assert second.status_code == 200 and second.json() == {"ok": True}
     assert push.load_subscriptions() == {}
+
+
+_NOT_OWNER = [
+    pytest.param(None, id="no-header"),
+    pytest.param({"Tailscale-User-Login": "mallory@example.com"}, id="authenticated-non-owner"),
+    pytest.param({"Tailscale-User-Login": ""}, id="blank-header"),
+    pytest.param({**OWNER_HEADERS, "Sec-Fetch-Site": "cross-site"}, id="owner-cross-site"),
+    pytest.param({**OWNER_HEADERS, "Sec-Fetch-Site": "same-site"}, id="owner-same-site"),
+]
+
+
+@pytest.mark.parametrize("headers", _NOT_OWNER)
+async def test_subscribe_refuses_non_owner(headers: dict[str, str] | None) -> None:
+    async with _client(headers) as client:
+        resp = await client.post("/api/push/subscribe", json=_sub())
+    assert resp.status_code == 403
+    assert resp.json()["code"] == "forbidden"
+    assert push.load_subscriptions() == {}
+
+
+@pytest.mark.parametrize("headers", _NOT_OWNER)
+async def test_unsubscribe_refuses_non_owner(headers: dict[str, str] | None) -> None:
+    push.add_subscription(_sub())
+    async with _client(headers) as client:
+        resp = await client.delete(
+            "/api/push/subscribe", params={"endpoint": _sub()["endpoint"]})
+    assert resp.status_code == 403
+    assert resp.json()["code"] == "forbidden"
+    assert _sub()["endpoint"] in push.load_subscriptions()
+
+
+@pytest.mark.parametrize("env", [None, "", "   "])
+async def test_push_writes_disabled_without_owner_env(
+    monkeypatch: pytest.MonkeyPatch, env: str | None,
+) -> None:
+    if env is None:
+        monkeypatch.delenv("ALGUA_WEB_OWNER_LOGIN", raising=False)
+    else:
+        monkeypatch.setenv("ALGUA_WEB_OWNER_LOGIN", env)
+    push.add_subscription(_sub(1))
+    async with _client({"Tailscale-User-Login": ""}) as client:
+        sub = await client.post("/api/push/subscribe", json=_sub())
+        unsub = await client.delete(
+            "/api/push/subscribe", params={"endpoint": _sub(1)["endpoint"]})
+    assert sub.status_code == 403 and unsub.status_code == 403
+    assert list(push.load_subscriptions()) == [_sub(1)["endpoint"]]
+
+
+async def test_owner_gate_runs_before_the_body_is_read() -> None:
+    big = _sub()
+    big["padding"] = "x" * (17 * 1024)
+    async with _client({"Tailscale-User-Login": "mallory@example.com"}) as client:
+        resp = await client.post("/api/push/subscribe", json=big)
+    assert resp.status_code == 403  # not 422 body-too-large: refused before any read
+
+
+async def test_owner_same_origin_subscribe_is_allowed() -> None:
+    async with _client({**OWNER_HEADERS, "Sec-Fetch-Site": "same-origin"}) as client:
+        resp = await client.post("/api/push/subscribe", json=_sub())
+    assert resp.status_code == 200
+    assert _sub()["endpoint"] in push.load_subscriptions()
