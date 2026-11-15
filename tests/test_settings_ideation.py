@@ -28,5 +28,5 @@ def test_the_preview_hold_comfortably_exceeds_the_ordinary_claim_ttl():
 
 def test_supported_markets_and_horizons_today():
     assert supported_markets() == frozenset({Market.US_EQUITIES, Market.ANY})
-    assert supported_horizons() == frozenset(
-        {Horizon.DAILY, Horizon.WEEKLY, Horizon.MONTHLY, Horizon.EVENT})
+    # Required decision cadence: only daily retargeting is currently executable.
+    assert supported_horizons() == frozenset({Horizon.DAILY})
