@@ -21,6 +21,7 @@ uv run algua doctor
 ## Data snapshots
 
 For EODHD daily US bars, see the [free demo ingestion and backtest recipe](docs/eodhd.md).
+For Sharadar daily US bars and selected ARQ facts, see the [Sharadar integration](docs/sharadar.md).
 
 ```
 # Register a local file snapshot.
