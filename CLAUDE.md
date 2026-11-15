@@ -85,7 +85,9 @@ The [Algua KB](kb/README.md) is the source for project knowledge; [its Drive ass
   flags (`--degradation-factor`, `--sharpe-floor`, `--min-observations`, `--min-coverage`,
   `--min-vol`, `--max-drawdown`, `--max-staleness`) are human-only. A passing run is the ONLY
   agent path to `forward_tested`; re-running at `forward_tested` refreshes the live-wall
-  certificate without changing the stage.
+  certificate without changing the stage. This is the STRICT route; it is not required for
+  capped experimental live, which uses the research holdout as economic evidence plus five paper
+  sessions as mechanical proof (`paper qualify-experimental`, below).
 - `uv run algua paper handoff NAME` — unallocate and drain qualified frozen paper exposure;
   no new tick, kill switch or live authority. `live activate-experimental NAME --capital USD`
   previews the approved historical-plus-five-session route; `--actor human` only issues its

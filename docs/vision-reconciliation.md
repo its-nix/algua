@@ -26,8 +26,8 @@ reach `forward_tested`; real-money activation still requires the signed human ce
 
 | Area | Verified current state | Target / next work |
 |---|---|---|
-| Operating kernel | Data snapshots, backtests, gates, execution, paper/live tick engines, risk and operator packages exist. | Demonstrate one strategy's safe end-to-end lifecycle; package presence is not acceptance evidence. Phase 1. |
-| Artifact reproducibility | The pure planner seam and explicit append-only deployment epochs are shipped. New paper intake records a canonical working-tree/environment descriptor; ticks, forward evidence and certificates bind to its deployment ID. Existing migration-time tenants remain an explicit unmigrated cohort. | Execution still imports the mutable working tree and halts on drift. Materialize a recoverable immutable planner artifact next, then bind signed live authorization to the exact deployment under [#661](https://github.com/Lior-Nis/algua/issues/661). Phase 1, PRD §§5, 7, 10. |
+| Operating kernel | Data snapshots, backtests, gates, execution, paper/live tick engines, risk and operator packages exist. 2026-11-11: the accelerated historical-plus-five-session route to capped live is implemented (see [Qualification route update](#qualification-route-update--2026-11-11)). | Demonstrate one strategy's safe end-to-end lifecycle; package presence is not acceptance evidence. Phase 1. |
+| Artifact reproducibility | The pure planner seam and explicit append-only deployment epochs are shipped. New paper intake records a canonical working-tree/environment descriptor; ticks, forward evidence and certificates bind to its deployment ID. Existing migration-time tenants remain an explicit unmigrated cohort. 2026-11-11: frozen deployments execute from a verified immutable bundle (including pinned model assets) in paper, and the [capped frozen-live connector](agent/capped-live.md) binds a signed live authorization to the exact frozen deployment. | Legacy working-tree tenants still import the mutable tree. Deployment acceptance (installed trust anchor the runtime user cannot write, restart/reconciliation evidence) remains open under [#661](https://github.com/Lior-Nis/algua/issues/661). Phase 1, PRD §§5, 7, 10. |
 | Experiment memory | `tracking/`, `knowledge/`, idea outcomes and strategy/family notes exist. `Settings.tracking_backend` defaults to `mlflow-sqlite`. | Complete the durable experiment graph, failed-result coverage, prior-search requirement and knowledge synthesis. Phase 2, PRD §9. |
 | Data and hourly operation | Bars, PIT universes and fundamentals/news storage exist. `data/capabilities.py` admits US equities and daily-family research horizons; supported storage is not proof of usable live feeds. | Deep PIT OHLCV, fundamentals, timestamped news/filings and complete hourly operation. Phase 3; [#625](https://github.com/Lior-Nis/algua/issues/625), [#630](https://github.com/Lior-Nis/algua/issues/630), and live alternative-data gap [#472](https://github.com/Lior-Nis/algua/issues/472). |
 | Autonomous engineering | Telemetry, operator machinery and research merge-back exist. `operator/diff_policy.py` permits strategy Python files and `kb/` under its deny rules. | Full incident → reproduction → test → fix → independent review → permitted release → verification loop. General core-repair merges/deployments are not enabled by PRD adoption. Phase 4. |
@@ -39,6 +39,39 @@ reach `forward_tested`; real-money activation still requires the signed human ce
 Hourly research and execution are part of the first complete architecture. A daily strategy may
 prove the first lifecycle slice before hourly completion. More bars alone do not establish more
 independent evidence, justify a lower gate, or promise a fixed forward-validation duration.
+
+## Qualification route update — 2026-11-11
+
+Inspected at `42517e9` (`deploy/ideation-exploration-20261110`), merged to `main` in #808
+(`cfc7b48`).
+
+The long wall-clock paper window is no longer on the critical path to experimental live. Two
+routes now coexist:
+
+| Route | Economic evidence | Paper requirement | Live authority |
+|---|---|---|---|
+| Strict (legacy) | Research gate holdout | `paper promote`: ≥63 broker-clocked observations, ≥90% coverage, realized-Sharpe LCB ≥ bar (about one quarter of wall-clock paper) | Forward certificate + signed `registry transition --to live`; still refuses frozen deployments |
+| Capped experimental (`capped-frozen-live/v1`) | The research gate's own sealed, non-reused PIT holdout (≥63 OOS bars, positive finite Sharpe, artifact-identity and chronology bound), via `registry/experimental_qualification.py` | Five contiguous completed scheduled paper sessions on one account, captured only by the operator completion hook, recorded by `paper qualify-experimental`; no paper Sharpe test (mechanical correctness only) | `paper handoff`, then a human-signed `live activate-experimental --capital USD` |
+
+Consequences and limits:
+
+- Paper's job on the capped route is proving the frozen artifact trades correctly, not
+  re-measuring edge. The session window is the trailing five completed sessions, so a failed
+  session delays qualification by at most five clean sessions rather than restarting a quarter.
+- The cycle-aborting rejections that previously starved paper evidence (duplicate
+  `client_order_id`, dead orders, full-exit share rounding: #663, #664, #679) are fixed on `main`.
+- The economic bar on this route is the same as the candidate bar: holdout Sharpe > 0, with the
+  deflated-Sharpe, DSR and bootstrap checks **advisory**. Evidence quality therefore rests on the
+  research funnel; a weak holdout passes to a capped live allocation. See the
+  [profile audit](agent/qualification-profile-audit.md) finding 3.
+- The historical leg requires a gate row with `pit_ok` and no PIT override. Current research
+  snapshots are current-constituent proxies (no historical membership, delisted names or price
+  vintages; see [PIT data assessment](agent/pit-data-assessment.md)), so no honest candidate can
+  satisfy this leg until point-in-time data is acquired (#625). This, not paper duration, is
+  now the binding constraint on the capped route.
+- Nothing is enabled by default. No capital amount, instrument list, signer, account or timer is
+  configured by the code; Stories 2.3–2.5 remain partially delivered and Story 2.1 stays open.
+  See [capped live](agent/capped-live.md) for the operator sequence and deployment obligations.
 
 ## Important gaps requiring separate implementation review
 
@@ -56,12 +89,19 @@ These findings are **flag-only** in this documentation change. Current controls 
    (`algua/execution/book_breaker_halt.py`), against its own per-lane high-water mark
    (`paper_book_equity_peak`, schema v49). Thresholds are unchanged and the policy questions
    above stay open.
+   Update (2026-11-11, deploy branch): an opt-in [layered account policy](agent/layered-risk.md)
+   answers the measurement, boundary, order-handling and resumption questions (inclusive 10%
+   → 50% exposure, inclusive 20% halt, cash-flow-adjusted risk NAV, signed live restoration).
+   It is not active by default and the legacy 15% default is unchanged.
 2. **Immutable execution — Important.**
    The planner seam and working-tree deployment/epoch slice are implemented, but a deployment
    descriptor is evidence, not recoverable executable content. Preserve the frozen decision/current
    supervisor split. Artifact materialization, signed deployment identity and any narrowing of the
    approved code closure require the existing protected review. Owner: #661 implementer;
    prerequisite for immutable-artifact acceptance.
+   Update (2026-11-11, deploy branch): frozen bundles are materialized, verified and executed in
+   paper and through the capped live connector. The installed signing anchor and deployment
+   acceptance remain open.
 3. **Legacy signed relaxations — Important.**
    The old PRD tied signed research/forward relaxations to dollar capital rungs. Those rungs
    are superseded. Existing authenticated commands remain as implemented; the new vision
@@ -81,6 +121,9 @@ These findings are **flag-only** in this documentation change. Current controls 
    Verify eligible instruments, account funding/buying-power semantics and enforced sizing
    limits before experimental live acceptance. Owner: Lior and the #624 implementer; separate
    safety review, no runtime-default changes in this documentation pass.
+   Update (2026-11-11, deploy branch): the capped route requires a signed policy with an
+   owner-chosen `normal_capital` and a nonempty `permitted_symbols` list, and buys are capped to
+   non-borrowed cash. Generic `book_max_gross` and legacy paths are unchanged.
 6. **Inherited calendar-purity wording — Important.**
    `AGENTS.md` §3 retains the supplied rule that calendar imports no other Algua modules.
    The shipped import-linter rule instead keeps calendar independent of CLI and registry;
