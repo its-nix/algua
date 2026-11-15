@@ -6,10 +6,13 @@ owner's link/file and note. The fetched text is untrusted content; the CLI bound
 SSRF guard for :func:`fetch_article`: http(s) only; the host is resolved here and EVERY answer must
 be a globally routable unicast address (no private, loopback, link-local, CGNAT/tailnet, reserved,
 unspecified or multicast; IPv4-mapped IPv6 is unwrapped first); redirects are followed by hand (at
-most :data:`MAX_REDIRECTS`) with the same checks on every hop; the address actually connected to is
-re-checked before the body is read (narrows DNS rebinding between our lookup and httpx's); proxies
-from the environment are ignored; the whole fetch has a :data:`TIMEOUT_S` wall clock and the body
-is cut at :data:`MAX_BODY_BYTES`.
+most :data:`MAX_REDIRECTS`) with the same checks on every hop. Every TCP connection is opened by
+:class:`_PinnedBackend`, which resolves and vets the host at connect time and then connects to a
+vetted IP itself, so no second, unvetted lookup can rebind the name between check and connect;
+the URL keeps the hostname, so the Host header, TLS SNI and certificate verification still use the
+name. The address actually connected to is re-checked before the body is read (defense in depth);
+proxies from the environment are ignored; the whole fetch has a :data:`TIMEOUT_S` wall clock and
+the body is cut at :data:`MAX_BODY_BYTES`.
 """
 
 from __future__ import annotations
@@ -21,10 +24,12 @@ import logging
 import re
 import socket
 import sys
+from collections.abc import Iterable
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
+import httpcore
 import httpx
 
 from backend.params import InvalidParam
@@ -149,6 +154,67 @@ async def _resolve(host: str, port: int) -> list[str]:
     return [str(info[4][0]) for info in infos]
 
 
+async def _vetted_addresses(host: str, port: int) -> list[str]:
+    """The host's addresses, refused unless there is at least one and EVERY one is public."""
+    addrs = await _resolve(host, port)
+    if not addrs or not all(_is_public(a) for a in addrs):
+        raise _Refused(f"non-public address for {host}")
+    return list(dict.fromkeys(addrs))
+
+
+class _PinnedBackend(httpcore.AsyncNetworkBackend):
+    """Network backend that only ever connects to an address it vetted for this connection.
+
+    httpcore hands ``connect_tcp`` the URL's hostname; instead of letting the inner backend
+    resolve it again (a rebinding window), the name is resolved and vetted here and the inner
+    backend is given the vetted IP. TLS is started afterwards by httpcore with the origin
+    hostname, so SNI and certificate checks are unchanged."""
+
+    def __init__(self, inner: httpcore.AsyncNetworkBackend | None = None) -> None:
+        self._inner = inner if inner is not None else httpcore.AnyIOBackend()
+
+    async def connect_tcp(
+        self, host: str, port: int, timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Iterable[httpcore.SOCKET_OPTION] | None = None,
+    ) -> httpcore.AsyncNetworkStream:
+        options = list(socket_options) if socket_options is not None else None
+        last: Exception | None = None
+        for addr in await _vetted_addresses(host, port):
+            try:
+                return await self._inner.connect_tcp(
+                    addr, port, timeout=timeout, local_address=local_address,
+                    socket_options=options)
+            except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
+                last = exc
+        assert last is not None  # _vetted_addresses never returns an empty list
+        raise last
+
+    async def connect_unix_socket(
+        self, path: str, timeout: float | None = None,
+        socket_options: Iterable[httpcore.SOCKET_OPTION] | None = None,
+    ) -> httpcore.AsyncNetworkStream:
+        raise _Refused("unix sockets are never fetched")
+
+    async def sleep(self, seconds: float) -> None:
+        await self._inner.sleep(seconds)
+
+
+class _PinnedTransport(httpx.AsyncHTTPTransport):
+    """httpx's own transport, over a connection pool whose every connection is pinned."""
+
+    def __init__(self, backend: httpcore.AsyncNetworkBackend | None = None) -> None:
+        super().__init__()
+        self._pool = httpcore.AsyncConnectionPool(
+            ssl_context=httpx.create_ssl_context(), http1=True, http2=False, retries=0,
+            network_backend=backend if backend is not None else _PinnedBackend())
+
+
+def _real_transport() -> httpx.AsyncBaseTransport:
+    """The real-network transport (a test seam: tests swap the inner network backend)."""
+    return _PinnedTransport()
+
+
 def _transport() -> httpx.AsyncBaseTransport | None:
     """The transport to fetch with (tests substitute a mock); ``None`` = real network."""
     return None
@@ -170,9 +236,7 @@ async def _check_url(url: str) -> None:
     if is_unfetched_host(parts.hostname):
         raise _Refused(f"not fetched in v1: {parts.hostname}")
     port = parts.port or (443 if parts.scheme == "https" else 80)
-    addrs = await _resolve(parts.hostname, port)
-    if not addrs or not all(_is_public(a) for a in addrs):
-        raise _Refused(f"non-public address for {parts.hostname}")
+    await _vetted_addresses(parts.hostname, port)
 
 
 async def _read_capped(response: httpx.Response) -> bytes:
@@ -190,7 +254,7 @@ async def _fetch(url: str) -> tuple[str | None, str | None]:
     substitute = _transport()
     # Only a test's substitute transport may lack the peer address; the real network must show it.
     real_network = substitute is None
-    transport = httpx.AsyncHTTPTransport() if substitute is None else substitute
+    transport = _real_transport() if substitute is None else substitute
     async with httpx.AsyncClient(
         transport=transport, trust_env=False, follow_redirects=False,
         timeout=TIMEOUT_S, headers={"User-Agent": "algua-inbox/1"},

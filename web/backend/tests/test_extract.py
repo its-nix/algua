@@ -5,7 +5,9 @@ from __future__ import annotations
 import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
+import httpcore
 import httpx
 import pytest
 from backend import extract
@@ -129,8 +131,147 @@ async def test_peer_check_fails_closed_on_real_transport(
             return _html(request)
 
     monkeypatch.setattr(extract, "_transport", lambda: None)
-    monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda **kw: HiddenPeer())
+    monkeypatch.setattr(extract, "_real_transport", lambda: HiddenPeer())
     assert await extract.fetch_article("https://example.com/a") == (None, None)
+
+
+# --- connect-time pinning: the real transport over a fake socket layer -------------------------
+
+PUBLIC_2 = "93.184.216.35"
+
+
+class _FakeStream(httpcore.AsyncNetworkStream):
+    def __init__(self, addr: str, log: dict[str, Any], response: bytes) -> None:
+        self.addr, self.log, self._response = addr, log, [response]
+
+    async def read(self, max_bytes: int, timeout: float | None = None) -> bytes:
+        return self._response.pop() if self._response else b""
+
+    async def write(self, buffer: bytes, timeout: float | None = None) -> None:
+        self.log["sent"].append(bytes(buffer))
+
+    async def aclose(self) -> None:
+        pass
+
+    async def start_tls(self, ssl_context: Any, server_hostname: str | None = None,
+                        timeout: float | None = None) -> httpcore.AsyncNetworkStream:
+        self.log["sni"].append(server_hostname)
+        raise httpcore.ConnectError("test stops after recording the TLS server name")
+
+    def get_extra_info(self, info: str) -> Any:
+        return (self.addr, 80) if info == "server_addr" else None
+
+
+class _FakeSockets(httpcore.AsyncNetworkBackend):
+    """Records what the pinned backend asks it to connect to; serves canned HTTP/1.1."""
+
+    def __init__(self, responses: dict[str, bytes]) -> None:
+        self.responses = responses
+        self.log: dict[str, Any] = {"connects": [], "sent": [], "sni": []}
+
+    async def connect_tcp(self, host: str, port: int, timeout: float | None = None,
+                          local_address: str | None = None,
+                          socket_options: Any = None) -> httpcore.AsyncNetworkStream:
+        self.log["connects"].append(host)
+        return _FakeStream(host, self.log, self.responses[host])
+
+    async def sleep(self, seconds: float) -> None:
+        pass
+
+
+def _http(body: bytes, status: str = "200 OK", extra: str = "") -> bytes:
+    return (f"HTTP/1.1 {status}\r\ncontent-type: text/html\r\n{extra}"
+            f"content-length: {len(body)}\r\n\r\n").encode() + body
+
+
+def _pinned(monkeypatch: pytest.MonkeyPatch, responses: dict[str, bytes]) -> _FakeSockets:
+    sockets = _FakeSockets(responses)
+    monkeypatch.setattr(extract, "_transport", lambda: None)
+    monkeypatch.setattr(extract, "_real_transport", lambda: extract._PinnedTransport(
+        backend=extract._PinnedBackend(inner=sockets)))
+    return sockets
+
+
+async def test_connection_goes_to_the_vetted_ip_with_the_hostname_kept(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _dns(monkeypatch, {"example.com": [PUBLIC]})
+    sockets = _pinned(monkeypatch, {PUBLIC: _http(b"<title>Pinned</title><p>ok</p>")})
+    title, text = await extract.fetch_article("http://example.com/a")
+    assert (title, text) == ("Pinned", "ok")
+    assert sockets.log["connects"] == [PUBLIC]  # the IP, never the name
+    assert b"Host: example.com\r\n" in b"".join(sockets.log["sent"])
+
+
+async def test_tls_server_name_is_the_hostname_not_the_ip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _dns(monkeypatch, {"example.com": [PUBLIC]})
+    sockets = _pinned(monkeypatch, {PUBLIC: b""})
+    assert await extract.fetch_article("https://example.com/a") == (None, None)
+    assert sockets.log["connects"] == [PUBLIC]
+    assert sockets.log["sni"] == ["example.com"]
+
+
+@pytest.mark.parametrize("second", [["10.0.0.1"], [PUBLIC, "127.0.0.1"], ["64:ff9b::7f00:1"], []])
+async def test_rebinding_between_check_and_connect_is_refused(
+    monkeypatch: pytest.MonkeyPatch, second: list[str],
+) -> None:
+    """The pre-check sees a public answer, the connect-time lookup a private one: no connect."""
+    answers = [[PUBLIC], second]
+
+    async def rebinding(host: str, port: int) -> list[str]:
+        return answers.pop(0) if answers else second
+
+    monkeypatch.setattr(extract, "_resolve", rebinding)
+    sockets = _pinned(monkeypatch, {PUBLIC: _http(b"<title>x</title>")})
+    assert await extract.fetch_article("http://example.com/a") == (None, None)
+    assert sockets.log["connects"] == [] and sockets.log["sent"] == []
+
+
+async def test_each_redirect_hop_is_vetted_and_pinned_at_connect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    looked_up = _dns(monkeypatch, {"example.com": [PUBLIC], "other.example": [PUBLIC_2]})
+    sockets = _pinned(monkeypatch, {
+        PUBLIC: _http(b"", "302 Found", "location: http://other.example/b\r\n"),
+        PUBLIC_2: _http(b"<title>Hop</title>"),
+    })
+    title, _ = await extract.fetch_article("http://example.com/a")
+    assert title == "Hop"
+    assert sockets.log["connects"] == [PUBLIC, PUBLIC_2]
+    # pre-check + connect-time vetting for each hop
+    assert looked_up == ["example.com", "example.com", "other.example", "other.example"]
+    sent = b"".join(sockets.log["sent"])
+    assert b"Host: example.com\r\n" in sent and b"Host: other.example\r\n" in sent
+
+
+async def test_redirect_hop_rebinding_to_private_is_never_connected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    answers = {"example.com": [[PUBLIC], [PUBLIC]], "other.example": [[PUBLIC_2], ["10.9.9.9"]]}
+
+    async def resolve(host: str, port: int) -> list[str]:
+        return answers[host].pop(0)
+
+    monkeypatch.setattr(extract, "_resolve", resolve)
+    sockets = _pinned(monkeypatch, {
+        PUBLIC: _http(b"", "302 Found", "location: http://other.example/b\r\n"),
+    })
+    assert await extract.fetch_article("http://example.com/a") == (None, None)
+    assert sockets.log["connects"] == [PUBLIC]
+
+
+async def test_pinned_backend_refuses_unix_sockets() -> None:
+    with pytest.raises(extract._Refused):
+        await extract._PinnedBackend(inner=_FakeSockets({})).connect_unix_socket("/run/x.sock")
+
+
+async def test_real_transport_is_pinned() -> None:
+    transport = extract._real_transport()
+    assert isinstance(transport, extract._PinnedTransport)
+    assert isinstance(transport._pool._network_backend, extract._PinnedBackend)
+    await transport.aclose()
 
 
 async def test_control_chars_stripped_from_fetched_page(monkeypatch: pytest.MonkeyPatch) -> None:
