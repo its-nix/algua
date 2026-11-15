@@ -1340,3 +1340,22 @@ def test_setup_failure_trap_and_lock_precede_the_claim():
     finish = LAUNCHER_SRC.index('record_outcomes "${DIGEST_REPORT_PATH}" completed')
     clear = LAUNCHER_SRC.index("trap - EXIT\nappend_digest completed")
     assert worktree < finish < clear
+
+
+def test_worker_goal_supplies_claim_and_canonical_memory_guidance():
+    start = _LAUNCHER_TEXT.index("read -r -d '' GOAL <<EOF")
+    end = _LAUNCHER_TEXT.index("\nEOF\n", start) + len("\nEOF\n")
+    result = subprocess.run(
+        ["bash", "-c", "STAMP=fixture; CLAIMED_PROMPT_JSON='[]'; "
+         "N_HYPOTHESES=1; TIMEOUT=5m; ANTI_DUP_BLOCK=''; "
+         + _LAUNCHER_TEXT[start:end] + '\nprintf "%s" "$GOAL"'],
+        capture_output=True, text=True, check=True)
+    goal = result.stdout
+    claim_guidance = next(line for line in goal.splitlines() if "--status claimed" in line)
+    assert "do not" in claim_guidance and "supplied idea ids" in claim_guidance
+    statuses = ("open", "needs_data", "authored", "refuted", "discarded")
+    assert all(status in goal for status in statuses)
+    assert "claimed_at" in goal and "metadata" in goal
+    assert "algua-kb/strategies/_index.md" in goal
+    assert "algua-kb/strategies/_families.md" in goal
+    assert not re.search(r"(?<!algua-)kb/strategies/", goal)

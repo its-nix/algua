@@ -116,6 +116,79 @@ def test_a_forged_human_note_is_not_adopted(tmp_vault):
     assert "-inbox-my-real-idea-" in r["taken"][0]
 
 
+def test_concurrent_intake_records_each_item_exactly_once(tmp_vault, monkeypatch):
+    """Two intakes racing across a UTC date change: each item becomes exactly one note."""
+    import threading
+    import time
+    from datetime import date
+
+    from algua.cli import inbox_cmd
+    from algua.config.settings import get_settings
+
+    ids = {cli("research", "inbox", "add", "--text", t)["item"]["id"] for t in ("one", "two")}
+    real = inbox_cmd.build_note
+    a_read = threading.Event()
+
+    def slow_for_a(item, **kw):
+        # A has read the queue and found no note for this item; it pauses before writing one.
+        # Without the lock B now reads the same queued rows, finds no note either, and writes its
+        # own under the next day's id, so A's later note is a second inspiration for one item.
+        if threading.current_thread().name == "intake-a" and not a_read.is_set():
+            a_read.set()
+            time.sleep(0.5)
+        return real(item, **kw)
+
+    monkeypatch.setattr(inbox_cmd, "build_note", slow_for_a)
+    results: dict[str, object] = {}
+
+    def run(name, today):
+        try:
+            results[name] = inbox_cmd._intake(get_settings(), today=today)
+        except Exception as exc:  # surfaced by the assertions below
+            results[name] = exc
+
+    a = threading.Thread(target=run, args=("a", date(2026, 11, 15)), name="intake-a")
+    b = threading.Thread(target=run, args=("b", date(2026, 11, 16)), name="intake-b")
+    a.start()
+    assert a_read.wait(5)
+    b.start()
+    a.join(10)
+    b.join(10)
+    assert isinstance(results["a"], dict) and isinstance(results["b"], dict), results
+    taken = results["a"]["taken"] + results["b"]["taken"]
+    assert len(taken) == len(set(taken)) == 2
+    assert results["a"]["warnings"] == [] and results["b"]["warnings"] == []
+    assert sorted(p.stem for p in tmp_vault.glob("*.md")) == sorted(taken)
+    items = cli("research", "inbox", "list")["items"]
+    assert {i["id"] for i in items} == ids and all(i["status"] == "taken" for i in items)
+
+
+def test_intake_waits_for_the_intake_lock_then_takes_the_item(tmp_vault):
+    import threading
+    from datetime import date
+
+    from algua.cli import inbox_cmd
+    from algua.config.settings import get_settings
+    from algua.primitives import flock
+
+    cli("research", "inbox", "add", "--text", "held back")
+    settings = get_settings()
+    fd = flock.acquire(inbox_cmd._intake_lock_path(settings))
+    out: dict[str, object] = {}
+    t = threading.Thread(target=lambda: out.update(
+        r=inbox_cmd._intake(settings, today=date(2026, 11, 15))))
+    try:
+        t.start()
+        t.join(0.5)
+        assert t.is_alive()  # blocked on the held lock: nothing read or written yet
+        assert not tmp_vault.exists() or list(tmp_vault.glob("*.md")) == []
+    finally:
+        flock.release(fd)
+    t.join(10)
+    assert len(out["r"]["taken"]) == 1
+    assert cli("research", "inbox", "intake")["taken"] == []
+
+
 def test_a_corrupt_note_does_not_block_intake(tmp_vault):
     tmp_vault.mkdir(parents=True, exist_ok=True)
     (tmp_vault / "2026-11-01-broken-note.md").write_text("---\nid: [unclosed\n---\nbody\n")

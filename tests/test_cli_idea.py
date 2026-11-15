@@ -103,6 +103,23 @@ def test_list_is_bare_array():
     assert listed[0]["title"] == "low vol anomaly"
 
 
+def test_claim_is_metadata_and_claimed_status_is_rejected():
+    added = _json(_add())
+    claim = _json(runner.invoke(app, [
+        "research", "idea", "claim", "--run", "fixture-run", "--limit", "1"]))
+    assert claim["claimed"][0]["id"] == added["id"]
+    listed = _json(runner.invoke(app, ["research", "idea", "list", "--status", "open"]))
+    assert listed[0]["status"] == "open" and listed[0]["claimed_by"] == "fixture-run"
+
+    result = runner.invoke(app, ["research", "idea", "list", "--status", "claimed"])
+    assert result.exit_code == 1
+    error = json.loads(result.stdout)
+    assert error["ok"] is False and error["code"] == "invalid_input"
+    assert "claimed" in error["error"]
+    shown = _json(runner.invoke(app, ["research", "idea", "show", str(added["id"])]))
+    assert shown["status"] == "open" and shown["claim_token"] == listed[0]["claim_token"]
+
+
 def test_dedup_check_no_write():
     _add()
     out = _json(runner.invoke(app, [

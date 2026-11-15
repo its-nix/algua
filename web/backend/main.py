@@ -1,8 +1,9 @@
 """algua-monitor: FastAPI backend over the algua CLI seam (slices B+C+D + dashboard Inbox).
 
-Read-only except the owner's Inbox (`POST /api/inbox`, `POST /share`): every write passes
-backend.owner.require_owner (the `Tailscale-User-Login` header) and goes through the CLI's
-`research inbox add`, the Inbox's only writer.
+Read-only except the owner's Inbox (`POST /api/inbox`, `POST /share`) and the owner's push
+subscriptions (`POST`/`DELETE /api/push/subscribe`): every write passes
+backend.owner.require_owner (the `Tailscale-User-Login` header) and refuse_cross_site. Inbox
+writes go through the CLI's `research inbox add`, the Inbox's only writer.
 
 Same-origin by design: no CORS middleware (dev uses the Vite proxy). Production listens on a
 Unix socket only tailscaled can open (web/README.md) — never 0.0.0.0.
@@ -374,6 +375,10 @@ def create_app() -> FastAPI:
 
     @app.post("/api/push/subscribe")
     async def push_subscribe(request: Request) -> dict[str, Any]:
+        # A subscription is a write (it decides who receives owner notifications): owner first,
+        # before a single body byte is read.
+        require_owner(request)
+        refuse_cross_site(request)
         # Body cap BEFORE parsing: the Content-Length header is the cheap first
         # line; the incremental stream read is the real cap for chunked/lying
         # clients — it aborts as soon as the accumulated bytes exceed the limit,
@@ -404,7 +409,9 @@ def create_app() -> FastAPI:
         return {"ok": True}
 
     @app.delete("/api/push/subscribe")
-    async def push_unsubscribe(endpoint: str) -> dict[str, Any]:
+    async def push_unsubscribe(request: Request, endpoint: str) -> dict[str, Any]:
+        require_owner(request)
+        refuse_cross_site(request)
         # Idempotent: removing an unknown endpoint is still {ok: true}.
         await asyncio.to_thread(push.remove_subscription, endpoint)
         return {"ok": True}

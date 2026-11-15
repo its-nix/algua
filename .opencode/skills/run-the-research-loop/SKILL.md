@@ -23,6 +23,12 @@ evidence of a previous search. Complete structured experiment memory remains roa
 You do not pick the belief. The driver claims ideas from the pool before your run and names them
 in your goal; your job is to test them honestly and report what happened.
 
+Claims are lease metadata, not an idea lifecycle status. A claimed idea remains `open`;
+`--status claimed` is invalid. Use the supplied idea ids and, if inspection is needed,
+`uv run algua research idea show <id>`. Do not claim additional ideas. The driver owns claims
+and records outcomes after your report. The vault root is `algua-kb/` relative to this worktree;
+read existing strategy/family memory there and do not create a separate `kb/` vault.
+
 ## Evaluation inputs
 
 Keep the run's declared data context throughout author smoke, backtest, walk-forward, sweep and

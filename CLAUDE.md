@@ -266,9 +266,10 @@ Two of those enforce structure, not style, and are worth knowing before you figh
 own `web/uv.lock`; NEVER add web deps to the root project (the root `uv.lock` is
 dependency_hash identity). Its only seam to the platform is running the `algua` CLI as a
 subprocess and serving its JSON (`fleet health`, `fleet equity` — the P&L-indexed portfolio curve
-— registry/gate reads, `research inbox list`). It is read-only except the owner's Inbox: writes
-run `research inbox add` and are accepted only when the `Tailscale-User-Login` header stamped by
-`tailscale serve` equals `ALGUA_WEB_OWNER_LOGIN`; in production the backend listens only on a Unix
+— registry/gate reads, `research inbox list`). Its writes are the owner's Inbox and push
+subscriptions; both require the owner identity and same-origin guard. Inbox writes run
+`research inbox add`; the `Tailscale-User-Login` header stamped by `tailscale serve` must equal
+`ALGUA_WEB_OWNER_LOGIN`. In production the backend listens only on a Unix
 socket behind `tailscale serve` (`deploy/systemd/algua-web.service`, details in `web/README.md`).
 When a change touches `web/`, also run `uv run --project web pytest web/backend/tests -q` and
 `cd web/frontend && npm run check && npm run build`.
