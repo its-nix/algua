@@ -26,6 +26,10 @@ it changes runtime controls or permissions.
 - **Why the rules exist (detail):** `docs/agent/operating.md`
 - **Delivering changes:** `docs/agent/story-delivery.md` — small runnable slices, focused checks
   and a bounded review proportional to the change. No planning framework or Todoist mirror is required.
+- **Current priorities (owner alignment, 2026-11-15):** PRD §25's daily research-to-paper milestone.
+  Todoist is the shared execution board for agents and Lior; GitHub holds code/review/evidence.
+  Preserve claims, link milestones to their execution cards, and distinguish implementation,
+  installation, operational acceptance and trading qualification. This changes no permissions.
 - **How this foundation was built (task plan):** `docs/superpowers/plans/2026-05-29-foundation-command-surface.md`
 - **Reviewing/fixing the system?** Read `AGENTS.md` first (review mandate + invariants + deferred scope).
 - **Data contract:** `docs/contracts/bar-schema.md` — the shape of bars crossing the
@@ -99,18 +103,16 @@ The [Algua KB](algua-kb/README.md) is the source for project knowledge; [its Dri
   challenge. Only the enrolled human's exact signature activates/allocates the frozen deployment.
   See [capped live](docs/agent/capped-live.md); raw frozen registry go-live stays refused and no
   strict forward certificate is manufactured. Capital increases require a new signed request.
-- `uv run algua paper merge-back --branch B --strategy S --universe U --start D --end D` — autonomous
-  research-cycle merge-back (#485): one repo-global-locked cycle that gated-merges a candidate branch
-  onto `main` (preview-merge → FULL quality gate on the staged tree → commit only on green), runs the
-  metered strict-agent `research promote`, and on a PASS runs the FIFO paper intake to allocate a book
-  slice; a proven promote FAILURE reverts the merge (`main` untouched). The branch's change set is
-  gated by an allowlist/CODEOWNERS-denylist DIFF POLICY BEFORE any merge; recovery is driven by a
-  durable per-strategy journal keyed on the branch-tip SHA, and promote attribution binds to a
-  per-attempt `attempt_token` stamped on the gate row (not the ambient stage). Terminal `status` is
-  `already_done` | `diff_policy_rejected` | `gate_failed` | `promote_failed` | `promoted_allocated` |
-  `promoted_queued` (a not-promoted cycle is `ok`, not an error). Mutually exclusive with `paper
-  trade-tick`/`run-all` BY OPERATOR DISCIPLINE (like #316); concurrent merge-backs are hard-serialized
-  by a `merge_back.lock` flock. The push is a real remote compare-and-swap to `refs/heads/main`.
+- `uv run algua paper merge-back --branch B --strategy S --universe U --start D --end D` —
+  current source admits an **already merged, exact-head verified PR** through the reviewed-PR
+  admission seam; it does not publish merges/reverts to `main`. Missing review/check/tree/isolation
+  evidence remains pending. The admission/recovery implementation is marked DRAFT and is not an
+  activated production policy. Optional draft-PR publication is separate and default-off. The
+  retained promotion/intake saga still uses identity-bound journals and gate evidence; historical
+  direct-main/revert descriptions are not current operating instructions. Review the installed
+  revision and [admission prerequisites](deploy/systemd/README.md#draft-verified-pr-admission-not-activated)
+  before use. Coordinate with paper ticks through the existing operator lock; no merge, release
+  or protected-file permission is granted here.
 - **Go-live is the only signed approval.** The gates are fixed at the same values for every actor:
   `--actor human` on `research promote` / `paper promote` is an audit label that unlocks nothing.
   There is no signed override and no relaxation flag (`--actor-signature`, `--n-combos`,
@@ -190,8 +192,9 @@ The [Algua KB](algua-kb/README.md) is the source for project knowledge; [its Dri
   back to the vault.
 - Three timers drive the ideation engine unattended: `algua-research.timer` (every 6h, claims ideas
   and runs the research loop), `algua-leap.timer` (every 2h at `:30`, inspirations → structured
-  hypotheses, depth-gated), `algua-forage.timer` (daily `03:00 UTC`, web search →
-  `algua-kb/inspirations/` notes). A human steers the engine through two files: `.opencode/categories.txt`
+  hypotheses, depth-gated), `algua-forage.timer` (hourly checks at `:05`; its trusted driver bounds
+  actual launches for refill/03:00 UTC refresh, web search → `algua-kb/inspirations/` notes).
+  Source schedules are not proof of installed timer state. A human steers the engine through two files: `.opencode/categories.txt`
   (the ideation category list) and `algua-kb/inspirations/_sources.yaml` (the venue registry).
 - **Owner Inbox and dashboard:** the owner drops ideas into the registry Inbox with
   `research inbox add --url U | --file F | --text T [--title] [--note]` and reads it with
@@ -215,8 +218,8 @@ to sign. `risk configure paper --policy FILE` applies the valid paper-only accou
 `risk restore paper --reason TEXT` is an explicit reconciled restoration with immutable history.
 `paper qualify-experimental NAME` records passing historical-plus-five-session evidence as the
 actual agent; `--preview` reads without recording. No human identity is fabricated. These commands
-grant no live authority. Existing historical/forward integrity checks and optional authenticated
-human exceptions retain their meaning. Live activation, live risk-policy changes/restoration and
+grant no live authority. Existing historical/forward integrity checks remain fixed for every actor;
+the removed research/paper human overrides grant no exception. Live activation, live risk-policy changes/restoration and
 capital increases still require their real-money human ceremonies.
 
 `idea -> backtested -> candidate -> paper -> forward_tested -> live -> retired`

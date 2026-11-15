@@ -12,6 +12,12 @@ refusals, not deployment or unattended acceptance. The September reconciliation 
 its older artifact, capital-policy and CODEOWNERS observations must be read against current source.
 This map grants no operating, deployment, capital or activation permission.
 
+**Targeted reconciliation, 2026-11-15:** source `3d28f07` includes PR #837's Sharadar ingestion;
+historical acceptance records and current operator admission were also inspected for the daily
+roadmap. This is not a fresh VPS/service audit. [PRD §25](PRD.md#25-development-sequence) now
+prioritizes one qualified-data daily research-to-paper path and observed recovery in two tracks.
+Live eligibility and full machine acceptance remain separate.
+
 **Owner alignment, 2026-11-14:** the experimental-delivery target combines historical economic
 qualification with approximately five completed scheduled paper sessions for operational
 qualification, as described in PRD §16. Current main provides the separate opt-in
@@ -99,9 +105,10 @@ layer").
 | **OpenCode** | Independent research campaigns, ideation, strategy authorship, interpretation, quant review and learning | Bounded JSON CLI jobs and approved strategy/metadata authorship; no trusted engine/gate edits or brokerage access. Research must work while Hermes is offline. |
 | **Algua** | Deterministic data, simulation, score validation, gates, registry, portfolio/risk, execution and reconciliation | Numerical results and effects come from validated domain code, never an agent's claimed verdict. Trading does not depend on an agent session remaining available. |
 
-Hermes Kanban owns engineering work; GitHub holds code/evidence; Todoist holds human commitments.
-Research attempts remain in the existing registry/tracking/KB surfaces. This is the approved product
-responsibility map, not a rewrite of agent operating policy. It requires no second orchestrator,
+Todoist is the shared execution board for engineering agents and Lior for this phase; GitHub holds
+code/review/evidence. Hermes retains its engineering role without a competing authoritative board.
+Research attempts remain in the existing registry/tracking/KB surfaces. This responsibility map
+does not expand agent operating permissions. It requires no second orchestrator,
 research database, MLflow instance, execution fork or speculative service split.
 
 ---
@@ -157,9 +164,11 @@ and audit exact-ID readback, logical/physical hashes and coverage/gaps. The merg
 downloads have shown adjustment differences; reproduce the pinned payload instead of assuming
 reacquisition gives identical data. These are recorded acquisition results, not a new payload audit.
 
-The target common-equity universe uses historical $0.5–10B market cap, price >= $5, trailing
-60-session median dollar volume >= $5M and 90-session listing age, all PIT. The pilot cannot verify
-those screens, historical membership, delistings or event knowledge times. Preserve all seven
+The November 15 owner-approved qualified universe is approximately 1,000 liquid US common stocks,
+computed per historical date with explicit predeclared price/liquidity/listing-age rules and stable
+security identities. S&P 400 membership and the older fixed $0.5–10B market-cap restriction are
+not required. Exact rules must be frozen before strategy-return evaluation (PRD §12). The pilot
+cannot verify historical eligibility, delistings or event knowledge times. Preserve all seven
 pilot limitations, including revisable adjusted closes and unverified corporate actions. Retrieval
 time is not historical knowledge time. Genuine source data is required for economic experiments;
 synthetic news/model fixtures exercise interfaces only.
@@ -171,6 +180,14 @@ refreshes separate. A later approved provider adds PIT/security/delisting/event 
 same seams, without rewriting the research/portfolio engine or changing the
 [frozen bars contract](contracts/bar-schema.md). `get_bars` still lacks historical revision-as-of
 selection; a pinned vendor-restated history must not be called historically PIT-correct.
+
+PR #837 (`3d28f07`) adds Sharadar daily bars and selected ARQ fundamentals ingestion through
+the existing seams. Merged ingestion is distinct from verified installation, paid adverse-case
+coverage, stable historical identities/universes, action/terminal economics and promotion-bound
+verification. The [agreed daily price-only PIT standard](superpowers/specs/2026-11-12-pit-data-pipeline-design.md)
+accepts its explicitly recorded restatement residual only after its required checks pass; it does
+not qualify fundamental revision/availability semantics. Those implementations and acceptance
+remain separate tasks. Existing proxy snapshots are not relabeled or silently replaced.
 
 ## Unified context and finite scores
 
@@ -350,15 +367,15 @@ can qualify forward operation.
 
 ## Implementation and acceptance boundary
 
-| Area | Implemented at `a062a66` | Remaining target / evidence limit |
+| Area | Recorded implementation / evidence (baseline and targeted updates above) | Remaining target / evidence limit |
 |---|---|---|
-| Data (PRs #719, #721) | Typed bars provenance/identity and bounded real-proxy recipe with recorded acquisition/audit | Full experiment/cycle propagation and deeper PIT/event data remain partial; no verified-PIT verifier. |
+| Data (PRs #719, #721, #837) | Typed bars provenance/identity, bounded real-proxy acquisition and Sharadar bars/selected ARQ ingestion | Installed/paid adverse-case acceptance, historical identities/actions/universes and promotion-bound PIT verification remain separate; fundamental PIT is not qualified. |
 | Context (PRs #725–#726) | Composer, actual loader/scorer/canonical backtest, immutable shared inputs and refusal controls | Legacy/family migration, signal parameter binding and frozen/paper/live migration incomplete; model sweeps refused. |
 | Board (PRs #722–#724) | Strategy-first UI, stable identity, latest evidence, opt-in provenance/OOS disclosure | Honest non-comparability; sorting and broader integrated target not accepted. |
 | Portfolio / memory / factory | Construction, allocations, risk, attempts, scorecards, tracking/KB and operator primitives | Integrated allocator, comprehensive learning and one independent factory require system evidence. |
 | Execution / release / repair | Frozen-paper reproducibility/evidence, current supervisor, CI and operational controls | Authoritative strategy sandbox, safe immutable paper release/recovery and closed repair loop not accepted. |
 | Capital / live (November 8 update) | Signed capped frozen-live connector, explicit instruments and opt-in layered account guards | Actual USD ceiling/instruments, qualifying evidence, immutable deployment anchor and activation remain owner/deployment inputs. Legacy defaults remain. |
-| Unattended machine | Components and fixtures exist | **3 unattended cycles / >=100 real-data attempts: UNKNOWN.** Integrated scheduled operation and fault-recovery acceptance not established. |
+| Unattended machine | Four empirical proxy-data cycles recorded on November 5; 100 distinct configurations recorded in a separate November 4 engineering benchmark | Historical cycle threshold met; benchmark is not an OpenCode campaign or 100 independent hypotheses. Current runtime health, integrated learning/isolation and full acceptance remain unestablished. |
 
 The architecture dependency order is data/provenance and canonical direction → context and
 portfolio → authoritative strategy isolation → independent factory/learning → paper release,
@@ -369,6 +386,13 @@ OOS/multiple-testing and actual forward evidence, reproducible immutable live id
 protection, capital/risk enforcement and reconciled broker state plus authenticated human activation.
 The 72-hour safe-operation objective remains separate from component counts. No data purchase,
 capital change, runtime change or trading activation follows from this architecture.
+
+For this phase, PRD §25 narrows the next milestone to the daily research-to-paper path, with
+minimum actual-cycle memory reuse, broker/release recovery and 72-hour operation or safe halt.
+Research/data and operations advance in parallel; hourly/multimodal/portfolio expansion remains
+later. This does not narrow §23's full machine acceptance or waive strategy isolation. Preserve
+the [historical cycle evidence](acceptance/research-vps-cycles.md) and the separately scoped
+[sweep benchmark](acceptance/real-sweep-benchmark.md), rather than repeating work to satisfy stale counters.
 
 The implementation claims above are grounded in the files named in each section and
 `tests/test_{pilot_proxy,research_provenance,provenance_edges,multimodal_context,score_context_backtest,board_snapshot_provenance}.py`,
