@@ -65,6 +65,31 @@ async def test_private_address_is_not_fetched(monkeypatch: pytest.MonkeyPatch, a
     assert seen == []
 
 
+@pytest.mark.parametrize("addr", [
+    # NAT64 (well-known /96 and local-use /48) wrapping loopback, RFC 1918, metadata and public v4
+    "64:ff9b::7f00:1", "64:ff9b::a00:1", "64:ff9b::a9fe:a9fe", "64:ff9b::c0a8:105",
+    "64:ff9b::5db8:d822", "64:ff9b:1::a00:1", "64:ff9b:1:ffff::7f00:1",
+    # IPv4-compatible, IPv4-translated, mapped, 6to4 and Teredo forms of private addresses
+    "::7f00:1", "::a00:1", "::ffff:0:a00:1", "::ffff:10.0.0.1", "::ffff:169.254.169.254",
+    "2002:a00:1::1", "2002:7f00:1::1", "2001:0:a00:1::1",
+    # unique-local, site-local, documentation, discard, unspecified
+    "fc00::1", "fd12:3456::1", "fec0::1", "2001:db8::1", "100::1", "::",
+])
+async def test_translated_and_mapped_private_forms_are_refused(
+    monkeypatch: pytest.MonkeyPatch, addr: str,
+) -> None:
+    assert extract._is_public(addr) is False
+    _dns(monkeypatch, {"example.com": [addr]})
+    seen = _serve(monkeypatch, _html)
+    assert await extract.fetch_article("https://example.com/a") == (None, None)
+    assert seen == []
+
+
+def test_public_v6_is_still_allowed() -> None:
+    assert extract._is_public("2606:4700:4700::1111") is True
+    assert extract._is_public(PUBLIC) is True
+
+
 async def test_any_private_answer_refuses(monkeypatch: pytest.MonkeyPatch) -> None:
     _dns(monkeypatch, {"example.com": [PUBLIC, "10.0.0.1"]})
     seen = _serve(monkeypatch, _html)
