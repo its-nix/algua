@@ -81,16 +81,17 @@ def test_walkforward_result_to_dict_preserves_public_fixture_fields():
         expected.pop(field)
     # Internal execution evidence has no admitted public namespace in this baseline.
     expected.pop("execution_semantics")
+    expected.pop("model_ref")  # absent for a result without a model pin
     public = r.to_dict()
     assert private_fields.isdisjoint(public)
     assert public == expected
 
 
-def test_sweep_result_to_dict_matches_asdict():
-    # The OOS matrix ride-along was removed with research pbo; to_dict() is a plain scalar
-    # projection — a plain asdict with nothing to withhold.
+def test_sweep_result_to_dict_preserves_public_fixture_fields():
     r = _sweep_result()
-    assert r.to_dict() == dataclasses.asdict(r)
+    expected = dataclasses.asdict(r)
+    expected.pop("model_ref")  # absent for a result without a model pin
+    assert r.to_dict() == expected
 
 
 def test_backtest_result_to_dict_has_expected_keys():
