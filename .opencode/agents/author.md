@@ -41,6 +41,10 @@ Follow the `author-a-strategy` skill precisely:
 - For the implemented multimodal interface, follow the skill's `context_v1` guidance: expose
   `score(context)` exclusively, with the required input declarations and exact model pin, if used.
 - Include `GENERATED_BY = "agent"` after imports, preserving any `__future__` import ordering.
+- Derive the full history dependency, including persistent-state reconstruction, following the
+  skill's "Declare the whole state history" section. A feasible source recipe checks the declared
+  number only. Verify synthetic prefix/suffix and first-decision behavior before the data smoke;
+  report unbounded state or insufficient pinned history rather than under-declaring lookback.
 
 After writing, verify it loads and runs with the caller's exact snapshot, interval and required
 sidecars: `uv run algua backtest run <name> <data-options> --research-only` must emit metrics JSON
