@@ -400,8 +400,9 @@ def _fake_run_cli(monkeypatch: pytest.MonkeyPatch, stale: bool) -> list[tuple[st
 def _record_diffs(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     diffed: list[dict[str, Any]] = []
 
-    async def fake_diff(fleet: dict[str, Any]) -> None:
-        diffed.append(fleet)
+    async def fake_diff(fleet: dict[str, Any], *, operations: bool = False) -> None:
+        if not operations:
+            diffed.append(fleet)
 
     monkeypatch.setattr(poller, "_diff_and_notify", fake_diff)
     return diffed
