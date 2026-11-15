@@ -39,6 +39,7 @@ from algua.cli import (  # noqa: F401 - imports register subcommands
     research_ready_cmd,
     risk_cmd,
     runs_cmd,
+    sharadar_cmd,
     source_cmd,
     strategy_cmd,
     vendor_check_cmd,
@@ -72,6 +73,7 @@ research_cmd.research_app.add_typer(source_cmd.source_app, name="sources")
 # data_cmd (#556 review finding 2).
 data_cmd.data_app.add_typer(data_refresh_cmd.refresh_app)
 data_cmd.data_app.add_typer(vendor_check_cmd.vendor_check_app)
+data_cmd.data_app.add_typer(sharadar_cmd.sharadar_app, name="sharadar")
 backtest_cmd.backtest_app.add_typer(portfolio_cmd.portfolio_app)
 app.add_typer(deployment_cmd.deployment_app, name="deployment")
 app.add_typer(model_cmd.model_app, name="model")

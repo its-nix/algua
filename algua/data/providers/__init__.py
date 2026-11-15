@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from algua.data.contracts import BarProvider
 from algua.data.providers.alpaca import AlpacaBarProvider
 from algua.data.providers.eodhd import EodhdBarProvider
+from algua.data.providers.sharadar import SharadarBarProvider
 from algua.data.providers.yfinance import YFinanceBarProvider
 
 if TYPE_CHECKING:
@@ -33,6 +34,12 @@ def _build_eodhd(settings: Settings) -> BarProvider:
     if not settings.eodhd_api_key:
         raise ValueError("eodhd provider requires ALGUA_EODHD_API_KEY (demo for public samples)")
     return EodhdBarProvider(api_key=settings.eodhd_api_key)
+
+
+def _build_sharadar(settings: Settings) -> BarProvider:
+    if not settings.sharadar_api_key:
+        raise ValueError("sharadar provider requires ALGUA_SHARADAR_API_KEY")
+    return SharadarBarProvider(api_key=settings.sharadar_api_key)
 
 
 def _build_alpaca(settings: Settings) -> BarProvider:
@@ -73,3 +80,4 @@ def get_provider(name: str, settings: Settings) -> BarProvider:
 register_provider("yfinance", _build_yfinance)
 register_provider("alpaca", _build_alpaca)
 register_provider("eodhd", _build_eodhd)
+register_provider("sharadar", _build_sharadar)

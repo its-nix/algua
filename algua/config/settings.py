@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     knowledge_dir: Path = Path("algua-kb")
     exchange: str = "XNYS"
     eodhd_api_key: str | None = None
+    sharadar_api_key: str | None = None
     alpaca_api_key: str | None = None
     alpaca_api_secret: str | None = None
     alpaca_data_url: str = "https://data.alpaca.markets/v2"
