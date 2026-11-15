@@ -35,7 +35,16 @@ logger = logging.getLogger(__name__)
 # web/backend/push.py -> web/backend -> web; state defaults to web/.state.
 _DEFAULT_STATE = Path(__file__).resolve().parents[1] / ".state"
 
-VAPID_CLAIMS_SUB = "mailto:lior3226@gmail.com"
+# VAPID "sub" claim (a contact the push service may use). Public repo: no personal address here;
+# set ALGUA_WEB_VAPID_SUB to a real mailto:/https: contact (some push services, e.g. Apple's,
+# reject a non-routable one, in which case pushes to those devices fail until it is set).
+DEFAULT_VAPID_SUB = "mailto:admin@localhost"
+
+
+def vapid_claims_sub() -> str:
+    return os.environ.get("ALGUA_WEB_VAPID_SUB", "").strip() or DEFAULT_VAPID_SUB
+
+
 MAX_SUBSCRIPTIONS = 16  # R12: one household of devices, not a public service
 _MAX_ENDPOINT_CHARS = 2048
 _MAX_KEY_CHARS = 512
@@ -218,7 +227,7 @@ def _send_one(sub: dict[str, Any], data: str, vapid: Vapid02, urgency: str) -> N
         data=data,
         vapid_private_key=vapid,
         # Fresh dict per send: pywebpush MUTATES vapid_claims (fills aud/exp).
-        vapid_claims={"sub": VAPID_CLAIMS_SUB},
+        vapid_claims={"sub": vapid_claims_sub()},
         ttl=_TTL_S,
         timeout=_SEND_TIMEOUT_S,
         headers={"Urgency": urgency},

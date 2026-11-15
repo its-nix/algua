@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -212,3 +213,64 @@ def test_broken_pdf_returns_none(tmp_path: Path) -> None:
     path = tmp_path / "broken.pdf"
     path.write_bytes(b"%PDF-1.4 not really")
     assert extract.extract_pdf_text(path) is None
+
+
+def _pdf_with_pages(path: Path, n: int) -> None:
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    for _ in range(n):
+        writer.add_blank_page(width=200, height=200)
+    with path.open("wb") as fh:
+        writer.write(fh)
+
+
+def test_pdf_page_cap_stops_extraction(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "many.pdf"
+    _pdf_with_pages(path, 5)
+    monkeypatch.setattr(extract, "MAX_PDF_PAGES", 2)
+    seen: list[int] = []
+    from pypdf._page import PageObject
+
+    real = PageObject.extract_text
+
+    def counting(self, *a, **kw):  # type: ignore[no-untyped-def]
+        seen.append(1)
+        return real(self, *a, **kw)
+
+    monkeypatch.setattr(PageObject, "extract_text", counting)
+    extract.extract_pdf_text(path)
+    assert len(seen) == 2
+
+
+async def test_bounded_extraction_reads_the_worker_text(tmp_path: Path,
+                                                        monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "t.pdf"
+    path.write_bytes(b"x")
+    monkeypatch.setattr(
+        extract, "_worker_argv",
+        lambda p: [sys.executable, "-c", "print('hello pdf')"])
+    assert await extract.extract_pdf_text_bounded(path) == "hello pdf"
+
+
+async def test_bounded_extraction_real_worker_on_blank_and_broken(tmp_path: Path) -> None:
+    blank = tmp_path / "blank.pdf"
+    _pdf_with_pages(blank, 1)
+    assert await extract.extract_pdf_text_bounded(blank) is None
+    broken = tmp_path / "broken.pdf"
+    broken.write_bytes(b"%PDF-1.4 not really")
+    assert await extract.extract_pdf_text_bounded(broken) is None
+
+
+async def test_bounded_extraction_times_out_and_kills_the_worker(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.params import InvalidParam
+
+    path = tmp_path / "slow.pdf"
+    path.write_bytes(b"x")
+    monkeypatch.setattr(extract, "PDF_TIMEOUT_S", 0.3)
+    monkeypatch.setattr(
+        extract, "_worker_argv",
+        lambda p: [sys.executable, "-c", "import time; time.sleep(60)"])
+    with pytest.raises(InvalidParam, match="timed out"):
+        await extract.extract_pdf_text_bounded(path)

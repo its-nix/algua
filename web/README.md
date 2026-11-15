@@ -92,17 +92,32 @@ Assumes the repo at `/opt/algua` (matching the other units) and the env file at
    cd web/frontend && npm ci && npm run build
    ```
 
-4. Install and start the service (or run uvicorn directly for dev, see "Run"):
+4. Install and start the service. It is a **system** unit running as its own dedicated user
+   (`algua-web`), NOT a user unit and NOT the uid the forage/leap/research agents run as
+   (`install-user-units.sh` deliberately does not install it): the owner-header boundary below
+   only holds if the agents' uid cannot open the socket.
 
    ```sh
+   sudo useradd --system --no-create-home --shell /usr/sbin/nologin algua-web
+   sudo install -m 0640 -o root -g algua-web /dev/null /etc/algua/web.env   # then fill it in:
+   #   ALGUA_WEB_OWNER_LOGIN=owner@example.com
+   #   ALGUA_DB_PATH=/opt/algua/data/algua.db        # these three MUST equal research.env's
+   #   ALGUA_DATA_DIR=/opt/algua/data                #   values, or Inbox items are written
+   #   ALGUA_KNOWLEDGE_DIR=/opt/algua/algua-kb       #   where intake never looks
+   #   ALGUA_WEB_VAPID_SUB=mailto:ops@example.org    # push contact (optional, see below)
    sudo cp deploy/systemd/algua-web.service /etc/systemd/system/
    sudo systemctl daemon-reload
    sudo systemctl enable --now algua-web
    ```
 
-   The unit's DB-access note applies: the DB's parent dir must be writable by
-   the service user (SQLite WAL sidecar `-shm`/`-wal` files + the idempotent
-   `migrate()`).
+   The unit's DB-access note applies: `algua-web` must be able to read and write the data dir
+   (e.g. a shared group with setgid), because SQLite WAL sidecar `-shm`/`-wal` files and the
+   idempotent `migrate()` need it even for read-only commands. The unit already provides the
+   `/run/algua-web` 0700 socket directory (step 5); for dev, run uvicorn directly (see "Run").
+
+   **Push contact.** `ALGUA_WEB_VAPID_SUB` is the VAPID `sub` claim (a `mailto:` or `https:`
+   contact for the push service). It defaults to the non-personal `mailto:admin@localhost`; some
+   push services reject a non-routable contact, so set a real one if pushes do not arrive.
 
 5. Tailscale exposure — one-time: enable **MagicDNS** and **HTTPS
    certificates** for the tailnet in the admin console. The backend listens on a **Unix
@@ -110,9 +125,11 @@ Assumes the repo at `/opt/algua` (matching the other units) and the env file at
    can), so no other process on the box can reach it and forge the owner header:
 
    ```sh
-   sudo install -d -m 0700 -o algua /run/algua-web
-   ALGUA_WEB_OWNER_LOGIN=you@example.com \
-     uv run --project web uvicorn backend.main:app --uds /run/algua-web/web.sock
+   # algua-web.service creates /run/algua-web (0700, owned by algua-web) and runs uvicorn
+   # --uds /run/algua-web/web.sock; for a manual run:
+   #   sudo install -d -m 0700 -o algua-web /run/algua-web
+   #   sudo -u algua-web env ALGUA_WEB_OWNER_LOGIN=you@example.com \
+   #     uv run --project web uvicorn backend.main:app --uds /run/algua-web/web.sock
    tailscale serve --bg https:443 unix:/run/algua-web/web.sock
    ```
 

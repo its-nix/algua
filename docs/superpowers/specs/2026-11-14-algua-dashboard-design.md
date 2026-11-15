@@ -162,8 +162,8 @@ A systemd unit `algua-web` per `web/README.md` (but listening on the Unix socket
 from `/home/algua/Projects/algua` via drop-ins, not `/opt/algua`). It needs:
 - the root `uv sync` and `web` sync;
 - the frontend built with `npm ci && npm run build`;
-- `tailscale serve --bg https:443 http://127.0.0.1:8787`;
-- `ALGUA_WEB_OWNER_LOGIN` set.
+- `tailscale serve --bg https:443 unix:/run/algua-web/web.sock` (the unit is a system unit run as a dedicated `algua-web` user, never the agents' uid);
+- `ALGUA_WEB_OWNER_LOGIN` set, and `ALGUA_DB_PATH` / `ALGUA_DATA_DIR` / `ALGUA_KNOWLEDGE_DIR` equal to research.env's.
 
 The owner installs the PWA from `https://<box>.<tailnet>.ts.net` on their phone.
 

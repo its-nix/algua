@@ -36,7 +36,7 @@ from starlette.datastructures import UploadFile
 
 from backend import inbox, push
 from backend.algua_cli import CliError, forget, run_cli
-from backend.extract import extract_pdf_text, fetch_article, strip_controls
+from backend.extract import extract_pdf_text_bounded, fetch_article, strip_controls
 from backend.owner import Forbidden, refuse_cross_site, require_owner
 from backend.params import (
     InvalidParam,
@@ -540,7 +540,7 @@ async def _add_file(upload: UploadFile, *, title: str | None, note: str | None) 
     path = await inbox.save_upload(upload)
     try:
         if await asyncio.to_thread(inbox.is_pdf, path, upload.content_type):
-            text = await asyncio.to_thread(extract_pdf_text, path)
+            text = await extract_pdf_text_bounded(path)
         elif inbox.is_text_file(path, upload.content_type):
             text = await asyncio.to_thread(inbox.read_text_file, path)
         else:

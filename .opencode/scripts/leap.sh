@@ -76,7 +76,7 @@ REPORT="${WORKTREE}/leap-report.md"
 # against these; only the codex invocation gets the scratch routing (as an `env` prefix).
 AUTH_DB="${ALGUA_DB_PATH:-${REPO_ROOT}/data/algua.db}"
 AUTH_DATA_DIR="${ALGUA_DATA_DIR:-${REPO_ROOT}/data}"
-KB_DIR="${ALGUA_KNOWLEDGE_DIR:-${REPO_ROOT}/kb}"
+KB_DIR="${ALGUA_KNOWLEDGE_DIR:-${REPO_ROOT}/algua-kb}"
 DIGEST="${AUTH_DATA_DIR}/leap-runs.jsonl"
 CATEGORIES_FILE="${REPO_ROOT}/.opencode/categories.txt"
 
@@ -87,7 +87,7 @@ INTAKE_CMD=(uv run algua research inbox intake)
 if [[ "${DRY_RUN}" -eq 1 ]]; then
   echo "would intake owner inbox via: ${INTAKE_CMD[*]}"
 else
-  (cd "${REPO_ROOT}" && ALGUA_DB_PATH="${AUTH_DB}" "${INTAKE_CMD[@]}" >/dev/null) \
+  (cd "${REPO_ROOT}" && ALGUA_DB_PATH="${AUTH_DB}" "${INTAKE_CMD[@]}" >&2) \
     || echo "WARNING: inbox intake failed; continuing with what is already in the vault." >&2
 fi
 

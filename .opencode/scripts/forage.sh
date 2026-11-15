@@ -69,7 +69,7 @@ AUTH_DATA_DIR="${ALGUA_DATA_DIR:-${REPO_ROOT}/data}"
 SEEN_FILE="${AUTH_DATA_DIR}/inspirations-seen.jsonl"
 CURSOR_FILE="${AUTH_DATA_DIR}/forage-cursor"
 DIGEST="${AUTH_DATA_DIR}/forage-runs.jsonl"
-KB_DIR="${ALGUA_KNOWLEDGE_DIR:-${REPO_ROOT}/kb}"
+KB_DIR="${ALGUA_KNOWLEDGE_DIR:-${REPO_ROOT}/algua-kb}"
 SOURCES_FILE="${KB_DIR}/inspirations/_sources.yaml"
 
 # Cheap demand check before network/worktree preparation. Rechecked under the forage

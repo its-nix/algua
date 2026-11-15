@@ -147,7 +147,7 @@ async def test_send_to_all_passes_ttl_timeout_urgency_and_counts_accepted(
         assert call["ttl"] == 86400
         assert call["timeout"] == 10.0
         assert call["headers"] == {"Urgency": "high"}
-        assert call["vapid_claims"] == {"sub": "mailto:lior3226@gmail.com"}
+        assert call["vapid_claims"] == {"sub": "mailto:admin@localhost"}
         assert json.loads(call["data"]) == {"title": "x"}
 
 
@@ -182,3 +182,11 @@ async def test_send_to_all_without_subscriptions_is_zero(
     calls = _fake_webpush(monkeypatch)
     assert await push.send_to_all({"title": "x"}) == 0
     assert calls == []
+
+
+async def test_vapid_sub_comes_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALGUA_WEB_VAPID_SUB", "mailto:ops@example.org")
+    push.add_subscription(_sub(0))
+    calls = _fake_webpush(monkeypatch)
+    await push.send_to_all({"title": "x"}, urgency="high")
+    assert calls[0]["vapid_claims"] == {"sub": "mailto:ops@example.org"}

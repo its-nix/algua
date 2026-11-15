@@ -20,11 +20,14 @@ import ipaddress
 import logging
 import re
 import socket
+import sys
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
 import httpx
+
+from backend.params import InvalidParam
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,12 @@ MAX_REDIRECTS = 3
 UNFETCHED_DOMAINS = ("x.com", "twitter.com", "youtube.com", "youtu.be")
 # Collected PDF text is cut here; the CLI bounds the stored text far below this anyway.
 MAX_EXTRACTED_CHARS = 256 * 1024
+# PDF extraction runs in a child process killed after PDF_TIMEOUT_S (a hostile content stream can
+# pin a worker thread forever; a thread cannot be killed, a process can), and stops after
+# MAX_PDF_PAGES pages even when the text is short.
+MAX_PDF_PAGES = 200
+PDF_TIMEOUT_S = 20.0
+_WEB_DIR = Path(__file__).resolve().parents[1]
 _REDIRECT_CODES = {301, 302, 303, 307, 308}
 
 
@@ -50,7 +59,9 @@ def extract_pdf_text(path: Path) -> str | None:
         reader = PdfReader(str(path))
         parts: list[str] = []
         size = 0
-        for page in reader.pages:
+        for index, page in enumerate(reader.pages):
+            if index >= MAX_PDF_PAGES:
+                break
             chunk = page.extract_text() or ""
             parts.append(chunk)
             size += len(chunk)
@@ -60,6 +71,49 @@ def extract_pdf_text(path: Path) -> str | None:
     except Exception as exc:  # pypdf raises a zoo of errors on hostile/broken files
         logger.info("pdf text extraction failed for %s: %s", path.name, exc)
         return None
+    return text[:MAX_EXTRACTED_CHARS] or None
+
+
+def _worker_argv(path: Path) -> list[str]:
+    code = (
+        "import sys; sys.path.insert(0, sys.argv[1]); "
+        "from backend.extract import _worker_main; _worker_main(sys.argv[2])"
+    )
+    return [sys.executable, "-c", code, str(_WEB_DIR), str(path)]
+
+
+def _worker_main(path: str) -> None:
+    """Child-process entry: print the PDF's text (possibly empty) to stdout."""
+    text = extract_pdf_text(Path(path)) or ""
+    sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))
+
+
+async def extract_pdf_text_bounded(path: Path) -> str | None:
+    """:func:`extract_pdf_text` in a child process with a wall-clock timeout.
+
+    ``None`` for a PDF with no text or an unreadable one (best effort, like the unbounded call).
+    A PDF that does not finish within :data:`PDF_TIMEOUT_S` raises :class:`InvalidParam` (HTTP 422).
+    """
+    proc = await asyncio.create_subprocess_exec(
+        *_worker_argv(path),
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), PDF_TIMEOUT_S)
+    except TimeoutError:
+        proc.kill()
+        await proc.wait()
+        logger.info("pdf text extraction timed out for %s", path.name)
+        raise InvalidParam("pdf text extraction timed out") from None
+    except BaseException:
+        proc.kill()
+        raise
+    if proc.returncode != 0:
+        logger.info("pdf text extraction worker failed for %s (rc=%s)", path.name, proc.returncode)
+        return None
+    text = out[: 4 * MAX_EXTRACTED_CHARS].decode("utf-8", errors="replace").strip()
     return text[:MAX_EXTRACTED_CHARS] or None
 
 

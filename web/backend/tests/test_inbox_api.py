@@ -458,3 +458,20 @@ async def test_equity_wraps_fleet_equity(monkeypatch: pytest.MonkeyPatch) -> Non
     assert a.status_code == 200 and b.status_code == 200
     assert seen == [(("fleet", "equity"), 30.0), (("fleet", "equity", "--lane=paper"), 30.0)]
     assert c.status_code == 422 and c.json()["code"] == "invalid_param"
+
+
+async def test_pdf_extraction_timeout_is_422_and_upload_discarded(
+    owner: dict[str, str], cli_calls: Calls, inbox_dir: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.params import InvalidParam
+
+    async def slow(path: Path) -> str | None:
+        raise InvalidParam("pdf text extraction timed out")
+
+    monkeypatch.setattr(main_mod, "extract_pdf_text_bounded", slow)
+    async with _client() as client:
+        r = await client.post("/api/inbox", files={"file": ("a.pdf", b"%PDF-1.4 x")},
+                              headers=owner)
+    assert r.status_code == 422 and r.json()["error"] == "pdf text extraction timed out"
+    assert cli_calls == []
+    assert not any(p.is_file() for p in inbox_dir.rglob("*")) if inbox_dir.exists() else True

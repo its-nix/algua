@@ -809,3 +809,25 @@ def test_forage_search_receives_review_feedback_or_visible_read_error(tmp_path, 
     assert result.returncode == 0, result.stderr
     assert "conceptual feedback, not empirical refutations" in result.stdout
     assert ("read_error" if failed else "missing estimator FIXTURE") in result.stdout
+
+
+def test_driver_vault_default_equals_the_settings_default():
+    """The drivers' ALGUA_KNOWLEDGE_DIR fallback must be the vault the CLI (intake, accept) writes
+    to, or owner Inbox notes never reach the leap agent."""
+    from algua.config.settings import Settings
+
+    default = Path(Settings.model_fields["knowledge_dir"].default).as_posix()
+    for script in (LEAP, FORAGE):
+        pattern = r'^KB_DIR="\$\{ALGUA_KNOWLEDGE_DIR:-\$\{REPO_ROOT\}/([^}]+)\}"'
+        m = re.search(pattern, script.read_text(), re.M)
+        assert m, script
+        assert m.group(1) == default, script
+
+
+def test_leap_intake_output_goes_to_the_journal_and_stays_non_fatal():
+    src = LEAP.read_text()
+    block = src[src.index("INTAKE_CMD[@]"):]
+    line = block[: block.index("\n", block.index("INTAKE_CMD[@]"))]
+    assert "/dev/null" not in line
+    assert ">&2" in line
+    assert "inbox intake failed; continuing" in src
