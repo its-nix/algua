@@ -4,15 +4,15 @@ Everything here is best effort: any failure yields ``None`` and the item is stil
 owner's link/file and note. The fetched text is untrusted content; the CLI bounds its size.
 
 SSRF guard for :func:`fetch_article`: http(s) only; the host is resolved here and EVERY answer must
-be a globally routable unicast address (no private, loopback, link-local, CGNAT/tailnet, reserved,
-unspecified or multicast; IPv4-mapped IPv6 is unwrapped first); redirects are followed by hand (at
-most :data:`MAX_REDIRECTS`) with the same checks on every hop. Every TCP connection is opened by
-:class:`_PinnedBackend`, which resolves and vets the host at connect time and then connects to a
-vetted IP itself, so no second, unvetted lookup can rebind the name between check and connect;
-the URL keeps the hostname, so the Host header, TLS SNI and certificate verification still use the
-name. The address actually connected to is re-checked before the body is read (defense in depth);
-proxies from the environment are ignored; the whole fetch has a :data:`TIMEOUT_S` wall clock and
-the body is cut at :data:`MAX_BODY_BYTES`.
+be a globally routable unicast address (no private, loopback, link-local, site-local, CGNAT/tailnet,
+reserved, unspecified, multicast or NAT64; IPv4-mapped IPv6 is unwrapped first); redirects are
+followed by hand (at most :data:`MAX_REDIRECTS`) with the same checks on every hop. Every TCP
+connection is opened by :class:`_PinnedBackend`, which resolves and vets the host at connect time
+and then connects to a vetted IP itself, so no second, unvetted lookup can rebind the name between
+check and connect; the URL keeps the hostname, so the Host header, TLS SNI and certificate
+verification still use the name. The address actually connected to is re-checked before the body
+is read (defense in depth); proxies from the environment are ignored; the whole fetch has a
+:data:`TIMEOUT_S` wall clock and the body is cut at :data:`MAX_BODY_BYTES`.
 """
 
 from __future__ import annotations
@@ -138,13 +138,24 @@ def is_unfetched_host(host: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in UNFETCHED_DOMAINS)
 
 
+# NAT64 prefixes (RFC 6052 well-known, RFC 8215 local-use): a DNS64/NAT64 gateway turns these into
+# the embedded IPv4 address, so 64:ff9b::7f00:1 reaches 127.0.0.1. Refused explicitly rather than
+# relying on the stdlib tables (3.12 refuses them only because ::/8 counts as reserved, and those
+# tables have changed across 3.12.x/3.13).
+_NAT64 = (ipaddress.ip_network("64:ff9b::/96"), ipaddress.ip_network("64:ff9b:1::/48"))
+
+
 def _is_public(addr: str) -> bool:
     try:
         ip = ipaddress.ip_address(addr.split("%", 1)[0])
     except ValueError:
         return False
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
+    if isinstance(ip, ipaddress.IPv6Address):
+        # Deprecated site-local fec0::/10 still counts as global in the 3.12 tables.
+        if ip.is_site_local or any(ip in net for net in _NAT64):
+            return False
+        if ip.ipv4_mapped is not None:
+            ip = ip.ipv4_mapped
     return ip.is_global and not ip.is_multicast and not ip.is_reserved
 
 
