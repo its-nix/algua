@@ -37,7 +37,7 @@ def outer(package):
 @pytest.fixture
 def case():
     directory = Path('/paper/adoption-fixture-' + uuid4().hex)
-    directory.mkdir(mode=0o755)
+    directory.mkdir(mode=0o755, parents=True)
     try:
         for name in ('adopt-paper-artifact.py', 'paper_archive.py'):
             shutil.copyfile(ROOT / 'deploy/scripts' / name, directory / name)
