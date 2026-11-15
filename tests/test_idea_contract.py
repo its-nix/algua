@@ -16,7 +16,8 @@ def test_new_enums_have_exact_values():
     assert [h.value for h in Horizon] == ["intraday", "daily", "weekly", "monthly", "event"]
     assert [o.value for o in Obscurity] == ["canon", "common", "niche", "rare", "human"]
     assert [a.value for a in AttemptOutcome] == [
-        "integrity_fail", "holdout_negative", "walkforward_refuted", "sweep_unstable",
+        "integrity_fail", "data_blocked", "holdout_negative", "walkforward_refuted",
+        "sweep_unstable",
         "candidate_preview_pass", "promoted_candidate", "abandoned", "run_error",
     ]
     assert SourceType.INSPIRATION.value == "inspiration"

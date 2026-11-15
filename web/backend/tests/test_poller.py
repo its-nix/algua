@@ -12,6 +12,7 @@ from backend.algua_cli import CliError
 
 FLEET = ("fleet", "health")
 REGISTRY = ("registry", "list")
+OPS = ("ops", "status")
 
 
 async def _cancel_and_reap(task: asyncio.Task[None]) -> None:
@@ -48,21 +49,21 @@ async def _wait_for_calls(calls: list[dict[str, Any]], n: int) -> None:
     raise AssertionError(f"poller made only {len(calls)} calls, wanted >= {n}")
 
 
-async def test_prewarms_both_targets_with_force_refresh_and_endpoint_ttls(
+async def test_prewarms_all_targets_with_force_refresh_and_endpoint_ttls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ALGUA_WEB_POLL_SECONDS", "0.01")
     calls = _install_recorder(monkeypatch)
     task = asyncio.ensure_future(poller.poll_loop())
     try:
-        await _wait_for_calls(calls, 4)  # at least two full passes
+        await _wait_for_calls(calls, 6)  # at least two full passes
     finally:
         await _cancel_and_reap(task)
     assert all(c["force_refresh"] is True for c in calls)
     ttls = {c["args"]: c["ttl_s"] for c in calls}
-    assert ttls == {FLEET: 10.0, REGISTRY: 60.0}  # the SERVING endpoints' TTLs
-    # Pass order: fleet then registry, every cycle.
-    assert [c["args"] for c in calls[:4]] == [FLEET, REGISTRY, FLEET, REGISTRY]
+    assert ttls == {FLEET: 10.0, REGISTRY: 60.0, OPS: 30.0}  # the SERVING endpoints' TTLs
+    # Pass order matches PREWARM_TARGETS every cycle.
+    assert [c["args"] for c in calls[:6]] == [FLEET, REGISTRY, OPS] * 2
 
 
 async def test_cli_error_on_one_target_stops_neither_the_other_nor_the_loop(
@@ -92,7 +93,7 @@ async def test_unexpected_exception_does_not_kill_the_loop(
         await _wait_for_calls(calls, 6)
     finally:
         await _cancel_and_reap(task)
-    assert [c["args"] for c in calls[:4]] == [FLEET, REGISTRY, FLEET, REGISTRY]
+    assert [c["args"] for c in calls[:6]] == [FLEET, REGISTRY, OPS] * 2
 
 
 async def test_cancellation_stops_the_loop_cleanly(monkeypatch: pytest.MonkeyPatch) -> None:

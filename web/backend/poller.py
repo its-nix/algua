@@ -3,11 +3,11 @@
 Each pass force-refreshes the prewarm targets through the SAME
 :func:`backend.algua_cli.run_cli` seam the endpoints use (same cache entries,
 same TTLs), so endpoint behavior never changes. When — and ONLY when — the
-``fleet health`` refresh is genuinely fresh (no CliError, not a stale-cache
+health refresh is genuinely fresh (no CliError, not a stale-cache
 echo; R1), the result is diffed against the persisted notify state and
 worsening transitions are pushed to the subscribed browsers.
 
-The diff itself (:func:`diff_fleet`) is a pure function of
+The fleet and operations diffs are pure functions of
 ``(fleet_payload, state, now)`` so every notification rule is unit-testable
 without a loop, a filesystem, or a push service.
 """
@@ -23,18 +23,23 @@ from typing import Any
 
 from backend import push
 from backend.algua_cli import CliError, run_cli
+from backend.poller_ops import cooldown_active as _cooldown_active
+from backend.poller_ops import diff_operations
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_POLL_SECONDS = 600.0
 
 # (argv, ttl_s) — ttl_s mirrors the SERVING endpoint's TTL for the same argv
-# (fleet health -> /api/fleet 10s; registry list -> /api/strategies 60s) so a
+# (fleet health -> /api/fleet 10s; registry list -> /api/strategies 60s;
+# ops status -> /api/ops 30s) so a
 # poller-written cache entry is exactly what the endpoint would have written.
 _FLEET_ARGV = ("fleet", "health")
+_OPS_ARGV = ("ops", "status")
 PREWARM_TARGETS: tuple[tuple[tuple[str, ...], float], ...] = (
     (_FLEET_ARGV, 10.0),
     (("registry", "list"), 60.0),
+    (_OPS_ARGV, 30.0),
 )
 
 # Mirror of algua/execution/fleet_health.py::_KNOWN_HEALTHS — the COMPLETE set of health
@@ -53,7 +58,6 @@ _ALL_STAGES = frozenset(
 # operator loop whose health is worth waking a phone for. `fleet health` emits the
 # authoritative set as `operational_stages`; this is used only if that key is absent.
 _OPERATIONAL_STAGES = frozenset({"live", "paper", "forward_tested"})
-_RENOTIFY_AFTER_S = 24 * 60 * 60.0  # R3: per-strategy bad-health notification cooldown
 
 
 def poll_seconds() -> float:
@@ -102,21 +106,6 @@ def _row_alerts(health: str, stage: str, operational_stages: frozenset[str]) -> 
     if health not in _KNOWN_HEALTHS or stage not in _ALL_STAGES:
         return True
     return stage in operational_stages and health in _ALERT_HEALTHS_OPERATIONAL
-
-
-def _cooldown_active(last_bad_notified_at: Any, now: datetime) -> bool:
-    """True when ANY bad-health notification for this strategy landed within 24h (R3).
-
-    The cooldown is deliberately independent of WHICH bad health was notified —
-    keying on the exact health let a stale<->drift flap notify every cycle.
-    """
-    if last_bad_notified_at is None:
-        return False
-    try:
-        at = datetime.fromisoformat(str(last_bad_notified_at))
-    except ValueError:
-        return False  # corrupt marker -> notify rather than stay silent
-    return (now - at).total_seconds() < _RENOTIFY_AFTER_S
 
 
 def _halted_bypass(notified: Any, health: str) -> bool:
@@ -291,6 +280,7 @@ def diff_fleet(
         stored_unhealthy = True
 
     new_state = {
+        **(state or {}),
         "strategies": new_strategies,
         "global_halt": {"observed": global_halt, "notified_at": halt_notified_at},
         "unhealthy": stored_unhealthy,
@@ -312,13 +302,18 @@ def mark_notified(state: dict[str, Any], notification: dict[str, Any], now_iso: 
         state["global_halt"]["notified_at"] = now_iso
     elif kind == "fleet_clear":
         state["unhealthy"] = False
+    elif kind == "operation":
+        state["operations"][notification["loop"]]["last_bad_notified_at"] = now_iso
 
 
-async def _diff_and_notify(fleet: dict[str, Any]) -> None:
+async def _diff_and_notify(payload: dict[str, Any], *, operations: bool = False) -> None:
     """One diff cycle: load state, diff, send, commit accepted marks, persist."""
     state = push.load_notify_state()
     now = datetime.now(UTC)
-    notifications, new_state = diff_fleet(fleet, state, now=now)
+    if operations:
+        notifications, new_state = diff_operations(payload, state, now=now)
+    else:
+        notifications, new_state = diff_fleet(payload, state, now=now)
     now_iso = now.isoformat()
     for notification in notifications:
         accepted = await push.send_to_all(
@@ -335,7 +330,7 @@ async def poll_loop() -> None:
 
     A failed target NEVER kills the loop (CliError -> warning; any other
     exception -> log.exception) and never stops the remaining targets in the
-    pass. The fleet-health result is diffed for push alerts ONLY when it is
+    pass. Fleet and operations results are diffed for push alerts ONLY when each is
     genuinely fresh — a CliError or a stale-cache echo skips the diff entirely
     (R1: stale data must never read as a transition OR a recovery), and any
     exception in the diff half is logged and swallowed. Cancellation (server
@@ -356,12 +351,18 @@ async def poll_loop() -> None:
                     "poller: unexpected error prewarming %s", " ".join(target_argv)
                 )
                 continue
-            if target_argv != _FLEET_ARGV or result.get("stale"):
-                continue  # R1: only a genuinely fresh fleet payload is diffable
+            if target_argv not in (_FLEET_ARGV, _OPS_ARGV):
+                continue
+            if result.get("stale"):
+                logger.warning("poller: stale %s; preserving alert state", " ".join(target_argv))
+                continue  # R1: stale observations cannot become transitions or recovery
             try:
-                await _diff_and_notify(result["data"])
+                if target_argv == _OPS_ARGV:
+                    await _diff_and_notify(result["data"], operations=True)
+                else:
+                    await _diff_and_notify(result["data"])
             except asyncio.CancelledError:
                 raise
             except Exception:
-                logger.exception("poller: push diff failed")
+                logger.exception("poller: push diff failed for %s", " ".join(target_argv))
         await asyncio.sleep(interval_s)
