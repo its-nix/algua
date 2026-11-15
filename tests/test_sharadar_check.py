@@ -130,11 +130,12 @@ def test_terminal_ignores_action_outside_window():
     assert res.status == "fail" and res.counts["no_action"] == 1
 
 
-def test_terminal_classifies_zero_recovery_and_acquisition():
+def test_terminal_classifies_unresolved_bankruptcy_and_acquisition():
     _, actions, tickers = sample_tables()
     res = check_terminal(actions, tickers)
     assert res.status == "pass"
-    assert res.counts == {"zero_recovery": 1, "acquisition_resolved": 0,
+    assert res.counts == {"zero_recovery": 0, "bankruptcy_unresolved": 1,
+                          "acquisition_resolved": 0,
                           "acquisition_unresolved": 1, "other_delisting": 1, "no_action": 0}
 
 
@@ -161,6 +162,19 @@ def test_terminal_consideration_rows_do_not_establish_verified_resolution():
     res = check_terminal(pd.concat([actions, cash, stock], ignore_index=True), tickers)
     assert res.counts["acquisition_resolved"] == 0
     assert res.counts["acquisition_unresolved"] == 1
+
+
+@pytest.mark.parametrize("value", [0.0, 1_000_000_000.0])
+def test_terminal_bankruptcy_marker_does_not_prove_zero_recovery(value):
+    _, actions, tickers = sample_tables()
+    actions = actions.copy()
+    actions.loc[actions["action"] == "bankruptcyliquidation", "value"] = value
+    res = check_terminal(actions, tickers)
+    assert res.status == "pass"
+    assert res.counts["zero_recovery"] == 0
+    assert res.counts["bankruptcy_unresolved"] == 1
+    finding = next(f for f in res.findings if f["class"] == "bankruptcy_unresolved")
+    assert finding["limitation"] == "zero_recovery_or_equity_cancellation_not_verified"
 
 
 def test_terminal_acquisition_without_value_is_unresolved():
@@ -218,7 +232,7 @@ def test_terminal_accepts_action_dated_before_last_price():
     actions = actions.copy()
     actions.loc[actions["action"] == "bankruptcyliquidation", "date"] = _ts("2020-01-03")
     res = check_terminal(actions, tickers)
-    assert res.status == "pass" and res.counts["zero_recovery"] == 1
+    assert res.status == "pass" and res.counts["bankruptcy_unresolved"] == 1
 
 
 def test_raw_units_tolerates_rounded_close_on_large_split():
