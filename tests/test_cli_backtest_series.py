@@ -63,18 +63,14 @@ def test_emit_series_file_fails_closed_on_inf(tmp_path):
 
 def test_emit_series_file_bad_path_json_contract(tmp_path):
     """An unwritable path must produce a BacktestError (stays in JSON contract, finding #3)."""
-    import os
     idx = pd.to_datetime(["2023-01-01", "2023-01-02"])
     good_series = pd.Series([0.01, 0.02], index=idx)
-    # Make the parent directory read-only so mkstemp inside write_bytes_atomic fails.
-    ro_dir = tmp_path / "ro"
-    ro_dir.mkdir()
-    os.chmod(ro_dir, 0o555)
-    try:
-        with pytest.raises(BacktestError, match="failed to write series"):
-            emit_series_file(_result(good_series), ro_dir / "s.parquet")
-    finally:
-        os.chmod(ro_dir, 0o755)  # restore so tmp_path cleanup succeeds
+    # A file in place of the parent fails on every user, including root in Linux CI.
+    parent = tmp_path / "not-a-directory"
+    parent.write_text("preserve")
+    with pytest.raises(BacktestError, match="failed to write series"):
+        emit_series_file(_result(good_series), parent / "s.parquet")
+    assert parent.read_text() == "preserve"
 
 
 def test_emit_series_file_writes_and_descriptor(tmp_path):
