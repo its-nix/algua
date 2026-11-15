@@ -1,0 +1,12 @@
+[Unit]
+Description=Private Google authentication socket for Algua ingress
+
+[Socket]
+ListenStream=/run/algua-google-auth.sock
+SocketUser=algua-ingress
+SocketGroup=algua-ingress
+SocketMode=0600
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target
