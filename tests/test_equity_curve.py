@@ -62,3 +62,28 @@ def test_change_today_only_when_last_session_is_today():
     assert change_today(pts, "2026-11-03") == 0.0
     assert change_today(pts[:1], "2026-11-01") == 0.0
     assert change_today([], "2026-11-01") == 0.0
+
+
+def test_same_tenant_inflow_and_outflow_are_not_profit():
+    rows = [
+        {**tick("2026-11-01", 1000), "allocated_capital": 1000},
+        {**tick("2026-11-02", 1500), "allocated_capital": 1500},
+        {**tick("2026-11-03", 700), "allocated_capital": 700},
+    ]
+    points = pnl_curve({"a": rows})
+    assert [p["pnl"] for p in points] == [0.0, 0.0, 0.0]
+    assert [p["equity"] for p in points] == [1000.0, 1500.0, 700.0]
+
+
+def test_resize_preserves_real_gains_losses_and_last_tick_in_session():
+    rows = [
+        {**tick("2026-11-01", 1010), "allocated_capital": 1000},
+        {**tick("2026-11-02", 1515), "allocated_capital": 1500},
+        {**tick("2026-11-02", 1520), "allocated_capital": 1500},
+        {**tick("2026-11-03", 690), "allocated_capital": 700},
+    ]
+    points = pnl_curve({"a": rows})
+    assert [p["pnl"] for p in points] == [0.0, 10.0, -20.0]
+    assert points[-1]["equity"] == 690.0
+    # A filtered or newest-N slice still starts from its first retained observation.
+    assert [p["pnl"] for p in pnl_curve({"a": rows[1:]})] == [0.0, -30.0]
