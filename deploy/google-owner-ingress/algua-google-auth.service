@@ -1,0 +1,27 @@
+[Unit]
+Description=Algua owner Google login (OAuth2 Proxy v7.15.6)
+Requires=algua-google-auth.socket
+After=network-online.target algua-google-auth.socket
+Wants=network-online.target
+
+[Service]
+User=algua-auth
+Group=algua-auth
+EnvironmentFile=/etc/algua-google-auth/secrets.env
+ExecStart=/usr/local/lib/algua-google-auth/oauth2-proxy --config=/etc/algua-google-auth/oauth2-proxy.cfg
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

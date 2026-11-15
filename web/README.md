@@ -39,7 +39,8 @@ Endpoints:
 The only writes in this app. Each one runs `algua research inbox add` (the Inbox's only writer):
 
 - **Owner check.** A write is accepted only when the `Tailscale-User-Login` header (stamped by
-  `tailscale serve`) equals `ALGUA_WEB_OWNER_LOGIN`. With that env unset or blank every write is
+  `tailscale serve`, or the optional authenticated Google ingress below) equals
+  `ALGUA_WEB_OWNER_LOGIN`. With that env unset or blank every write is
   refused (403 `forbidden`). Both write routes also require
   `Sec-Fetch-Site` to be absent, `none` or `same-origin` (`same-site` is refused: every tailnet
   service shares the ts.net site). `/share` logs the value it saw, one line per share, so the
@@ -145,7 +146,7 @@ Assumes the repo at `/opt/algua` (matching the other units) and the env file at
    a confirmed, tested sandbox network denial for agent runs**, since every local process can
    reach a loopback port and set the header itself.
 
-6. Access the monitor ONLY via `https://<box>.<tailnet>.ts.net`. The service
+6. For this Tailscale deployment, access the monitor via `https://<box>.<tailnet>.ts.net`. The service
    worker (and future push) need the ONE stable secure origin — hitting the
    bare tailnet IP is a different origin, which breaks the PWA install, its
    cache, and any notification subscription.
@@ -157,6 +158,20 @@ goes through `tailscale serve`, which proxies to the socket and stamps `Tailscal
 Reads have no auth layer (the tailnet is the boundary); writes additionally need that header to
 equal `ALGUA_WEB_OWNER_LOGIN`, which is only trustworthy because nothing but tailscaled can reach
 the socket. The `--host 127.0.0.1` runs above are for local development.
+
+### Optional public Google owner login
+
+[Public ingress templates and installation runbook](../deploy/google-owner-ingress/README.md)
+prepare `https://algua.itsnix.cloud` with Google-only owner authentication on **every route**.
+The root `itsnix.cloud` front door redirects there. This is a separate, optional deployment;
+the files do not establish that DNS, Google OAuth credentials or ingress are installed.
+Its dedicated proxy replaces the legacy owner header only after verifying the Google session
+against a private exact-email allowlist. The backend still listens only on its private Unix
+socket; a narrowly scoped group lets the dedicated ingress reach it without exposing it to
+agents or other web applications. The tailnet-only read boundary described above applies to
+the existing Tailscale path; the public path requires the Google gateway for reads and writes.
+The runbook covers PWA origin migration, existing dashboard push, one-hour login sessions,
+socket permissions, refusal checks and rollback. Never expose the backend directly to the web.
 
 ## Preconditions
 
