@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from algua.data.sharadar_check import (
     BANKRUPTCY_ACTIONS,
@@ -133,8 +134,33 @@ def test_terminal_classifies_zero_recovery_and_acquisition():
     _, actions, tickers = sample_tables()
     res = check_terminal(actions, tickers)
     assert res.status == "pass"
-    assert res.counts == {"zero_recovery": 1, "acquisition_resolved": 1,
-                          "acquisition_unresolved": 0, "other_delisting": 1, "no_action": 0}
+    assert res.counts == {"zero_recovery": 1, "acquisition_resolved": 0,
+                          "acquisition_unresolved": 1, "other_delisting": 1, "no_action": 0}
+
+
+@pytest.mark.parametrize("action", ["acquisitionby", "mergerto"])
+def test_terminal_market_cap_marker_does_not_resolve_consideration(action):
+    _, actions, tickers = sample_tables()
+    actions = actions.copy()
+    marker = actions["action"] == "acquisitionby"
+    actions.loc[marker, "action"] = action
+    actions.loc[marker, "value"] = 1_000_000_000.0
+    res = check_terminal(actions, tickers)
+    assert res.status == "pass"
+    assert res.counts["acquisition_resolved"] == 0
+    assert res.counts["acquisition_unresolved"] == 1
+    finding = next(f for f in res.findings if f["class"] == "acquisition_unresolved")
+    assert finding["limitation"] == "consideration_and_effective_date_prices_not_verified"
+
+
+def test_terminal_consideration_rows_do_not_establish_verified_resolution():
+    _, actions, tickers = sample_tables()
+    legs = actions[actions["action"] == "acquisitionby"].copy()
+    cash = legs.assign(action="acquisitioncash", value=10.0)
+    stock = legs.assign(action="acquisitionstock", value=0.5)
+    res = check_terminal(pd.concat([actions, cash, stock], ignore_index=True), tickers)
+    assert res.counts["acquisition_resolved"] == 0
+    assert res.counts["acquisition_unresolved"] == 1
 
 
 def test_terminal_acquisition_without_value_is_unresolved():

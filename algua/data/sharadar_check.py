@@ -97,10 +97,9 @@ def _terminal_class(window: pd.DataFrame) -> str:
     kinds = window["action"]
     if kinds.isin(BANKRUPTCY_ACTIONS).any():
         return "zero_recovery"
-    acq = window[kinds.isin(ACQUISITION_ACTIONS)]
-    if not acq.empty:
-        resolved = acq["contraticker"].notna() & acq["value"].map(valid_value)
-        return "acquisition_resolved" if resolved.any() else "acquisition_unresolved"
+    if kinds.isin(ACQUISITION_ACTIONS).any():
+        # Relationship-marker values are final market caps, not per-share consideration.
+        return "acquisition_unresolved"
     if kinds.isin(OTHER_DELIST_ACTIONS).any():
         return "other_delisting"
     return "no_action"
@@ -109,7 +108,8 @@ def _terminal_class(window: pd.DataFrame) -> str:
 def check_terminal(actions: pd.DataFrame, tickers: pd.DataFrame) -> CheckResult:
     """Every delisted security needs a terminal action near its last price: from
     TERMINAL_LOOKBACK_DAYS before it (never before its first price) to TERMINAL_WINDOW_DAYS
-    after."""
+    after. Acquisition markers identify relationships, not verified consideration or effective-date
+    prices; those remain unresolved. The resolved count is retained for report compatibility."""
     counts = dict.fromkeys(("zero_recovery", "acquisition_resolved", "acquisition_unresolved",
                             "other_delisting", "no_action"), 0)
     findings: list[dict[str, object]] = []
@@ -126,8 +126,11 @@ def check_terminal(actions: pd.DataFrame, tickers: pd.DataFrame) -> CheckResult:
             cls = _terminal_class(window)
         counts[cls] += 1
         if cls in ("acquisition_unresolved", "no_action"):
-            findings.append({"permaticker": int(sec.permaticker), "ticker": sec.ticker,
-                             "class": cls})
+            finding: dict[str, object] = {
+                "permaticker": int(sec.permaticker), "ticker": sec.ticker, "class": cls}
+            if cls == "acquisition_unresolved":
+                finding["limitation"] = "consideration_and_effective_date_prices_not_verified"
+            findings.append(finding)
     return result("terminal", counts["no_action"] > 0, counts, findings)
 
 
