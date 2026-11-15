@@ -8,6 +8,7 @@ from algua.calendar.factory import get_calendar
 from algua.cli._common import ok
 from algua.cli.app import app, emit
 from algua.cli.errors import json_errors
+from algua.contracts.lifecycle import Stage
 from algua.execution.fleet_health import (
     OPERATIONAL_STAGES,
     STALE_AFTER_SESSIONS,
@@ -16,6 +17,7 @@ from algua.execution.fleet_health import (
 )
 from algua.execution.order_state import tick_snapshot_series
 from algua.operator.checkout_guard import checkout_status
+from algua.portfolio.equity_curve import change_today, pnl_curve
 from algua.registry.db import registry_conn
 from algua.registry.store import SqliteStrategyRepository
 from algua.risk import global_halt
@@ -24,6 +26,9 @@ fleet_app = typer.Typer(help="Fleet-wide observability across all strategies", n
 app.add_typer(fleet_app, name="fleet")
 
 _SERIES_LANES = ("live", "paper")
+_STAGE_LANES = {
+    Stage.PAPER: {"paper"}, Stage.FORWARD_TESTED: {"paper"}, Stage.LIVE: {"live"},
+}
 
 
 def _norm_since(value: str) -> datetime:
@@ -77,6 +82,40 @@ def series(
         result = tick_snapshot_series(
             conn, rec.id, rec.name, lane=lane, since=since_dt, limit=limit)
     emit(ok({"strategy": name, "lane_filter": lane, **result}))
+
+
+@fleet_app.command("equity")
+@json_errors
+def equity(
+    lane: str = typer.Option(None, "--lane", help="restrict to one lane: paper|live"),
+    since: str = typer.Option(None, "--since", help="inclusive lower bound (ISO-8601, UTC)"),
+) -> None:
+    """Fleet P&L-indexed curve: per-session cumulative P&L and total equity across strategies.
+    Allocation entry/exit is never counted as profit. Pure read; lane filter applies first."""
+    if lane is not None and lane not in _SERIES_LANES:
+        raise ValueError(f"lane must be one of {list(_SERIES_LANES)!r}, got {lane!r}")
+    since_dt = _norm_since(since) if since is not None else None
+    rows_by_strategy: dict[str, list[dict]] = {}
+    active: dict[str, set[str]] = {}
+    truncated = False
+    with registry_conn() as conn:
+        for rec in SqliteStrategyRepository(conn).list_strategies():
+            res = tick_snapshot_series(
+                conn, rec.id, rec.name, lane=lane, since=since_dt, limit=5000)
+            truncated = truncated or any(res["truncated"].values())
+            rows = [{**r, "lane": ln} for ln, rs in res["series"].items() for r in rs or []]
+            if rows:
+                rows_by_strategy[rec.name] = rows
+                active[rec.name] = _STAGE_LANES.get(rec.stage, set())
+    points = pnl_curve(rows_by_strategy, active)
+    emit(ok({
+        "lane_filter": lane,
+        "points": points,
+        "last_session": points[-1]["session"] if points else None,
+        "current_equity": points[-1]["equity"] if points else 0.0,
+        "change_today": change_today(points, datetime.now(UTC).date().isoformat()),
+        "truncated": truncated,
+    }))
 
 
 @fleet_app.command("health")

@@ -252,12 +252,23 @@ def _history(
     ]
 
 
+def _holdout_record(row: dict[str, Any]) -> dict[str, Any]:
+    """The holdout record under its run-ledger names (the dashboard's expected line), read only
+    from fields this view already projects: the holdout_sharpe / holdout_return check values and
+    the holdout_n_bars column (gate_comparison_validation pins both equalities)."""
+    checks = (row.get("decision") or {}).get("checks") or []
+    value = {c.get("name"): c.get("value") for c in checks}
+    return {"sharpe_oos": value.get("holdout_sharpe"),
+            "total_return_oos": value.get("holdout_return"), "n_obs_oos": row["holdout_n_bars"]}
+
+
 def gate_evaluation_history(
     conn: sqlite3.Connection, strategy_id: int, *, limit: int = 20,
 ) -> list[dict[str, Any]]:
     """Newest-first ``gate_evaluations`` rows for one strategy, decision_json projected."""
-    return _history(conn, "gate_evaluations", _GATE_COLUMNS,
+    rows = _history(conn, "gate_evaluations", _GATE_COLUMNS,
                     GATE_DECISION_PROJECTION, strategy_id, limit)
+    return [{**row, **_holdout_record(row)} for row in rows]
 
 
 def forward_gate_evaluation_history(

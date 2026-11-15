@@ -417,19 +417,14 @@ def test_retry_fingerprint_ignores_unrelated_deploys_and_tracks_capabilities(tmp
     assert capability_fingerprint(tmp_path) != original
 
 
-def test_drive_snapshot_sources_and_owner_priority(tmp_path):
+def test_owner_sources_come_first(tmp_path):
     settings = Settings(data_dir=tmp_path / "data", knowledge_dir=tmp_path / "kb")
-    note(settings, "local", recipe())
-    steering = tmp_path / "steering"
-    snapshot_settings = Settings(data_dir=settings.data_dir, knowledge_dir=steering)
-    owner = note(snapshot_settings, "owner")
-    note(snapshot_settings, "web", recipe())
-    path = steering / "inspirations" / f"{owner}.md"
+    note(settings, "aaa-web", recipe())
+    owner = note(settings, "owner")
+    path = settings.knowledge_dir / "inspirations" / f"{owner}.md"
     path.write_text(path.read_text().replace("status: fresh", "source_kind: human\nstatus: fresh"))
-    settings = settings.model_copy(update={"steering_dir": steering})
     plan = source_plan(settings, PROFILE)
     assert plan["sources"][0]["source_id"] == owner
-    assert all("local" not in s["source_id"] for s in plan["sources"])
 
 
 def test_feedback_reuses_review_gaps_for_selected_categories_without_spending_retries(tmp_path):
@@ -452,14 +447,14 @@ def test_feedback_reuses_review_gaps_for_selected_categories_without_spending_re
     assert (settings.data_dir / "leap-sources.json").read_bytes() == state
 
 
-def test_cli_feedback_uses_drive_snapshot_and_emits_bounded_advisory_json(tmp_path, monkeypatch):
+def test_cli_feedback_reads_knowledge_dir_and_emits_bounded_advisory_json(tmp_path, monkeypatch):
     import json
 
     from typer.testing import CliRunner
 
     from algua.cli.main import app
 
-    settings = Settings(data_dir=tmp_path / "data", knowledge_dir=tmp_path / "steering")
+    settings = Settings(data_dir=tmp_path / "data", knowledge_dir=tmp_path / "kb")
     for i in range(8):
         identity = note(settings, f"source-{i}")
         path = settings.knowledge_dir / "inspirations" / f"{identity}.md"
@@ -471,7 +466,7 @@ def test_cli_feedback_uses_drive_snapshot_and_emits_bounded_advisory_json(tmp_pa
                            "source_key": row["source_key"], "recipe": None, "reason": "x" * 2000}]},
                            clean=True, imported_sources=set())
     monkeypatch.setenv("ALGUA_DATA_DIR", str(settings.data_dir))
-    monkeypatch.setenv("ALGUA_STEERING_DIR", str(settings.knowledge_dir))
+    monkeypatch.setenv("ALGUA_KNOWLEDGE_DIR", str(settings.knowledge_dir))
     result = CliRunner().invoke(app, ["research", "sources", "feedback",
                                     "--categories", "momentum"])
     assert result.exit_code == 0, result.stdout

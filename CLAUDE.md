@@ -193,12 +193,12 @@ The [Algua KB](algua-kb/README.md) is the source for project knowledge; [its Dri
   hypotheses, depth-gated), `algua-forage.timer` (daily `03:00 UTC`, web search →
   `algua-kb/inspirations/` notes). A human steers the engine through two files: `.opencode/categories.txt`
   (the ideation category list) and `algua-kb/inspirations/_sources.yaml` (the venue registry).
-- **Drive ideation backend** (`docs/agent/drive.md`, off unless `ALGUA_DRIVE_FOLDER_ID` is set):
-  the steering surfaces, inspirations and an owner **Inbox** live as Google Sheets; drivers export
-  a run-start snapshot (`research steering export --to DIR`, read via `ALGUA_STEERING_DIR`), take
-  the Inbox in each leap firing (`research inbox intake`, each row exactly once, as a
-  `source_kind: human` inspiration) and project the pool back (`research idea publish`). Agents
-  never call Drive; trading/gates/capital/data never touch it. Driver-facing, like `idea` ops.
+- **Owner Inbox and dashboard:** the owner drops ideas into the registry Inbox with
+  `research inbox add --url U | --file F | --text T [--title] [--note]` and reads it with
+  `research inbox list`; every leap firing runs `research inbox intake` before its depth gate,
+  writing each item exactly once as a `source_kind: human` inspiration (fresh owner ideas from the
+  last 2 days bypass the depth gate). The owner dashboard lives in `web/` (a standalone uv
+  project). Agents never run intake themselves; trading/gates/capital/data never read the Inbox.
 - **The agent runtime is OpenCode, reached through ONE seam.** `.opencode/scripts/run_agent.sh` is
   the only invocation seam for the loop drivers. Models live in
   `.opencode/opencode.json`; agent definitions (research / leap / forage, plus the `author` and `interpret`
@@ -249,13 +249,26 @@ Available full check, when needed:
 `uv run pytest -q -m "" && uv run ruff check . && uv run mypy algua && uv run lint-imports`
 
 Two of those enforce structure, not style, and are worth knowing before you fight them:
-- **`lint-imports`** — 32 contracts fixing the package layering (`cli` composes everything; nothing
+- **`lint-imports`** — 31 contracts fixing the package layering (`cli` composes everything; nothing
   composes `cli`). Adding an import that breaks one is a design decision; do not add an exemption
   without saying why in the commit.
 - **`tests/test_module_size_ratchet.py`** — a shrink-only size ratchet over every module ≥300 lines.
   Carved files cannot regrow and new god-files cannot appear silently. When it fails, prefer putting
   the change where it belongs, or carving; raising a pin is the last option and is meant to be
   visible in review.
+
+## Dashboard
+
+`web/` is the owner dashboard (Home / Strategies / Inbox PWA), a STANDALONE uv project with its
+own `web/uv.lock`; NEVER add web deps to the root project (the root `uv.lock` is
+dependency_hash identity). Its only seam to the platform is running the `algua` CLI as a
+subprocess and serving its JSON (`fleet health`, `fleet equity` — the P&L-indexed portfolio curve
+— registry/gate reads, `research inbox list`). It is read-only except the owner's Inbox: writes
+run `research inbox add` and are accepted only when the `Tailscale-User-Login` header stamped by
+`tailscale serve` equals `ALGUA_WEB_OWNER_LOGIN`; in production the backend listens only on a Unix
+socket behind `tailscale serve` (`deploy/systemd/algua-web.service`, details in `web/README.md`).
+When a change touches `web/`, also run `uv run --project web pytest web/backend/tests -q` and
+`cd web/frontend && npm run check && npm run build`.
 
 ## Company context
 

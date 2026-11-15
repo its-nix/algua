@@ -49,6 +49,6 @@ algua-kb/**/.sync.lock
 # inherits the operator's global plugins, skills or AGENTS.md. Runtime state, not an artifact.
 .opencode/xdg/
 
-# Drive ideation backend secrets (docs/agent/drive.md): never commit the OAuth client or token.
+# Google OAuth secrets (the retired Drive ideation backend): never commit an OAuth client or token.
 drive.json
 client_secret*.json

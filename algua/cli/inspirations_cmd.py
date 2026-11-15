@@ -13,7 +13,6 @@ from pathlib import Path
 import typer
 
 from algua.cli._common import ok
-from algua.cli._drive import inspirations_store, sources_backend
 from algua.cli.app import emit
 from algua.cli.errors import json_errors
 from algua.config.settings import get_settings
@@ -73,7 +72,7 @@ def accept(
         settings.data_dir / "inspirations-seen.jsonl")
     result = accept_new_notes(
         staged_dir=from_dir, settings=settings, seen_path=seen_path, categories=categories,
-        run_stamp=run, max_notes=max_notes, store=inspirations_store(settings))
+        run_stamp=run, max_notes=max_notes)
     try:
         profile = load_research_profile(settings.data_dir)
     except Exception:
@@ -143,7 +142,7 @@ def mark_used_cmd(
 ) -> None:
     """Trusted leap-driver edit: append the idea id to `leaps` and flip fresh -> used."""
     settings = get_settings()
-    fm = mark_used(settings, inspiration_id, idea_id=idea, store=inspirations_store(settings))
+    fm = mark_used(settings, inspiration_id, idea_id=idea)
     emit(ok(fm))
 
 
@@ -152,7 +151,7 @@ def mark_used_cmd(
 def mark_exhausted_cmd(inspiration_id: str = typer.Argument(..., metavar="ID")) -> None:
     """Trusted leap-driver edit: flip status -> exhausted (no more leaps to try)."""
     settings = get_settings()
-    fm = mark_exhausted(settings, inspiration_id, store=inspirations_store(settings))
+    fm = mark_exhausted(settings, inspiration_id)
     emit(ok(fm))
 
 
@@ -180,7 +179,7 @@ def propose(
         raise ValueError(f"unknown categories: {unknown}")
 
     settings = get_settings()
-    registry = SourcesRegistry(settings, backend=sources_backend(settings))
+    registry = SourcesRegistry(settings)
     registry.propose({"key": key, "kind": kind, "url": url, "categories": cats})
     emit(ok({"key": key, "kind": kind, "url": url, "categories": cats}))
 
@@ -214,5 +213,5 @@ def write_yield_cmd(
     # ONE load + ONE save for every venue (a per-venue write re-read and rewrote the whole file
     # once per key, and left the file briefly half-updated between them).
     settings = get_settings()
-    SourcesRegistry(settings, backend=sources_backend(settings)).write_yields(yields)
+    SourcesRegistry(settings).write_yields(yields)
     emit(ok({"updated": sorted(yields)}))

@@ -69,10 +69,10 @@ AUTH_DATA_DIR="${ALGUA_DATA_DIR:-${REPO_ROOT}/data}"
 SEEN_FILE="${AUTH_DATA_DIR}/inspirations-seen.jsonl"
 CURSOR_FILE="${AUTH_DATA_DIR}/forage-cursor"
 DIGEST="${AUTH_DATA_DIR}/forage-runs.jsonl"
-KB_DIR="${ALGUA_KNOWLEDGE_DIR:-${REPO_ROOT}/kb}"
+KB_DIR="${ALGUA_KNOWLEDGE_DIR:-${REPO_ROOT}/algua-kb}"
 SOURCES_FILE="${KB_DIR}/inspirations/_sources.yaml"
 
-# Cheap demand check before Drive/network/worktree preparation. Rechecked under the forage
+# Cheap demand check before network/worktree preparation. Rechecked under the forage
 # lock immediately before model launch; an idle hourly check consumes no launch budget.
 if [[ "${SCHEDULED}" -eq 1 && "${DRY_RUN}" -eq 0 ]]; then
   REFILL="$(cd "${REPO_ROOT}" && uv run --no-sync algua research sources refill)" || exit 1
@@ -89,31 +89,7 @@ fi
 # deploy/systemd/install-user-units.sh) means a vault relocated via ALGUA_KNOWLEDGE_DIR
 # self-heals on the next firing instead of foraging with no venue list at all.
 SEED_SOURCES="${REPO_ROOT}/deploy/kb/inspirations/_sources.yaml"
-
-# --- Drive ideation backend (spec 2026-11-12 §4). With ALGUA_DRIVE_FOLDER_ID set, Steering lives
-# in Drive: export a run-start snapshot into a driver-owned dir and read categories + sources from
-# it (no seed copy: the Sources tab is the registry). Accept/propose/write-yield write to Drive
-# through the CLI. A failed export ends the run before any agent call; the next timer retries.
-DRIVE=0
-[[ -n "${ALGUA_DRIVE_FOLDER_ID:-}" ]] && DRIVE=1
-if [[ "${DRIVE}" -eq 1 ]]; then
-  STEER_DIR="${RUNS_DIR}/steering-forage"
-  EXPORT_CMD=(uv run algua research steering export --to "${STEER_DIR}")
-  if [[ "${DRY_RUN}" -eq 1 ]]; then
-    echo "would export steering snapshot via: ${EXPORT_CMD[*]}"
-    echo "would read steering from: ${STEER_DIR}/categories.txt ${STEER_DIR}/inspirations/_sources.yaml"
-  else
-    if ! (cd "${REPO_ROOT}" && "${EXPORT_CMD[@]}" >/dev/null); then
-      echo "steering export from Drive failed; ending this run (the next timer retries)." >&2
-      exit 1
-    fi
-    export ALGUA_STEERING_DIR="${STEER_DIR}"
-    CATEGORIES_FILE="${STEER_DIR}/categories.txt"
-    SOURCES_FILE="${STEER_DIR}/inspirations/_sources.yaml"
-  fi
-fi
-
-if [[ "${DRIVE}" -eq 0 && ! -f "${SOURCES_FILE}" && -f "${SEED_SOURCES}" ]]; then
+if [[ ! -f "${SOURCES_FILE}" && -f "${SEED_SOURCES}" ]]; then
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     echo "would seed sources registry: ${SEED_SOURCES} -> ${SOURCES_FILE}"
   else

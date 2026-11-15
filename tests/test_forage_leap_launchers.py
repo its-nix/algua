@@ -690,56 +690,38 @@ def test_env_example_documents_the_driver_timeouts():
         assert line in env
 
 
-# --- Drive ideation backend (spec 2026-11-12 §4, §6.4): intake -> snapshot -> leap -> publish ---
+# --- Owner Inbox (dashboard spec 2026-11-14): leap takes the Inbox in on every firing ---------
 
-def _dry_drive(script, *args):
-    env = {**os.environ, "ALGUA_DRIVE_FOLDER_ID": "x"}
-    return subprocess.run(["bash", str(script), "--dry-run", *args], cwd=REPO,
-                          capture_output=True, text=True, check=True, env=env).stdout
-
-
-def test_leap_dry_run_drive_mode_prints_intake_export_publish_in_order():
-    out = _dry_drive(LEAP, "--max-ideas", "5")
+def test_leap_dry_run_intakes_inbox_before_depth_check():
+    out = _dry(LEAP, "--max-ideas", "5")
     assert out.index("would intake owner inbox via: uv run algua research inbox intake") \
-        < out.index("would export steering snapshot via: uv run algua research steering export") \
-        < out.index("would check depth: ") \
-        < out.index("would publish via: uv run algua research idea publish")
+        < out.index("would check depth: ")
 
 
-def test_leap_dry_run_without_drive_is_unchanged():
-    env = {k: v for k, v in os.environ.items() if k != "ALGUA_DRIVE_FOLDER_ID"}
-    out = subprocess.run(["bash", str(LEAP), "--dry-run", "--max-ideas", "5"], cwd=REPO,
-                         capture_output=True, text=True, check=True, env=env).stdout
-    assert "inbox intake" not in out and "steering export" not in out
-    assert "idea publish" not in out
-
-
-def test_forage_dry_run_drive_mode_uses_snapshot_paths():
-    out = _dry_drive(FORAGE, "--categories", "momentum")
-    line = [ln for ln in out.splitlines() if ln.startswith("would read steering from: ")][0]
-    assert "/.runs/steering-forage/categories.txt" in line
-    assert "/.runs/steering-forage/inspirations/_sources.yaml" in line
-    assert "would seed sources registry" not in out
-
-
-def test_snapshot_dir_is_outside_agent_workdir():
-    out = _dry_drive(LEAP, "--max-ideas", "5")
-    snap = out.split("steering export --to ")[1].split()[0]
-    workdir = out.split("would create worktree: ")[1].split()[0]
-    assert not snap.startswith(workdir.rstrip("/") + "/")
-    assert "/.runs/" in snap
-
-
-def test_leap_human_ideas_bypass_the_depth_gate_in_source():
+def test_leap_has_no_drive_branches():
     src = LEAP.read_text()
-    assert "--source-kind human" in src and "depth gate bypassed: fresh owner ideas" in src
-    assert "--found-since" in src  # review I7: the bypass is age-bounded
+    for token in ("ALGUA_DRIVE_FOLDER_ID", "steering export", "idea publish", "STEER_DIR"):
+        assert token not in src, token
 
 
-def test_research_loop_publishes_after_its_digest():
+def test_leap_human_ideas_bypass_depth_gate_unconditionally():
+    src = LEAP.read_text()
+    assert "--source-kind human" in src and "--found-since" in src
+    assert "depth gate bypassed" in src
+    assert "DRIVE:-0" not in src
+
+
+def test_forage_has_no_drive_branches():
+    src = FORAGE.read_text()
+    for token in ("ALGUA_DRIVE_FOLDER_ID", "ALGUA_STEERING_DIR", "steering export", "STEER_DIR",
+                  'DRIVE}"'):
+        assert token not in src, token
+
+
+def test_research_loop_has_no_publish():
     src = (REPO / ".opencode/scripts/run-research-loop.sh").read_text()
-    tail = src.split("append_digest completed", 1)[1]
-    assert "research idea publish" in tail
+    assert "research idea publish" not in src
+    assert "ALGUA_DRIVE_FOLDER_ID" not in src
 
 
 def test_configured_source_backlog_ignores_permanent_exhaustion(tmp_path):
@@ -827,3 +809,25 @@ def test_forage_search_receives_review_feedback_or_visible_read_error(tmp_path, 
     assert result.returncode == 0, result.stderr
     assert "conceptual feedback, not empirical refutations" in result.stdout
     assert ("read_error" if failed else "missing estimator FIXTURE") in result.stdout
+
+
+def test_driver_vault_default_equals_the_settings_default():
+    """The drivers' ALGUA_KNOWLEDGE_DIR fallback must be the vault the CLI (intake, accept) writes
+    to, or owner Inbox notes never reach the leap agent."""
+    from algua.config.settings import Settings
+
+    default = Path(Settings.model_fields["knowledge_dir"].default).as_posix()
+    for script in (LEAP, FORAGE):
+        pattern = r'^KB_DIR="\$\{ALGUA_KNOWLEDGE_DIR:-\$\{REPO_ROOT\}/([^}]+)\}"'
+        m = re.search(pattern, script.read_text(), re.M)
+        assert m, script
+        assert m.group(1) == default, script
+
+
+def test_leap_intake_output_goes_to_the_journal_and_stays_non_fatal():
+    src = LEAP.read_text()
+    block = src[src.index("INTAKE_CMD[@]"):]
+    line = block[: block.index("\n", block.index("INTAKE_CMD[@]"))]
+    assert "/dev/null" not in line
+    assert ">&2" in line
+    assert "inbox intake failed; continuing" in src

@@ -565,7 +565,7 @@ relying on containment.
 **The vault's sources registry.** `algua-kb/inspirations/` is runtime state and git-ignored; the tracked
 artifact is the SEED at `deploy/kb/inspirations/_sources.yaml`, which `install-user-units.sh` (and
 `forage.sh` at startup, so a relocated `ALGUA_KNOWLEDGE_DIR` self-heals) copies to
-`${ALGUA_KNOWLEDGE_DIR:-<repo>/kb}/inspirations/_sources.yaml` **only when that file is absent** —
+`${ALGUA_KNOWLEDGE_DIR:-<repo>/algua-kb}/inspirations/_sources.yaml` **only when that file is absent** —
 your curation and the `write-yield` stamps are never overwritten.
 
 **Settings** (env file; see `deploy/systemd/algua.env.example`): `ALGUA_RESEARCH_RUNS_PER_DAY`,

@@ -227,7 +227,7 @@ def test_sources_registry_write_yields_does_one_load_and_one_save(tmp_path, monk
     assert loaded == {"a/one": {"n": 6}, "b/two": {"n": 7}}
 
 
-# --- Drive step 1 (spec 2026-11-12): snapshot-aware reads and the human vocabulary ---------------
+# --- The owner's (human) vocabulary -------------------------------------------------------------
 
 def _human(note_id: str, category: str = "uncategorized_human") -> str:
     return (GOOD.replace("2026-09-08-quiet-turnover-drift", note_id)
@@ -235,13 +235,6 @@ def _human(note_id: str, category: str = "uncategorized_human") -> str:
                 .replace("venue: blog/example", "venue: inbox")
                 .replace("obscurity: niche", "obscurity: human")
                 .replace("category: momentum", f"category: {category}"))
-
-
-def test_inspirations_dir_uses_steering_dir_when_set(tmp_path):
-    from algua.knowledge.inspirations import inspirations_dir
-    s = Settings(_env_file=None, knowledge_dir=tmp_path / "kb", steering_dir=tmp_path / "snap")
-    assert inspirations_dir(s) == tmp_path / "snap" / "inspirations"
-    assert SourcesRegistry(s).path == tmp_path / "snap" / "inspirations" / "_sources.yaml"
 
 
 def test_validate_note_accepts_human_kind_and_reserved_category_only_for_human():
@@ -263,3 +256,20 @@ def test_list_notes_puts_human_first_and_filters_source_kind(tmp_path):
     assert [n["id"] for n in list_notes(s)] == [
         "2026-11-01-inbox-b-idea", "2026-11-10-a-paper-note"]
     assert [n["id"] for n in list_notes(s, source_kind="human")] == ["2026-11-01-inbox-b-idea"]
+
+
+def test_accept_new_notes_rejects_owner_provenance_claims(tmp_path):
+    # Only `research inbox intake` writes owner notes: a staged (web-derived) note claiming
+    # `source_kind: human` or an `inbox_item_id` would let forage hijack an owner's inbox item.
+    s = _settings(tmp_path)
+    staged = tmp_path / "staged"
+    staged.mkdir()
+    (staged / "2026-11-12-inbox-fake-abc123.md").write_text(
+        _human("2026-11-12-inbox-fake-abc123"))
+    (staged / "2026-09-08-quiet-turnover-drift.md").write_text(
+        GOOD.replace("status: fresh", "status: fresh\ninbox_item_id: 1"))
+    out = accept_new_notes(staged_dir=staged, settings=s, seen_path=tmp_path / "seen.jsonl",
+                           categories=CATS, run_stamp="r", max_notes=10)
+    assert out["accepted"] == []
+    assert len(out["rejected"]) == 2 and all(
+        "reserved for inbox intake" in " ".join(r["reasons"]) for r in out["rejected"])

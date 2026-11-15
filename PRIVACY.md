@@ -14,5 +14,6 @@ notes in its owner's Google Drive. It has exactly one user: the owner of this pr
 - **Revoking access:** the owner can remove the app at any time from
   <https://myaccount.google.com/permissions>; the files it created stay in their Drive.
 
-How the integration works: [docs/agent/drive.md](docs/agent/drive.md).
+The Drive ideation integration has been removed from the codebase (the owner dashboard's Inbox
+replaced it); the app no longer reads or writes Drive files.
 Questions: open an issue in this repository.

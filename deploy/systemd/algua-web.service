@@ -1,0 +1,71 @@
+[Unit]
+Description=Algua owner dashboard (FastAPI backend + built frontend, Unix socket behind tailscale serve)
+# SYSTEM unit (install under /etc/systemd/system — see web/README.md), NOT a user unit: it must
+# run as its OWN dedicated user, never the uid the forage/leap/research agents run as. The owner
+# header (Tailscale-User-Login) is only trustworthy because nothing but tailscaled (root) can
+# connect to the socket; that boundary is the 0700 RuntimeDirectory owned by User= below. A unit
+# running as the agents' uid would put the socket inside every agent's reach (an agent could
+# forge the header and plant Inbox items). install-user-units.sh therefore does NOT install it.
+#
+# The backend listens on the Unix socket ONLY (--uds), never a TCP port. Expose it with
+#   tailscale serve --bg https:443 unix:/run/algua-web/web.sock
+#
+# One-time setup (as root), at /opt/algua:
+#   - useradd --system --no-create-home --shell /usr/sbin/nologin algua-web
+#   - root `uv sync`            (provides /opt/algua/.venv/bin/algua — the CLI seam the app execs)
+#   - `uv sync --project web`   (provides /opt/algua/web/.venv/bin/uvicorn)
+#   - `cd web/frontend && npm ci && npm run build`  (the dist/ the backend serves; without it the
+#     app runs api-only)
+#   - /etc/algua/web.env (root:algua-web 0640) holding the variables listed below.
+#   - the data directory must be reachable/writable by algua-web (e.g. a shared group with
+#     setgid on the data dir): even read-only CLI commands open the SQLite registry in WAL mode
+#     (sidecar -shm/-wal beside the DB) and run the idempotent migrate().
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=algua-web
+Group=algua-web
+# The platform's general settings (exchange etc.); broker credentials are scrubbed below.
+EnvironmentFile=-/etc/algua/algua.env
+# The dashboard's own settings, loaded AFTER (so they win). It must define:
+#   ALGUA_WEB_OWNER_LOGIN=<tailnet login of the owner>   (writes are refused while unset)
+#   ALGUA_DB_PATH, ALGUA_DATA_DIR, ALGUA_KNOWLEDGE_DIR   (MUST equal the values in
+#       /etc/algua/research.env: if they differ, Inbox items are written where the leap driver's
+#       `research inbox intake` never looks and are never taken)
+#   ALGUA_WEB_VAPID_SUB=mailto:<contact>                 (optional; push contact claim)
+EnvironmentFile=/etc/algua/web.env
+# Scrub broker credentials — the monitor never needs them (same name set as
+# algua-research.service). UnsetEnvironment= is applied AFTER EnvironmentFile=.
+UnsetEnvironment=ALGUA_ALPACA_API_KEY ALGUA_ALPACA_API_SECRET ALGUA_ALPACA_LIVE_API_KEY ALGUA_ALPACA_LIVE_API_SECRET
+WorkingDirectory=/opt/algua
+# /run/algua-web, 0700, owned by User=. uvicorn chmods the socket itself to 0666, so this
+# DIRECTORY is the access boundary (root/tailscaled can still open it).
+RuntimeDirectory=algua-web
+RuntimeDirectoryMode=0700
+UMask=0077
+ExecStart=/opt/algua/web/.venv/bin/uvicorn backend.main:app --uds /run/algua-web/web.sock --app-dir /opt/algua/web
+Restart=on-failure
+RestartSec=5
+
+# Hardening. The data dir (registry DB, inbox uploads, knowledge vault) and the web state dir
+# (VAPID key, push subscriptions) are the only writable paths; adjust to match web.env.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# Push state (VAPID key, subscriptions): systemd creates /var/lib/algua-web owned by algua-web, 0700.
+StateDirectory=algua-web
+StateDirectoryMode=0700
+Environment=ALGUA_WEB_STATE=/var/lib/algua-web
+ReadWritePaths=/opt/algua/data
+
+[Install]
+WantedBy=multi-user.target

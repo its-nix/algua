@@ -42,8 +42,8 @@ def test_old_qualification_table_preserves_rows_references_triggers_and_sequence
     conn.commit()
     migrate(conn)
     migrate(conn)
-    assert SCHEMA_VERSION == 53
-    assert conn.execute('PRAGMA user_version').fetchone()[0] == 53
+    assert SCHEMA_VERSION == 54
+    assert conn.execute('PRAGMA user_version').fetchone()[0] == 54
     assert conn.execute('PRAGMA foreign_keys').fetchone()[0] == 1
     assert conn.execute('PRAGMA foreign_key_check').fetchall() == []
     assert tuple(conn.execute('SELECT * FROM experimental_qualifications').fetchone()) == before
@@ -83,7 +83,7 @@ def test_fresh_schema_admits_only_real_actor_vocabulary_and_refuses_future_marke
             '(deployment_id,profile_digest,evidence_digest,evidence_json,actor) '
             "VALUES (?, 'profile', 'other', '{}', 'forged')", (dep,))
     conn.rollback()
-    conn.execute('PRAGMA user_version=54')
+    conn.execute('PRAGMA user_version=55')
     conn.commit()
     before = list(conn.iterdump())
     with pytest.raises(ValueError, match='newer'):

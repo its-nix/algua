@@ -194,6 +194,7 @@ echo "  systemctl --user enable --now algua-paper.timer             # paper tick
 echo "  systemctl --user enable --now algua-mergeback-drain.timer   # merge-back consumer, every 30m"
 echo "  systemctl --user enable --now algua-forage.timer            # web inspiration foraging, daily 03:00 UTC"
 echo "  systemctl --user enable --now algua-leap.timer               # inspirations -> hypotheses, every 2h at :30 (depth-gated)"
+echo "(the owner dashboard algua-web.service is a SYSTEM unit under its own user, NOT installed here — see web/README.md.)"
 echo "(algua-research.service / algua-paper.service / algua-mergeback-drain.service / algua-forage.service /"
 echo " algua-leap.service are oneshot units fired by their timers — do not enable them directly.)"
 echo "Consider 'loginctl enable-linger ${USER:-$(id -un)}' so user timers run without an active login."

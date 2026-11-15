@@ -9,10 +9,8 @@ from typer.testing import CliRunner
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ROOTS = ["deploy", "scripts", ".opencode", ".claude/skills", ".github"]
-SKIP_DIRS = {".superpowers", "web", "node_modules", "__pycache__", ".git"}
+SKIP_DIRS = {".superpowers", "node_modules", "__pycache__", ".git"}
 REMOVED = [
-    "algua-web",
-    "--project web",
     "research campaign-menu",
     "backtest replay",
     "governance record",

@@ -28,6 +28,7 @@ from algua.registry.db.frozen_evidence import SCHEMA as FROZEN_EVIDENCE_SCHEMA
 from algua.registry.db.gate import SCHEMA as GATE_SCHEMA
 from algua.registry.db.holdout import SCHEMA as HOLDOUT_SCHEMA
 from algua.registry.db.ideas import SCHEMA as IDEAS_SCHEMA
+from algua.registry.db.inbox import SCHEMA as INBOX_SCHEMA
 from algua.registry.db.knowledge import SCHEMA as KNOWLEDGE_SCHEMA
 from algua.registry.db.mergeback import SCHEMA as MERGEBACK_SCHEMA
 from algua.registry.db.runs import SCHEMA as RUNS_SCHEMA
@@ -51,4 +52,5 @@ SCHEMA = "\n".join([
     EXPERIMENTAL_SCHEMA,
     DRAWDOWN_SCHEMA,
     CAPPED_LIVE_SCHEMA,
+    INBOX_SCHEMA,
 ])

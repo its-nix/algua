@@ -358,3 +358,30 @@ def test_legacy_row_null_fdr_columns_emit_as_nulls(monkeypatch, tmp_path):
                 "fdr_test_index", "fdr_cohort"):
         assert col in row
         assert row[col] is None
+
+
+def test_research_rows_expose_holdout_record_for_expected_line(monkeypatch, tmp_path):
+    """The dashboard's expected line compounds the passing holdout return per session, so each
+    research row carries sharpe_oos / total_return_oos (from the projected holdout checks) and
+    n_obs_oos (= holdout_n_bars); a missing source yields null, never a guess. Forward rows are
+    untouched."""
+    monkeypatch.setenv("ALGUA_DB_PATH", str(tmp_path / "r.db"))
+    decision = {"passed": True, "checks": [
+        {"name": "holdout_sharpe", "op": ">=", "threshold": 0.5, "value": 1.65, "passed": True},
+        {"name": "holdout_return", "op": ">", "threshold": 0.0, "value": 0.12, "passed": True},
+    ]}
+    with closing(_conn()) as conn:
+        rec = _register(conn)
+        _insert_gate_row(conn, rec.id, decision_json="not json")
+        _insert_gate_row(conn, rec.id)
+        _insert_gate_row(conn, rec.id, decision_json=json.dumps(decision))
+        _insert_forward_row(conn, rec.id)
+    result, payload = _invoke()
+    assert result.exit_code == 0, result.stdout
+    newest, empty, corrupt = payload["gate_evaluations"]
+    assert (newest["sharpe_oos"], newest["total_return_oos"], newest["n_obs_oos"]) == (
+        1.65, 0.12, 100)
+    for row in (empty, corrupt):
+        assert row["sharpe_oos"] is None and row["total_return_oos"] is None
+        assert row["n_obs_oos"] == 100
+    assert "total_return_oos" not in payload["forward_gate_evaluations"][0]
