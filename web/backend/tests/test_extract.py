@@ -292,6 +292,39 @@ async def test_pinned_backend_refuses_unix_sockets() -> None:
         await extract._PinnedBackend(inner=_FakeSockets({})).connect_unix_socket("/run/x.sock")
 
 
+async def test_real_sockets_connect_to_the_vetted_ip_not_a_second_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real transport (anyio sockets) over a loopback listener the test vets as public.
+
+    `.invalid` never resolves through system DNS, so a fetch only succeeds if the socket went to
+    the address vetted here; the real stream's peer address must also pass the post-connect
+    check."""
+    import asyncio
+
+    received: list[bytes] = []
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        received.append(await reader.readuntil(b"\r\n\r\n"))
+        writer.write(_http(b"<title>Real</title><p>sockets</p>"))
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    real_is_public = extract._is_public
+    monkeypatch.setattr(extract, "_is_public", lambda a: a == "127.0.0.1" or real_is_public(a))
+    _dns(monkeypatch, {"pinned.invalid": ["127.0.0.1"]})
+    monkeypatch.setattr(extract, "_transport", lambda: None)
+    try:
+        title, text = await extract.fetch_article(f"http://pinned.invalid:{port}/a")
+    finally:
+        server.close()
+        await server.wait_closed()
+    assert (title, text) == ("Real", "sockets")
+    assert f"Host: pinned.invalid:{port}\r\n".encode() in received[0]
+
+
 async def test_real_transport_is_pinned() -> None:
     transport = extract._real_transport()
     assert isinstance(transport, extract._PinnedTransport)
