@@ -2,6 +2,15 @@
 
 For the staged research-only VPS profile, use the [VPS research operating runbook](research-vps.md).
 
+**Current source versus installation (2026-11-15):** the daily milestone and coordination live in
+[PRD §25](../../docs/PRD.md#25-development-sequence) and the shared Todoist board. Timer templates
+and scripts below are source capabilities, not verified current host state. Record installed
+source/unit/release identities before deployment acceptance. The current public merge-back entry
+does not merge/revert `main`: its [draft verified-PR admission](#draft-verified-pr-admission-not-activated)
+requires already merged exact-head review/check/tree/isolation evidence and has no issued production
+policy. Earlier factory/direct-main descriptions below preserve historical plumbing context only;
+they do not authorize enabling a drainer, direct publication or new deployment automation.
+
 A `oneshot` service fired by a `timer` drives the always-on **paper** operator (#486). Each firing
 runs `algua operator run`, which decides — via the XNYS calendar gate, a per-session idempotency
 marker, and a git-dir-anchored run lock — whether to actually run the wrapped driver command. A
@@ -17,7 +26,7 @@ sibling all no-op cleanly.
   drainer's `:00/:30` grid. **Daily on purpose, NOT weekdays-only**: the operator wrapper's XNYS
   calendar gate no-ops non-session firings, so the timer never re-encodes the exchange calendar.
 - `algua-research.{service,timer}` — the autonomous **research producer** cycle at **factory
-  cadence: every 2 hours** (12/day; see
+  cadence: every 6 hours** (four scheduled checks/day; see
   `docs/superpowers/specs/2026-08-10-strategy-factory-design.md`): an agent ideates → authors
   → backtests/walk-forwards/sweeps → gates (preview `research promote`) up to `candidate` in an
   explore-isolated worktree. See "Autonomous research loop" below.
@@ -30,8 +39,10 @@ sibling all no-op cleanly.
 - `algua-leap.{service,timer}` — inspirations → structured hypotheses, every 2h at `:30` (between
   research runs), but only when the idea pool is below its refill trigger. See "Ideation engine
   (forage + leap)" below.
-- `algua-forage.{service,timer}` — web-search inspiration foraging into `algua-kb/inspirations/`, daily
-  `03:00 UTC`. See "Ideation engine (forage + leap)" below.
+- `algua-forage.{service,timer}` — hourly bounded checks at `:05` for web-search inspiration
+  foraging into `algua-kb/inspirations/`. The trusted driver admits empty-pool refill or 03:00 UTC
+  refresh launches, at most twice/day and at least two hours apart; idle checks do not launch agents.
+  See "Ideation engine (forage + leap)" below.
 
 ## Install
 
@@ -94,13 +105,14 @@ live unit set is never left half-updated, and the installed units can never drif
 templates for longer than one re-run. Use `loginctl enable-linger <user>` so user timers fire without an active login, and
 inspect with `systemctl --user list-timers 'algua-*'` / `journalctl --user -u algua-research.service`.
 
-**Factory cadence (slice 1).** Research fires **every 2h** (`OnCalendar=*-*-* 00/2:00:00 UTC`,
+**Source cadence.** Research fires **every 6h** (`OnCalendar=*-*-* 00/6:00:00 UTC`,
 overlaps skip via the launcher's non-blocking flock); paper fires **every 20 minutes at :07/:27/:47
 UTC** and trades at most once per session (the calendar gate no-ops non-sessions and the marker
 no-ops repeats — do NOT make it weekdays-only, and do NOT collapse it back to a single daily fire:
 that is the retry budget for a lost `operator.lock` race); the merge-back drainer fires **every 30
-minutes** at `:00/:30`, deliberately disjoint from the paper grid. Enable ALL THREE so paper
-evidence starts accruing the moment the first strategy reaches the book.
+minutes** at `:00/:30`, deliberately disjoint from the paper grid. Templates do not establish
+installed activation or admission readiness; enable only reviewed, authorized lanes with their
+required evidence. Current admission prerequisites remain binding.
 
 **Mutual exclusion around the paper tick (#316, closed by factory slice 3).** `paper merge-back`
 and `paper trade-tick`/`run-all` mutate the same shared checkout + registry. When the drainer
@@ -442,27 +454,25 @@ when only the paper operator shipped. It uses the **explore-isolated** topology.
 `promotion.py`/`gates.py` in its mutable worktree; strategy code and gate code are the
 same Python package, so if the agent ran against the real funnel it could execute altered gate logic
 against the real registry. CODEOWNERS only gates *merges to main*, not a live agent's local execution.
-Exploration therefore runs on a throwaway copy, and the **only** path to the authoritative funnel is
-`paper merge-back` — whose diff-policy rejects gate-core edits *before* the merge and whose promote runs
-trusted (main + allowlisted diff) code. That is the trusted reconciler.
+Exploration therefore runs on a throwaway copy. The current `paper merge-back` entry requires
+verified-PR admission before authoritative promotion/intake; the diff policy alone does not prove
+strategy isolation. Its draft prerequisites below remain unaccepted until reviewed and installed.
 
 **Prerequisites.** `opencode` must be on `PATH` and **authenticated** for the user the unit runs as
 (`opencode run` is invoked headless with `(the MCP sandbox bypass is gone; see forage.sh)` inside the isolated
 worktree). Enable with `sudo systemctl enable --now algua-research.timer`.
 
-**The authoritative step is now automatic (factory slice 3).** A passed *preview* is a candidate,
-not a promotion. The launcher enqueues every valid `merge_back` it parses from the report trailer;
-the merge-back drainer (`algua-mergeback-drain.timer`, every 30m) runs the REAL
-`paper merge-back --branch research-run/<stamp> --strategy <name> --universe <u> --start D --end D`
-for it through `algua operator lock-run`. That is the trusted, authoritative promote (real recorded
-breadth, real single-use holdout burn) + gated code merge + paper intake. The agent
-**cannot go live** (human-signed cryptographic wall) and cannot merge the CODEOWNERS-protected
-integrity files. A human can still force one through immediately instead of waiting for the next
-drain cycle: `uv run algua paper merge-back --branch <b> --strategy <s> --universe <u> --start D
---end D` (see "Direct-invocation residual risk" above for why that bypasses the shared lock).
+**Authoritative admission is separate from a successful preview.** The launcher enqueues valid
+`merge_back` report entries; the drainer template attempts `paper merge-back` through
+`algua operator lock-run`. Current entry behavior requires an already merged, exact-head verified
+PR and the review/check/tree/isolation evidence described below. Missing evidence remains pending;
+no installed autonomous merger or production admission policy is established here. Direct human
+invocation supplies none of the missing evidence and must preserve the shared operator lock.
+Actual authorized promotion/intake retains its breadth/holdout and identity checks. Agents cannot
+go live or bypass CODEOWNERS-protected integrity review.
 
-**Cadence and the trial count.** The timer runs at **factory cadence: every 2h, 12 runs/day**
-(`OnCalendar=*-*-* 00/2:00:00 UTC`). That rate is safe for the funnel *because* exploration is
+**Cadence and the trial count.** The source timer has **every 6h, four scheduled checks/day**
+(`OnCalendar=*-*-* 00/6:00:00 UTC`). Exploration is
 scratch: a cycle's `research promote` is a preview that records NO breadth and burns NO holdout on
 the authoritative funnel. Breadth is recorded only by an actual `paper merge-back` run, and every
 recorded sweep raises the DSR trial count (max of a strategy's own lifetime combos and the
@@ -507,7 +517,7 @@ launcher claims ideas from the pool per run (`--category` restricts), it no long
 thesis.
 
 **Contention.** The driver holds a non-blocking `data/research-loop.lock` for the whole cycle and skips
-(no-op) rather than queue if another research cycle holds it — so the 2h cadence can never stack
+(no-op) rather than queue if another research cycle holds it — so the scheduled cadence cannot stack
 overlapping cycles (with `TIMEOUT=45m` + `SYNC_TIMEOUT=5m` under `TimeoutStartSec=4200`, each slot has
 ~50m of headroom anyway). It does **not** contend with the paper operator (research writes only
 scratch; the sole authoritative writer, `paper merge-back`, has its own `merge_back.lock` + operator
@@ -537,9 +547,9 @@ staggered grid, each on its own cadence, all kept off the **paper tick's** minut
 
 | unit | schedule | does |
 |---|---|---|
-| `algua-research.timer` | every 2h at `:00` | claims ideas from the pool, authors/backtests/gates them (unchanged) |
+| `algua-research.timer` | every 6h at `:00` | claims ideas from the pool, authors/backtests/gates them |
 | `algua-leap.timer` | every 2h at `:30`, between research runs | inspirations → structured hypotheses, but only when `research idea depth` is below its refill trigger AND the vault still holds a non-exhausted note (either gate exits fast, no worktree) |
-| `algua-forage.timer` | daily `03:00 UTC` | web search → inspiration notes under `algua-kb/inspirations/`, rotating `FORAGE_SLICES` categories per run so every category is foraged at least weekly |
+| `algua-forage.timer` | hourly at `:05` | bounded refill/03:00 UTC refresh checks; actual admitted launches forage inspirations under `algua-kb/inspirations/` |
 
 `algua-leap.timer` **shares the merge-back drainer's `:30` minute**, and that is deliberate: leap
 takes no `operator.lock` — only the drainer and the paper tick contend for that. Leap, forage and
@@ -581,7 +591,11 @@ the category rotation width.
 `journalctl --user -u algua-forage.service` / `journalctl --user -u algua-leap.service` show
 completed runs.
 
-## Auto merge-back (factory slice 3)
+## Historical auto merge-back plumbing (factory slice 3)
+
+The following original direct-main workflow is historical. Current entry behavior and activation
+requirements are in [draft verified-PR admission](#draft-verified-pr-admission-not-activated).
+Do not use this section to infer an installed autonomous merger or bypass its pending evidence.
 
 The candidate **consumer** is now an always-on timer (`algua-mergeback-drain.{service,timer}`),
 closing the last human-run gap between the research loop and the authoritative funnel. Three

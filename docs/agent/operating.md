@@ -8,6 +8,14 @@ define present operating permissions. The [September reconciliation](../vision-r
 is a dated assessment, not a current gap register. Product targets do not change runtime controls
 or grant merge/deployment permission.
 
+Owner alignment, 2026-11-15: Todoist is the shared execution board for agents and Lior; the PRD
+governs vision and GitHub holds code/review/evidence. The current milestone in PRD §25 runs daily
+research/data and operations/recovery tracks in parallel. Preserve existing claims and link
+execution cards to milestones. Runtime evidence, task priority and roadmap approval grant no
+additional merge, deployment or trading authority. Current merge-back source requires verified-PR
+admission and marks its new semantics as draft; verify the installed revision rather than relying
+on historical direct-main automation descriptions.
+
 The opt-in capped route implements historical qualification plus five actual scheduled paper
 sessions; see [capped live](capped-live.md). The owner-approved opt-in account policy reduces
 exposure at 10% drawdown and halts at 20%; see [layered risk](layered-risk.md). Unconfigured

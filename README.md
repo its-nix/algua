@@ -11,6 +11,19 @@ and the [dated September roadmap reconciliation](docs/vision-reconciliation.md).
 See `docs/agent/` for operating docs. Dated material in `docs/superpowers/` preserves design history.
 Brand assets and usage guidance live in [`docs/brand/`](docs/brand/README.md).
 
+The next milestone is one trustworthy **daily research-to-paper operating path**: qualified
+historical data, reproducible research that reuses prior findings, frozen paper execution,
+reconciliation, observed recovery and 72 hours unattended operation or a predefined safe halt.
+Research/data and deployment operations proceed in parallel; security and accounting correctness
+take priority over dashboard polish. A rejected strategy is a useful result. Strategy qualification
+and human-approved live activation remain separate from proving the operating machinery.
+
+Todoist is the shared execution board for agents and Lior; the PRD governs vision, operating guides
+define present permissions, and GitHub holds code and evidence. See [PRD §25](docs/PRD.md#25-development-sequence)
+for priorities and the broader roadmap. Hourly operation, portfolio breadth and additional modalities
+remain targets after this daily milestone. Sharadar ingestion is merged; qualified PIT data and
+verified installation require their own evidence.
+
 ## Quickstart
 
 ```

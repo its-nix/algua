@@ -20,6 +20,13 @@ experimental-delivery direction in §16. Current opt-in qualification and risk i
 documented in [capped live](agent/capped-live.md) and [layered risk](agent/layered-risk.md);
 their owner amendments supersede the earlier proposal status.
 
+Owner alignment, 2026-11-15: the next milestone is one trustworthy **daily** research-to-paper
+operating path, with observed recovery and 72 hours unattended operation or a predefined safe halt.
+Historical strategy qualification and human-approved live activation are separate outcomes.
+Todoist is the shared execution board for agents and Lior; GitHub holds code and implementation
+evidence. The current priorities and acceptance boundaries are in §25. This amendment changes
+product direction and task coordination, not executable gates or deployment/trading authority.
+
 ---
 
 # 1. North Star
@@ -237,9 +244,10 @@ next research budget. Engineering reads aggregate telemetry → deduplicates a r
 → submits permitted orders → audits. Trading must remain independent of agent availability.
 An unsuccessful economic hypothesis is not automatically an engineering incident.
 
-The product ownership map uses Hermes Kanban for delegated engineering, GitHub for code and
-evidence, and Todoist for human commitments. Experiments belong in the existing research ledger,
-not one task card per trial. This map does not amend the repository's operating-policy files.
+Todoist is the shared execution/coordination board for engineering agents and Lior for this phase;
+GitHub holds code, review and implementation evidence. Hermes retains its engineering role without
+a competing authoritative task board. Experiments belong in the existing research ledger, not one
+task card per trial. Product intent remains here; present permissions remain in the operating guides.
 
 ### Strategy-first private monitor
 
@@ -466,11 +474,12 @@ veto. The target's stronger
 robustness requirements do not imply that all statistical checks currently block promotion. Agent
 advancement uses the actual promotion gates, never a board rank or a raw lifecycle flag.
 
-A bare `--actor human` grants nothing: research/paper human-only relaxations require a verified
-single-use SSH challenge bound to the command, strategy, recomputed identity and exact run context,
-including relaxations. Live activation separately requires the authenticated human signature,
-matching code/config/dependency identity and a fresh forward certificate. Protect signer trust
-anchors independently of the runtime. None of these walls is relaxed by this PRD.
+A bare `--actor human` grants nothing: the earlier research/paper signed overrides and the
+relaxations they unlocked were removed. Research and paper gates use the same fixed criteria for
+every actor. Strict live activation requires the authenticated human signature, matching
+code/config/dependency identity and a fresh forward certificate; the capped route has its separate
+qualification and exact-capital signature. Protect signer trust anchors independently of the
+runtime. None of these walls is relaxed by this PRD.
 
 **Owner amendment, 2026-11-09 — autonomous paper:** routine paper account-policy configuration,
 explicit reconciled paper restoration, candidate intake, allocation, execution, default forward
@@ -528,9 +537,13 @@ The merged recipe records snapshot `baaa116a36acee68`: 150 symbols, 75,150 rows,
 historical eligibility, not a completed investment dataset. These are recorded acquisition results,
 not a fresh acquisition or payload verification in this documentation change.
 
-Later, approved sources add depth, security identity, historical membership/capitalization,
-delistings, corporate actions and timestamped filings/news through the same provider/snapshot
-seams. The frozen bars contract remains unchanged. No premium procurement is authorized here.
+Sharadar daily bars and selected ARQ fundamentals ingestion are merged in PR #837 (`3d28f07`).
+That source integration is not installed-runtime verification, paid adverse-case acceptance,
+historical universe materialization or promotion-bound PIT verification. The agreed
+[daily PIT data design](superpowers/specs/2026-11-12-pit-data-pipeline-design.md) supplies the next
+data path through existing provider/snapshot seams. Fundamental availability and revision semantics
+need separate qualification; price-only acceptance cannot qualify them. The frozen bars contract
+remains unchanged. Existing purchase/access tasks retain their scope; this document authorizes no purchase.
 
 ---
 
@@ -561,12 +574,17 @@ Likewise, lower timeframes are justified by specific opportunities—not by the 
 
 High-frequency/tick-level trading is outside the current thesis.
 
-**Owner-approved starting universe, 2026-11-08:** liquid U.S. mid-cap common equities, initially
-screened from the current S&P MidCap 400. Start with price **>= $10**, trailing median
-**60-session dollar volume >= $20M**, **252 sessions of observed history**, and a sector-spanning
-sample of **150–300** eligible names. Rank liquidity within sectors and select sectors round-robin;
-never select the sample by historical strategy returns. These initial rules supersede the earlier
-$0.5–10B/$5/$5M/90-session pilot focus, without claiming empirically optimal thresholds.
+**Owner-approved qualified-research universe, 2026-11-15:** approximately **1,000 liquid U.S.
+common stocks**, recomputed for each historical decision date. No S&P 400 membership or fixed
+$0.5–10B market-cap restriction is required. Define explicit price, trailing liquidity and
+listing-age rules, a deterministic rank cutoff/tie-break and inclusion/exclusion semantics; freeze
+the rules and bind their identity before evaluating strategy returns. Missing historical eligibility
+inputs must refuse qualification rather than substitute today's survivors. Stable security identities,
+dated aliases, corporate actions and resolved terminal outcomes follow the daily PIT data design.
+
+The November 8 current-S&P-400 sample (150–300 names, price >= $10, 60-session median dollar volume
+>= $20M and 252 observed sessions) remains a **historical machinery/proxy profile**, not the new
+qualified universe. It does not constrain the new universe or acquire PIT status retroactively.
 
 Begin with daily signals and target multi-day positions of roughly **2–20 trading sessions**.
 Weekly re-ranking is the initial machinery example; it may retain a winning name across multiple
@@ -1002,11 +1020,15 @@ immutable live artifacts and signer anchors; broker/economic-state reconciliatio
 enforced capital/drawdown policy; and the human-signed live ceremony. Machine acceptance cannot
 prove alpha, investment eligibility or authority to trade.
 
-**Current evidence:** the full machine target is not accepted. Three unattended cycles and 100
-real-data attempts remain **UNKNOWN**. Merged component slices do not satisfy those counts or the
-integrated isolation, learning, portfolio, release and recovery demonstrations. Zero gate-qualified
-strategies is compatible with machine acceptance if honest refusals and isolated execution mechanics
-are demonstrated; it never waives investment acceptance.
+**Recorded evidence:** the [November 5 acceptance record](acceptance/research-vps-cycles.md)
+documents four empirical unattended cycles, meeting the three-cycle threshold on the limited proxy
+dataset. The [November 4 benchmark](acceptance/real-sweep-benchmark.md) records 100 distinct trial
+configurations across four existing mechanisms. It was not an OpenCode campaign or 100 independent
+hypotheses; do not silently equate it with the full campaign requirement. Preserve both records
+without counting them again or presenting them as current runtime health. Integrated isolation,
+cumulative learning, portfolio, release/recovery and full machine acceptance remain unaccepted.
+Zero gate-qualified strategies is compatible with machine acceptance when honest refusals and
+isolated execution mechanics are demonstrated; it never waives investment acceptance.
 
 ---
 
@@ -1051,6 +1073,42 @@ historical replay remain explicitly labeled and cannot replace real scheduled op
 The architecture is designed as a complete system from the beginning.
 
 Implementation remains incremental and testable.
+
+### Current milestone — trustworthy daily research-to-paper operation
+
+Owner-approved on 2026-11-15. Deliver one reproducible daily path using qualified historical data,
+existing research records, frozen paper artifacts, reconciled execution and observed recovery.
+The overall company vision and eight phases below remain; this milestone does not require every
+hourly, portfolio or multimodal target to be complete first.
+
+| Track | Dependency order | Evidence needed |
+|---|---|---|
+| Research/data | Reproduce and repair current loop failures → verify installed Sharadar ingestion and adverse historical cases → freeze historical universe rules → stable identities/actions/terminal outcomes and reviewed PIT verification → qualified frozen-data campaign | Exact installed/source identities; snapshot/config/seed and costs; honest attempts, exclusions and gate outcomes; prior results cited and conclusions retained |
+| Operations | Establish installed supervisor/admission behavior → broker crash/uncertain-submit/restart recovery and compatible release recovery → frozen daily paper exercise → 72-hour unattended observation | No duplicate effects; reconciled venue/ledger state; exact release/artifact identity; health/alert evidence; either correct operation or a predefined safe halt |
+
+Run these tracks in parallel with bounded work in progress, normally one claimed deliverable per
+track. Preserve existing claims. Security and accounting correctness can interrupt either track;
+dashboard polish, new modalities, hourly expansion and external capital follow the daily milestone.
+Authoritative generated-strategy isolation and runtime-unwritable authority remain acceptance
+obligations: scope and human review must be resolved before broader automatic trusted execution.
+This roadmap does not implement or waive them.
+
+Minimum experiment reuse is part of this milestone: each actual cycle consults prior results,
+explains what changed or why a repeat is justified, and records its outcome in the existing ledger/KB.
+Advanced synthesis and research-budget optimization follow demonstrated reuse, not another database.
+
+Completion requires reproducible research on qualified historical inputs; frozen scheduled paper
+execution with reconciliation; observed fault/release recovery; and 72 hours operating correctly
+or reaching a documented safe halt. Replay and labeled mechanics fixtures may exercise controls
+when no strategy qualifies, with no invented candidate or forward-session credit. An all-rejected
+campaign is a valid research outcome. A passing strategy, its five genuine successful scheduled
+paper sessions and subsequent human-approved capped-live activation are separately evidenced
+outcomes; no milestone deadline lowers a gate. The full machine acceptance in §23 remains broader.
+
+Todoist carries one actionable card per deliverable, linked milestones, explicit blockers and
+acceptance evidence. Use the shared Ready, In progress, Human decisions/access, Blocked, Review,
+Later and Retired/superseded sections. Retired cards retain history and replacement links without
+claiming unfinished implementation was completed. Neither a card nor this sequence grants authority.
 
 ### Phase 1 — Operating kernel
 Make one strategy travel cleanly from research through real-money execution using immutable artifacts and safe operations.
