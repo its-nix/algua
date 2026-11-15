@@ -17,7 +17,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import FrameType
 
-from algua.operator.research_cycle import CycleLimits, duration_seconds
+# Keep settings and ledger imports inside the supervised child startup.
+from algua.operator.research_cycle_limits import CycleLimits, duration_seconds
 
 RESEARCH_DRIVER = Path(__file__).resolve().parents[2] / ".opencode/scripts/run-research-loop.sh"
 RECOVERY_SECONDS = 120
