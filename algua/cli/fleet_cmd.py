@@ -18,6 +18,7 @@ from algua.execution.fleet_health import (
 from algua.execution.order_state import tick_snapshot_series
 from algua.operator.checkout_guard import checkout_status
 from algua.portfolio.equity_curve import change_today, pnl_curve
+from algua.registry.allocation_history import allocation_capitals_at
 from algua.registry.db import registry_conn
 from algua.registry.store import SqliteStrategyRepository
 from algua.risk import global_halt
@@ -91,7 +92,8 @@ def equity(
     since: str = typer.Option(None, "--since", help="inclusive lower bound (ISO-8601, UTC)"),
 ) -> None:
     """Fleet P&L-indexed curve: per-session cumulative P&L and total equity across strategies.
-    Allocation entry/exit is never counted as profit. Pure read; lane filter applies first."""
+    Allocation entry/exit/resizing is excluded from profit when historical allocation bases exist.
+    Legacy intervals without allocation history retain raw-equity changes. Pure read."""
     if lane is not None and lane not in _SERIES_LANES:
         raise ValueError(f"lane must be one of {list(_SERIES_LANES)!r}, got {lane!r}")
     since_dt = _norm_since(since) if since is not None else None
@@ -105,6 +107,13 @@ def equity(
             truncated = truncated or any(res["truncated"].values())
             rows = [{**r, "lane": ln} for ln, rs in res["series"].items() for r in rs or []]
             if rows:
+                for ln in _SERIES_LANES:
+                    lane_rows = [row for row in rows if row["lane"] == ln]
+                    capitals = allocation_capitals_at(
+                        conn, rec.id, [row["tick_ts"] for row in lane_rows])
+                    if capitals is not None:
+                        for row, capital in zip(lane_rows, capitals, strict=True):
+                            row["allocated_capital"] = capital
                 rows_by_strategy[rec.name] = rows
                 active[rec.name] = _STAGE_LANES.get(rec.stage, set())
     points = pnl_curve(rows_by_strategy, active)
