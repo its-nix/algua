@@ -85,6 +85,40 @@ The current vendor ticker is a restated storage key. This command infers no hist
 intervals, listing history or universe membership. Coverage and completeness remain unverified;
 it publishes no snapshot and changes no trading feed or qualification.
 
+## Stable-identity bars and private universe preview (unqualified)
+
+Stage 1 freezes bars under stable IDs; stage 2 computes a private preview of the frozen
+[`us-liquid-common/v1`](agent/daily-universe-rules.md) universe. Both are unqualified: neither
+sets `verified_pit`, publishes a universe, imports into the universe store or changes a feed.
+
+```bash
+uv run algua data sharadar prepare-bars --sep SEP.csv --tickers TICKERS.csv \
+  --actions ACTIONS.csv --identities identities.json --as-of 2026-11-16T00:00:00+00:00
+uv run algua data sharadar compute-universe --bars-snapshot ID --identities identities.json \
+  --rules deploy/research/us-liquid-common-v1.json --evidence evidence.json \
+  --start 2024-01-02 --end 2026-11-16 --out /private/preview.json
+```
+
+- **Stable ID** = the compiler key upper-cased: `sharadar:permaticker:N` becomes
+  `SHARADAR:PERMATICKER:N` (the DataStore's canonical form). This explicit transform is recorded in
+  snapshot metadata and the preview, and the ASCII tie key is the transformed ID in every stage.
+- `prepare-bars` hashes the captured SEP/TICKERS/ACTIONS bytes, requires TICKERS/ACTIONS to match the
+  hashes in the identity artifact, requires every SEP ticker to be exactly one current storage ticker,
+  and reuses the existing raw-bar normalization and action/raw-unit check. No historical alias is
+  inferred.
+- `compute-universe` needs explicit dated evidence (`algua.sharadar.eligibility_evidence.v1`) bound to
+  the identity artifact, bars content hash and rules hash: per-security listing episodes, dated
+  domicile/venue/instrument/currency intervals, ranges where listing status is certified complete, and
+  certified-absent sessions. It is a declared input; the preview records it as **unverified**.
+  Public vendor action types (listed/delisted/exchange/ticker events) do not establish historical
+  currency, domicile or common-stock class, so a real historical run stays **blocked** until trusted
+  explicit evidence exists.
+- Per date, unknown listing status, universe inventory, eligibility field, or expected bar **refuses
+  that date** (never excluded, no replacement, no carried-over membership). A certified absence in the
+  60-session window excludes. History: a counted >=252 valid sessions in one known continuous episode
+  passes even if an older bar prefix is unknown; below 252 with an unknown prefix refuses; below 252
+  with the whole episode prefix accounted excludes. If no date computes, nothing is written.
+
 ## Remaining paid-data acceptance
 
 The public AAPL sample cannot prove midcap/delisted coverage, reused-ticker identity, merger or
