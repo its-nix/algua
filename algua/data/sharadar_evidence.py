@@ -109,6 +109,8 @@ def parse_evidence(data: bytes, *, identity_sha256: str, bars_content_hash: str,
             out[sid] = SecurityEvidence(tuple(sorted(eps, key=lambda e: e.start)),
                                         tuple(sorted(els, key=lambda e: e.start)), absent,
                                         tuple(sorted(cert, key=lambda e: e.start)))
+        if set(out) != set(known_ids):  # every artifact identity must be accounted for
+            raise IdentityCompileError("evidence must cover exactly all artifact identities")
         return Evidence(lo, hi, out)
     except IdentityCompileError:
         raise

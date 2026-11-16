@@ -23,11 +23,12 @@ IDS = {"ZZA": 900001, "ZZB": 900002, "ZZC": 900003}
 SID = {k: f"SHARADAR:PERMATICKER:{p}" for k, p in IDS.items()}
 
 
-def _build(tmp_path, *, vol=None, skip=None):
+def _build(tmp_path, *, vol=None, skip=None, extra=()):
     vol = {"ZZA": 2_000_000, "ZZB": 2_000_000, "ZZC": 2_000_000, **(vol or {})}
     skip = skip or {}
     t, a, s = tmp_path / "T.csv", tmp_path / "A.csv", tmp_path / "S.csv"
-    t.write_text(T_HEAD + "".join(f"SEP,{p},{k},n,NYSE,N,X,,\n" for k, p in IDS.items()))
+    t.write_text(T_HEAD + "".join(f"SEP,{p},{k},n,NYSE,N,X,,\n" for k, p in IDS.items())
+        + "".join(f"SEP,{p},{k},n,NYSE,N,X,,\n" for k, p in extra))
     a.write_text(A_HEAD)
     s.write_text(S_HEAD + "".join(
         f"{k},{d},10,10,10,10,{vol[k]},10,10,{d}\n"
@@ -41,18 +42,18 @@ def _build(tmp_path, *, vol=None, skip=None):
 
 
 def _evidence(tmp_path, ident, prep, *, absent=None, cert_from="2023-01-01", omit=None,
-              currency="USD"):
+              currency="USD", cert_known="2023-01-01", extra=()):
     absent = absent or {}
     start = {"known_from": "2023-01-01", "end_exclusive": None}
     secs = [{
         "stable_key": f"sharadar:permaticker:{p}",
         "episodes": [{"start": "2023-01-03", **start}],
-        "listing_status_certified": [{"start": cert_from, **start}],
+        "listing_status_certified": [{"start": cert_from, **start, "known_from": cert_known}],
         "eligibility": [{"start": "2023-01-01", **start, "issuer_domicile": "US",
                          "venue": "XNYS", "instrument": "ordinary_common_stock",
                          "currency": currency}],
         "certified_absent_sessions": [str(d) for d in absent.get(k, ())]}
-        for k, p in IDS.items() if k != omit]
+        for k, p in [*IDS.items(), *extra] if k != omit]
     doc = {"schema": "algua.sharadar.eligibility_evidence.v1",
            "identity_artifact_sha256": hashlib.sha256(ident.read_bytes()).hexdigest(),
            "bars_content_hash": prep.content_hash, "rules_sha256": FROZEN_RULES_SHA256,
@@ -158,4 +159,27 @@ def test_evidence_must_bind_bars_hash(tmp_path):
     doc["bars_content_hash"] = "0" * 64
     ev.write_text(json.dumps(doc))
     with pytest.raises(IdentityCompileError):
+        _run(store, ident, prep, ev)
+
+
+def test_identity_without_bars_omitted_from_evidence_refuses(tmp_path):
+    extra = [("ZZD", 900004)]  # in the artifact, no SEP rows at all
+    store, ident, prep, _ = _build(tmp_path, extra=extra)
+    with pytest.raises(IdentityCompileError):
+        _run(store, ident, prep, _evidence(tmp_path, ident, prep))  # evidence lacks ZZD
+    ok = _evidence(tmp_path, ident, prep, extra=extra)
+    doc = json.loads(ok.read_text())
+    doc["securities"][-1]["episodes"] = []  # certified not listed in the window
+    ok.write_text(json.dumps(doc))
+    assert _members(_run(store, ident, prep, ok)) == set(SID.values())
+
+
+def test_listing_certification_not_yet_known_is_unknown(tmp_path):
+    store, ident, prep, _ = _build(tmp_path, extra=[("ZZD", 900004)])
+    ev = _evidence(tmp_path, ident, prep, extra=[("ZZD", 900004)])
+    doc = json.loads(ev.read_text())
+    doc["securities"][-1]["episodes"] = []
+    doc["securities"][-1]["listing_status_certified"][0]["known_from"] = "2030-01-01"
+    ev.write_text(json.dumps(doc))
+    with pytest.raises(IdentityCompileError):  # not known by t: unknown listing status
         _run(store, ident, prep, ev)
