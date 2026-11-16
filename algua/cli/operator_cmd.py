@@ -38,6 +38,7 @@ from algua.cli.errors import json_errors
 from algua.config.settings import get_settings
 from algua.observability import configure_logging, correlation_context
 from algua.operator.alerts import emit_alert
+from algua.operator.deployment_lock import _operator_lock_path
 from algua.operator.jobs import OPERATOR_JOBS, CommandMismatch, OperatorJob
 from algua.operator.paper_observations import completed_session_observer
 from algua.operator.schedule import OperatorLockHeld, operator_run_lock
@@ -193,8 +194,7 @@ def run(
 
 def _run_locked_command(command: list[str]) -> subprocess.CompletedProcess:
     """Subprocess seam (monkeypatched in tests): run the wrapped command with stdout/stderr
-    INHERITED (transparent passthrough) — nothing else is printed by ``lock-run`` on the ran path,
-    so the wrapped command's own JSON envelope is the ONLY output. A caller (the merge-back
+    INHERITED — the wrapped command's own JSON envelope is the ONLY output. A caller (the merge-back
     drainer) capturing THIS process's stdout gets exactly what the wrapped command itself emitted,
     with no wrapper envelope to strip."""
     return subprocess.run(command)  # noqa: S603 — fixed argv (a bash array), never a shell string
@@ -236,7 +236,7 @@ def lock_run(
         raise ValueError("operator lock-run requires a command after --")
     host, pid = socket.gethostname(), os.getpid()
     try:
-        lock_path = _resolve_git_dir() / "operator.lock"
+        lock_path = _operator_lock_path(lambda: _resolve_git_dir() / "operator.lock")
     except (OSError, subprocess.CalledProcessError) as exc:
         emit({"ok": False, "ran": False, "reason": "git_dir_unresolved", "error": str(exc)})
         raise typer.Exit(1) from None

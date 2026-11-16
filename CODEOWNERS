@@ -178,3 +178,12 @@
 /algua/primitives/midcap_universe.py @Lior-Nis # approved midcap universe parser
 /algua/strategies/momentum/midcap_weekly_momentum_smoke.py @Lior-Nis # approved symbol authority
 /algua/operator/paper_account_lock.py @Lior-Nis
+
+# Installed signer authority and build-time development/live separation
+/algua/registry/signer_anchor.py @Lior-Nis
+/algua/registry/signer_anchor_dev.py @Lior-Nis
+/algua/registry/signer_anchor_installed.py @Lior-Nis
+/deploy/scripts/build-live-artifact.py @Lior-Nis
+/deploy/scripts/algua-live-entry @Lior-Nis
+/deploy/systemd/algua-live.service @Lior-Nis
+/deploy/systemd/algua-live-risk.service @Lior-Nis

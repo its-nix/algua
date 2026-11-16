@@ -1,0 +1,28 @@
+[Unit]
+Description=Algua installed live invocation (DRAFT; separate human activation required)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=algua-live
+Group=algua-live
+WorkingDirectory=/var/lib/algua-live
+EnvironmentFile=/etc/algua/live.env
+# No timer is supplied. This definition does not provision credentials or authorize activation.
+ExecStart=/usr/local/libexec/algua-live-entry operator lock-run -- /usr/local/libexec/algua-live-entry live run-all
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictNamespaces=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+ReadWritePaths=/var/lib/algua-live
+UMask=0077
+KillMode=control-group
+TimeoutStartSec=300

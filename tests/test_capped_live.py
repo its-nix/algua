@@ -572,3 +572,44 @@ def test_allocation_decrease_during_tick_aborts_stale_sizing(ready, monkeypatch)
         start=start, end=end, snapshot_id=snap.snapshot_id)
     assert result['ok'] is False, result
     assert not world.broker.submitted_for(TENANT)
+
+
+def test_installed_snapshot_reaches_capped_resize_frozen_doctor_and_watcher(ready, monkeypatch):
+    """Real sealed SSH verification through consumers; only host installation checks are stubbed."""
+    from algua.cli.app import _live_authorizations_detail
+    from algua.execution import drawdown_watch
+    from algua.execution.broker_factory import BrokerKind
+    from algua.registry import signer_anchor_installed as policy
+
+    world, conn, sign, source_anchor = ready
+    content = source_anchor.read_bytes()
+    monkeypatch.setattr(policy, '_check_process', lambda: None)
+    monkeypatch.setattr(policy, '_check_runtime', lambda: None)
+    monkeypatch.setattr(policy, '_read_authority', lambda: content)
+    monkeypatch.setattr(live_gate, 'signer_anchor', policy)
+    monkeypatch.setattr(live_gate, 'ALLOWED_SIGNERS_PATH', policy.ALLOWED_SIGNERS_PATH)
+    token, _ = _activate(conn, sign)
+    assert token.strategy_id == world.deployment().strategy_id
+    assert 'all authorized' in _live_authorizations_detail()
+    monkeypatch.setattr(drawdown_watch, 'build_broker', lambda kind, auth=None: (kind, auth))
+    kind, auth = drawdown_watch.live_check_broker(conn, verifier=verify_live_authorization)
+    assert kind is BrokerKind.ALPACA_LIVE and auth == token
+    resized, _ = _activate(conn, sign, capital='12000')
+    assert resized.strategy_id == token.strategy_id
+    before = conn.execute('SELECT COUNT(*) FROM capped_live_authorizations').fetchone()[0]
+
+    def refuse():
+        raise policy.AnchorError('synthetic installed anchor failure')
+
+    monkeypatch.setattr(policy, '_read_authority', refuse)
+    with pytest.raises(live_gate.LiveAuthorizationError, match='anchor'):
+        verify_live_authorization(conn, SqliteStrategyRepository(conn), TENANT,
+                                  policy.ALLOWED_SIGNERS_PATH)
+    with pytest.raises(RuntimeError, match='unauthorized'):
+        _live_authorizations_detail()
+    kind, auth = drawdown_watch.live_check_broker(conn, verifier=verify_live_authorization)
+    assert kind is BrokerKind.ALPACA_LIVE_DRAIN and auth is None  # existing cancel-only capability
+    with pytest.raises(live_gate.LiveAuthorizationError):
+        capped_auth.authorize(conn, TENANT, capital='14000', actor=Actor.HUMAN, signature=None)
+    assert conn.execute('SELECT COUNT(*) FROM capped_live_authorizations').fetchone()[0] == before
+    assert not world.broker.submitted_for(TENANT)

@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from algua.contracts.types import LiveAuthorization, PendingLiveAuthorization
+from algua.registry import signer_anchor
 from algua.registry.challenges import ChallengeSpec, build_payload, consume, find_pending, issue
 from algua.registry.repository import StrategyReader
 
@@ -21,10 +22,7 @@ _SPEC = ChallengeSpec(
     column_fields=("strategy_id", "code_hash", "config_hash", "dependency_hash"),
 )
 
-# The go-live trust anchor: enrolled approver PUBLIC keys, resolved from the INSTALLED source tree
-# (not CWD) so the gate always reads the vetted, CODEOWNERS-reviewed copy. Shared by the CLI and
-# the trade-time verifier so there is exactly one anchor.
-ALLOWED_SIGNERS_PATH = Path(__file__).resolve().parents[2] / "approvers" / "allowed_signers"
+ALLOWED_SIGNERS_PATH = signer_anchor.ALLOWED_SIGNERS_PATH
 
 
 def _now() -> datetime:
@@ -69,7 +67,7 @@ class SignatureError(RuntimeError):
     """ssh-keygen is unavailable or failed in an unexpected way (not a plain bad signature)."""
 
 
-def _assert_all_lines_namespace_scoped(allowed_signers_path: Path) -> None:
+def _assert_all_lines_namespace_scoped(content: bytes) -> None:
     """Fail closed if ANY enrolled line lacks an explicit `namespaces="..."` restriction.
 
     OpenSSH treats an allowed_signers line with no `namespaces=` field as valid for EVERY namespace,
@@ -77,7 +75,7 @@ def _assert_all_lines_namespace_scoped(allowed_signers_path: Path) -> None:
     namespace — collapsing the namespace scoping this design depends on (#329, codex GATE-1).
     Every enrolled key MUST carry an explicit namespaces= token; the enroll-approver command
     always writes one, and this backstops a hand-edited anchor."""
-    for raw in allowed_signers_path.read_text().splitlines():
+    for raw in content.decode("utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -97,35 +95,32 @@ def verify_signature(allowed_signers_path: Path, payload: str, signature: bytes,
     invalid / the signer is not enrolled FOR THIS NAMESPACE. Raises SignatureError when ssh-keygen
     can't run, the trust anchor file is missing, or any enrolled line is unscoped — never a silent
     pass (codex review). `namespace` defaults to the go-live namespace, the only one in use."""
-    if not allowed_signers_path.is_file():
-        raise SignatureError(f"allowed_signers trust anchor not found: {allowed_signers_path}")
-    _assert_all_lines_namespace_scoped(allowed_signers_path)
-    with tempfile.NamedTemporaryFile("wb", suffix=".sig", delete=True) as sigf:
-        sigf.write(signature)
-        sigf.flush()
-        data = payload.encode()
-        try:
-            found = subprocess.run(
-                ["ssh-keygen", "-Y", "find-principals", "-f", str(allowed_signers_path),
-                 "-s", sigf.name],
-                input=data, capture_output=True,
-            )
-        except FileNotFoundError as exc:  # ssh-keygen not installed
-            raise SignatureError("ssh-keygen not found on PATH") from exc
-        if found.returncode != 0:
-            return None  # signer not enrolled (or malformed signature)
-        out = found.stdout.decode().splitlines()
-        principal = out[0].strip() if out and out[0].strip() else ""
-        if not principal:
-            return None
-        # The `-n namespace` here is the AUTHORITATIVE namespace gate: a key enrolled only for a
-        # different namespace fails this step even though find-principals matched the key blob.
-        verified = subprocess.run(
-            ["ssh-keygen", "-Y", "verify", "-f", str(allowed_signers_path), "-I", principal,
-             "-n", namespace, "-s", sigf.name],
-            input=data, capture_output=True,
-        )
-        return principal if verified.returncode == 0 else None
+    try:
+        with signer_anchor.open_anchor(allowed_signers_path) as anchor:
+            _assert_all_lines_namespace_scoped(anchor.content)
+            with tempfile.NamedTemporaryFile("wb", suffix=".sig", delete=True) as sigf:
+                sigf.write(signature)
+                sigf.flush()
+                found = subprocess.run(
+                    [signer_anchor.SSH_KEYGEN, "-Y", "find-principals", "-f", str(anchor.path),
+                     "-s", sigf.name], input=payload.encode(), capture_output=True,
+                    pass_fds=anchor.pass_fds, timeout=30,
+                )
+                if found.returncode != 0:
+                    return None
+                out = found.stdout.decode().splitlines()
+                principal = out[0].strip() if out and out[0].strip() else ""
+                if not principal:
+                    return None
+                verified = subprocess.run(
+                    [signer_anchor.SSH_KEYGEN, "-Y", "verify", "-f", str(anchor.path),
+                     "-I", principal, "-n", namespace, "-s", sigf.name],
+                    input=payload.encode(), capture_output=True,
+                    pass_fds=anchor.pass_fds, timeout=30,
+                )
+                return principal if verified.returncode == 0 else None
+    except (signer_anchor.AnchorError, OSError, UnicodeError, subprocess.TimeoutExpired) as exc:
+        raise SignatureError(f"could not verify against the signer anchor: {exc}") from exc
 
 
 def verify_pending(conn: sqlite3.Connection, strategy: str, strategy_id: int, code_hash: str,

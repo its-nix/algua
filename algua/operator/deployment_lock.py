@@ -4,18 +4,24 @@ from __future__ import annotations
 import os
 import socket
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
 from algua.contracts.lifecycle import Stage, TransitionError
 from algua.operator.schedule import OperatorLockHeld, operator_run_lock
+from algua.registry import signer_anchor
 
 #: The stages ``paper run-all`` ticks and the paper account reconcile counts.
 _PAPER_LANE = frozenset({Stage.PAPER, Stage.FORWARD_TESTED})
 
 
-def _operator_lock_path() -> Path:
+def _operator_lock_path(development_path: Callable[[], Path] | None = None) -> Path:
+    installed = signer_anchor.operator_lock_path()
+    if installed is not None:
+        return installed
+    if development_path is not None:
+        return development_path()
     out = subprocess.run(  # noqa: S603,S607 — fixed argv, no shell
         ["git", "rev-parse", "--absolute-git-dir"],
         cwd=Path(__file__).resolve().parent,

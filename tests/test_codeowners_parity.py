@@ -59,3 +59,16 @@ def test_github_visible_rules_equal_runtime_denylist() -> None:
     runtime = set(parse_codeowners_denylist((REPO / "CODEOWNERS").read_text()))
     assert github_paths == runtime
     assert {".github", ".gitleaks.toml", ".pip-audit-ignore.txt", "codeowners"} <= runtime
+
+
+def test_installed_authority_and_bootstrap_are_denied_to_autonomous_merge() -> None:
+    runtime = set(parse_codeowners_denylist((REPO / 'CODEOWNERS').read_text()))
+    assert {
+        'algua/registry/signer_anchor.py',
+        'algua/registry/signer_anchor_dev.py',
+        'algua/registry/signer_anchor_installed.py',
+        'deploy/scripts/build-live-artifact.py',
+        'deploy/scripts/algua-live-entry',
+        'deploy/systemd/algua-live.service',
+        'deploy/systemd/algua-live-risk.service',
+    } <= runtime
