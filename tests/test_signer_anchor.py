@@ -394,3 +394,48 @@ def test_symlink_at_each_authority_component_refuses(monkeypatch, tmp_path, comp
     monkeypatch.setattr(installed, '_check_fd', lambda *args, **kwargs: None)
     with pytest.raises(OSError):
         installed._read_authority()
+
+
+@pytest.mark.parametrize('mode', ['unit', 'missing', 'conflicting'])
+def test_live_service_mode_preflight_uses_actual_unit_argv(monkeypatch, mode):
+    """Exercise the real CLI mode guard, stopping before registry, data or venue access."""
+    import configparser
+    import shlex
+
+    from typer.testing import CliRunner
+
+    from algua.cli import live_cmd
+    from algua.cli.main import app
+
+    unit = configparser.ConfigParser(interpolation=None)
+    unit.read(REPO / 'deploy/systemd/algua-live.service')
+    command = shlex.split(unit['Service']['ExecStart'])
+    entry = '/usr/local/libexec/algua-live-entry'
+    assert command[:5] == [entry, 'operator', 'lock-run', '--', entry]
+    args = command[5:]
+    assert args[:2] == ['live', 'run-all']
+    if mode == 'missing':
+        args = [value for value in args if value != '--refresh']
+    elif mode == 'conflicting':
+        args += ['--snapshot', 'synthetic-no-read']
+    reached = []
+
+    def stop_after_mode_selection(max_drawdown, disabled):
+        reached.append((max_drawdown, disabled))
+        raise ValueError('synthetic stop after mode selection')
+
+    def refuse_effects():
+        raise AssertionError('unit preflight must not reach registry or venue effects')
+
+    monkeypatch.setattr(live_cmd, 'resolve_drawdown_breaker', stop_after_mode_selection)
+    monkeypatch.setattr(live_cmd, 'registry_conn', refuse_effects)
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 1
+    envelope = json.loads(result.stdout)
+    assert envelope['ok'] is False
+    if mode == 'unit':
+        assert reached == [(None, False)], envelope
+        assert envelope['error'] == 'synthetic stop after mode selection'
+    else:
+        assert reached == []
+        assert 'pass exactly one of --snapshot <id> or --refresh' in envelope['error']

@@ -9,7 +9,8 @@ Group=algua-live
 WorkingDirectory=/var/lib/algua-live
 EnvironmentFile=/etc/algua/live.env
 # No timer is supplied. This definition does not provision credentials or authorize activation.
-ExecStart=/usr/local/libexec/algua-live-entry operator lock-run -- /usr/local/libexec/algua-live-entry live run-all
+# Refresh requires separately human-reviewed live provider configuration.
+ExecStart=/usr/local/libexec/algua-live-entry operator lock-run -- /usr/local/libexec/algua-live-entry live run-all --refresh
 NoNewPrivileges=yes
 CapabilityBoundingSet=
 AmbientCapabilities=
