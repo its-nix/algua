@@ -1,6 +1,6 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { formatTimestamp } from './api'
+import { AUTHENTICATION_REQUIRED, formatTimestamp } from './api'
 import Logo from './components/Logo'
 import NavigationIcon from './components/NavigationIcon'
 import { useInboxBadge } from './inboxBadge'
@@ -22,6 +22,25 @@ const PRIMARY_LINKS = [
 export const LEADERBOARD_PATH = '/strategies/research/leaderboard'
 
 export default function App() {
+  const [expired, setExpired] = useState(false)
+  useEffect(() => {
+    const expire = () => setExpired(true)
+    window.addEventListener(AUTHENTICATION_REQUIRED, expire)
+    return () => window.removeEventListener(AUTHENTICATION_REQUIRED, expire)
+  }, [])
+  if (expired) {
+    // A single leading slash keeps rd on this origin even for a //-prefixed pathname.
+    const returnTo = window.location.pathname.replace(/^\/+/, '/') + window.location.search + window.location.hash
+    return <main className="content" role="alert">
+      <h1>Sign in to Algua</h1>
+      <p>Your session has expired. Sign in again to see the latest dashboard.</p>
+      <a className="retry-btn" href={`/oauth2/start?rd=${encodeURIComponent(returnTo)}`}>Sign in with Google</a>
+    </main>
+  }
+  return <AuthenticatedApp />
+}
+
+function AuthenticatedApp() {
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const location = useLocation()
   const navigate = useNavigate()

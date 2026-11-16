@@ -2,7 +2,7 @@
  * Lives beside push.ts at the src root because `./transport` is the specifier the production
  * build aliases to its fixture-free stub (vite.config.ts); `../transport` would pull the real
  * module, and with it the fixtures, into the production graph. */
-import { ApiError } from './api'
+import { apiFetch, ApiError } from './api'
 import { DEMO } from './transport'
 
 /** The backend's per-upload limit (web/backend/inbox.py); checked here first so a too-large
@@ -42,7 +42,7 @@ export async function addToInbox(send: InboxSend): Promise<InboxAddResult> {
   }
   let res: Response
   try {
-    res = await fetch('/api/inbox', init)
+    res = await apiFetch('/api/inbox', init)
   } catch {
     throw new ApiError(0, 'network', 'the server could not be reached')
   }

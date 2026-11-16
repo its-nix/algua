@@ -1,5 +1,6 @@
 // Web-push client plumbing (slice E): capability detection + enable/disable
 // against the backend's /api/push endpoints.
+import { apiFetch } from './api'
 import { DEMO } from './transport'
 
 export type AlertsState = 'unsupported' | 'needs-install' | 'denied' | 'on' | 'off'
@@ -48,7 +49,7 @@ export async function enableAlerts(): Promise<AlertsState> {
   if (DEMO) return 'unsupported'
   const permission = await Notification.requestPermission()
   if (permission !== 'granted') return permission === 'denied' ? 'denied' : 'off'
-  const keyRes = await fetch('/api/push/key', { headers: { accept: 'application/json' } })
+  const keyRes = await apiFetch('/api/push/key', { headers: { accept: 'application/json' } })
   if (!keyRes.ok) throw new Error(`push key fetch failed: HTTP ${keyRes.status}`)
   const { key } = (await keyRes.json()) as { key: string }
   const reg = await navigator.serviceWorker.ready
@@ -56,7 +57,7 @@ export async function enableAlerts(): Promise<AlertsState> {
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(key),
   })
-  const res = await fetch('/api/push/subscribe', {
+  const res = await apiFetch('/api/push/subscribe', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(sub.toJSON()),
@@ -77,7 +78,7 @@ export async function disableAlerts(): Promise<AlertsState> {
   if (sub) {
     const endpoint = sub.endpoint
     await sub.unsubscribe()
-    await fetch(`/api/push/subscribe?endpoint=${encodeURIComponent(endpoint)}`, {
+    await apiFetch(`/api/push/subscribe?endpoint=${encodeURIComponent(endpoint)}`, {
       method: 'DELETE',
     })
   }
