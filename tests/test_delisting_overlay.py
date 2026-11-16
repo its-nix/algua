@@ -123,18 +123,23 @@ def test_symbol_never_traded_skipped():
     assert forced == []
 
 
-def test_vendor_date_one_day_past_last_trade_resolves_to_terminal_bar():
-    # B's last TRADED bar is index 1 (Jan 2); the union panel index has a Jan 3 row only because
-    # A traded then (B is NaN there). A vendor delisting_date of Jan 3 must resolve to B's own
-    # terminal bar (Jan 2) and apply there — not fail closed with a misleading "no record".
+@pytest.mark.parametrize("terminal_target", [0.0, 0.5])
+@pytest.mark.parametrize("settlement_day", [3, 4])
+@pytest.mark.parametrize("assume_last_close", [False, True])
+def test_later_settlement_refuses_instead_of_crediting_last_trade(
+    terminal_target, settlement_day, assume_last_close,
+):
+    # A zero target does not prove flat simulator holdings: an earlier order may still hold B.
+    # The overlay cannot value that outstanding claim, so refuse even the ambiguous flat case.
     adj = _grid({"A": [10, 11, 12, 13], "B": [10, 11, np.nan, np.nan]})
-    w = _grid({"A": [0.5] * 4, "B": [0.5, 0.5, 0.0, 0.0]})
-    recs = {"B": [DelistingRecord(date(2020, 1, 3), 5.0, "vendor")]}
-    adj_x, w_x, forced = apply_delisting_exits(adj, w, recs)
-    T = adj.index[1]
-    assert forced == [{"symbol": "B", "bar": T.isoformat(),
-                       "terminal_price": 5.0, "source": "vendor"}]
-    assert adj_x.loc[T, "B"] == 5.0 and (w_x.loc[T:, "B"] == 0.0).all()
+    w = _grid({"A": [0.5] * 4, "B": [0.5, terminal_target, 0.0, 0.0]})
+    recs = {"B": [DelistingRecord(date(2020, 1, settlement_day), 5.0, "vendor")]}
+    with pytest.raises(DelistingExitError, match="cannot backdate.*settlement"):
+        apply_delisting_exits(
+            adj, w, recs, assume_terminal_last_close=assume_last_close,
+        )
+    assert adj.loc[adj.index[1], "B"] == 11
+    assert w.loc[w.index[1], "B"] == terminal_target
 
 
 def test_phantom_post_delisting_weight_is_suppressed():

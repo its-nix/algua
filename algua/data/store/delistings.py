@@ -24,6 +24,8 @@ class DelistingsStoreMixin(IdentityMixin):
     ) -> SnapshotRecord:
         """Persist a point-in-time delistings snapshot: columns symbol, delisting_date,
         delisting_value (per-share terminal price in adj_close units, strictly > 0).
+        delisting_date is the effective settlement date, not the last-trade or suspension date.
+        The simulator refuses settlement after the last traded bar until claim valuation exists.
 
         Fails closed on value <= 0 / non-finite (zero-proceeds write-off deferred) and on a
         duplicate (symbol, delisting_date) event."""

@@ -124,3 +124,23 @@ def test_held_into_gap_without_record_raises_backtest_error() -> None:
             datetime(2020, 1, 1, tzinfo=UTC),
             datetime(2020, 1, 4, tzinfo=UTC),
         )
+
+
+@pytest.mark.parametrize("terminal_target", [0.0, 0.5])
+def test_delayed_settlement_refuses_before_simulator_even_with_flat_target(
+    monkeypatch, terminal_target,
+) -> None:
+    strategy = _equal_weight_ab_strategy()
+    weights = pd.DataFrame(
+        {"A": [0.5] * 4, "B": [terminal_target, 0.0, 0.0, 0.0]},
+        index=pd.date_range("2020-01-01", periods=4, tz="UTC"),
+    )
+    monkeypatch.setattr(
+        "algua.backtest.engine._decision_weights_fast_or_loop", lambda *a, **kw: weights,
+    )
+    with pytest.raises(BacktestError, match="cannot backdate terminal settlement 2020-01-03"):
+        simulate(
+            strategy, _FakeProvider(_bars()),
+            datetime(2020, 1, 1, tzinfo=UTC), datetime(2020, 1, 5, tzinfo=UTC),
+            delisting_records={"B": [DelistingRecord(date(2020, 1, 3), 5.0, "vendor")]},
+        )
