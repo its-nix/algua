@@ -14,11 +14,23 @@ export class ApiError extends Error {
   }
 }
 
+/** A 401 means the ingress session expired; permission/server errors retain their own UI. */
+export const AUTHENTICATION_REQUIRED = 'algua:authentication-required'
+
+export async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  const response = await fetch(url, init)
+  if (response.status === 401) {
+    clearFetchCache()
+    window.dispatchEvent(new Event(AUTHENTICATION_REQUIRED))
+  }
+  return response
+}
+
 export async function getJSON<T>(url: string): Promise<T> {
   // Demo mode swaps the TRANSPORT, not the components: every screen renders identically in
   // both modes because neither knows which one it is in.
   if (DEMO) return demoJSON<T>(url)
-  const res = await fetch(url, { headers: { accept: 'application/json' } })
+  const res = await apiFetch(url, { headers: { accept: 'application/json' } })
   if (!res.ok) {
     let code: string | null = null
     let message = `HTTP ${res.status}`

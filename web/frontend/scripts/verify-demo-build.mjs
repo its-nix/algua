@@ -3,6 +3,7 @@
  * This greps the built output for the fixture sentinel rather than trusting that Rollup
  * tree-shook the dynamic import. If this ever fails, the fix is a build-time alias that
  * removes the module from the graph — NOT deleting this check. */
+import assert from 'node:assert/strict'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -16,6 +17,10 @@ function walk(dir) {
 }
 
 const [, , mode = 'prod', dir = 'dist'] = process.argv
+// Authenticated ingress also protects the manifest: its browser request needs cookies.
+const manifestLink = readFileSync(join(dir, 'index.html'), 'utf8').match(/<link\b[^>]*rel="manifest"[^>]*>/)?.[0]
+assert.match(manifestLink ?? '', /crossorigin="use-credentials"/, 'manifest must include authentication credentials')
+
 const files = walk(dir)
 const hits = files.filter((f) => readFileSync(f, 'utf8').includes(SENTINEL))
 

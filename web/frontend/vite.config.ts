@@ -66,6 +66,7 @@ export default defineConfig(({ command }) => ({
       srcDir: 'src',
       filename: 'sw.ts',
       registerType: 'autoUpdate',
+      useCredentials: true,
       injectRegister: false,
       // Keep local fonts and versioned icon URLs available with the offline shell.
       injectManifest: { globPatterns: ['**/*.{js,css,html,png,svg,ttf}'] },
