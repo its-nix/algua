@@ -222,3 +222,71 @@ def test_output_parent_symlink_refused(tmp_path):
     with pytest.raises(IdentityCompileError):  # missing child beneath a symlinked ancestor
         write_private_new(tmp_path / "linkdir" / "new" / "o.json", b"{}", repo_root=root)
     assert not list(real_dir.iterdir())
+
+
+def test_fifo_input_refused_without_blocking(tmp_path):
+    import signal
+    t, a = _files(tmp_path)
+    fifo = tmp_path / "F.csv"
+    os.mkfifo(fifo)
+    signal.alarm(5)  # a blocking open would hang; fail the test instead
+    try:
+        with pytest.raises(IdentityCompileError, match="regular file"):
+            compile_identity_artifact(fifo, a)
+    finally:
+        signal.alarm(0)
+
+
+def test_unexpected_os_errors_are_sanitized(tmp_path, monkeypatch):
+    t, a = _files(tmp_path)
+
+    def boom(*args, **kwargs):
+        raise OSError(13, "SECRET /vendor/ZZSECRET")
+
+    monkeypatch.setattr(sharadar_identity.tempfile, "TemporaryDirectory", boom)
+    with pytest.raises(IdentityCompileError) as exc:
+        compile_identity_artifact(t, a)
+    assert "SECRET" not in str(exc.value) and exc.value.__cause__ is None
+    monkeypatch.undo()
+    monkeypatch.setattr(sharadar_identity.os, "fsync", boom)
+    with pytest.raises(IdentityCompileError) as exc:
+        write_private_new(tmp_path / "o.json", b"{}", repo_root=Path("/nonexistent-repo-root"))
+    assert "SECRET" not in str(exc.value) and "o.json" not in str(exc.value)
+
+
+def test_missing_dirs_created_private_and_ancestor_symlink_not_followed(tmp_path):
+    root = Path("/nonexistent-repo-root")
+    got = write_private_new(tmp_path / "a" / "b" / "o.json", b"{}", repo_root=root)
+    assert stat.S_IMODE(got.parent.stat().st_mode) == 0o700
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    os.symlink(outside, tmp_path / "swap")
+    with pytest.raises(IdentityCompileError):
+        write_private_new(tmp_path / "swap" / "x" / "o.json", b"{}", repo_root=root)
+    assert not list(outside.iterdir())
+
+
+def test_cli_forced_os_errors_never_reach_stdout(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from algua.cli.main import app
+    t, a = _files(tmp_path)
+
+    def boom(*args, **kwargs):
+        raise OSError(13, "SECRET /vendor/ZZSECRET")
+
+    def run(out):
+        return CliRunner().invoke(app, ["data", "sharadar", "compile-identities", "--tickers",
+                                        str(t), "--actions", str(a), "--out", str(out)])
+
+    with monkeypatch.context() as m:
+        m.setattr(sharadar_identity.tempfile, "TemporaryDirectory", boom)
+        res = run(tmp_path / "c.json")
+    assert res.exit_code == 1 and "SECRET" not in res.stdout
+    assert json.loads(res.stdout)["ok"] is False
+    with monkeypatch.context() as m:
+        m.setattr(sharadar_identity.os, "fsync", boom)
+        res = run(tmp_path / "w.json")
+    assert res.exit_code == 1 and "SECRET" not in res.stdout
+    assert json.loads(res.stdout)["ok"] is False
+    assert not (tmp_path / "w.json").exists()
