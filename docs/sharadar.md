@@ -66,6 +66,25 @@ may contain vendor corrections. Existing bundled bars-only strategies do not con
 - Private source values and API keys do not appear in provider errors. Metadata includes retrieval
   timestamps and response hashes; retrieval time is not historical knowledge time.
 
+## Private identity input preparation
+
+Compile stable security identities and explicit dated ticker-change events from local exports:
+
+```bash
+uv run algua data sharadar compile-identities \
+  --tickers /private/sharadar/TICKERS.csv \
+  --actions /private/sharadar/ACTIONS.csv \
+  --out /private/sharadar-preparation/identities.json
+```
+
+The output must be a new path outside the repository. Details stay in the private artifact;
+stdout contains counts, hashes and its path. Input hashes bind the exact bytes parsed.
+Missing or ambiguous event pairs and contradictory rename chains refuse compilation.
+
+The current vendor ticker is a restated storage key. This command infers no historical alias
+intervals, listing history or universe membership. Coverage and completeness remain unverified;
+it publishes no snapshot and changes no trading feed or qualification.
+
 ## Remaining paid-data acceptance
 
 The public AAPL sample cannot prove midcap/delisted coverage, reused-ticker identity, merger or
