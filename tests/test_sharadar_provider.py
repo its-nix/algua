@@ -1,3 +1,7 @@
+import hashlib
+import json
+from datetime import UTC, datetime
+
 import pandas as pd
 import pytest
 import requests
@@ -119,6 +123,124 @@ def test_missing_metric_not_silently_zero(monkeypatch):
     with pytest.raises(ProviderError):
         fetch_fundamentals(SharadarClient(api_key="x"),symbols=("AAPL",),
             start="2025-01-01",end="2025-03-01",metrics=("not_a_metric",),filing_lag_days=3)
+
+
+@pytest.mark.parametrize("metrics", [
+    ("symbol",), ("metric",), ("value",), ("knowable_at",), ("fiscal_period_end",),
+    ("source",), ("ticker",), ("reportperiod",), ("eps", "eps"), (), ("EPS",), (None,),
+])
+def test_invalid_fundamental_metrics_refused_before_fetch(monkeypatch, metrics):
+    calls = wire(monkeypatch, [])
+    with pytest.raises(ProviderError, match="metric names"):
+        fetch_fundamentals(SharadarClient(api_key="x"), symbols=("AAPL",),
+                          start="2025-02-01", end="2025-03-01", metrics=metrics)
+    assert calls == []
+
+
+@pytest.mark.parametrize("lag", [2, 32, 3.5, "3", True])
+def test_invalid_fundamental_lag_refused_before_fetch(monkeypatch, lag):
+    calls = wire(monkeypatch, [])
+    with pytest.raises(ProviderError, match="filing lag"):
+        fetch_fundamentals(SharadarClient(api_key="x"), symbols=("AAPL",),
+                          start="2025-02-01", end="2025-03-01", metrics=("eps",),
+                          filing_lag_days=lag)
+    assert calls == []
+
+
+@pytest.mark.parametrize("lag", [3, 31])
+def test_fundamental_window_and_filing_query_bounds(monkeypatch, lag):
+    first = pd.Timestamp("2025-02-04")
+    last = pd.Timestamp("2025-02-06")
+    rows = []
+    for available in pd.date_range(first - pd.Timedelta(days=1), last):
+        row = financial((available - pd.Timedelta(days=lag)).date().isoformat())
+        rows.append(row)
+    calls = wire(monkeypatch, [pd.DataFrame(rows)])
+    frame, _ = fetch_fundamentals(
+        SharadarClient(api_key="x"), symbols=("AAPL",), start="2025-02-04",
+        end="2025-02-06", metrics=("eps",), filing_lag_days=lag)
+    assert frame.knowable_at.tolist() == [
+        pd.Timestamp("2025-02-04", tz="UTC"), pd.Timestamp("2025-02-05", tz="UTC")]
+    params = calls[0][1]["params"]
+    assert params["from"] == (first - pd.Timedelta(days=lag)).date().isoformat()
+    assert params["to"] == (last - pd.Timedelta(days=lag + 1)).date().isoformat()
+
+
+def test_fundamental_deferrals_missing_values_and_receipts(monkeypatch):
+    from algua.data.providers import sharadar_fundamentals
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2025, 2, 4, 12, tzinfo=UTC)
+
+    monkeypatch.setattr(sharadar_fundamentals, "datetime", Clock)
+    rows = [financial(day) for day in ("2025-02-01", "2025-02-02", "2025-02-03")]
+    rows[0]["eps"] = ""
+    raw = pd.DataFrame(rows)
+    wire(monkeypatch, [raw])
+    frame, meta = fetch_fundamentals(
+        SharadarClient(api_key="x"), symbols=("AAPL",), start="2025-02-04",
+        end="2025-02-06", metrics=("eps", "revenue"))
+    assert len(frame) == 2
+    assert frame.loc[frame.metric.eq("eps"), "value"].isna().all()
+    assert frame.loc[frame.metric.eq("revenue"), "value"].tolist() == [1000.]
+    assert frame.source.unique().tolist() == [
+        "sharadar:ARQ:filing_date_plus_3_days_ASSUMED"]
+    receipt = json.loads(meta["response_receipts"])["AAPL"]
+    assert receipt["deferred_filings"] == 1
+    assert receipt["missing_values"] == {"eps": 1, "revenue": 0}
+    assert receipt["page_sha256"] == [
+        hashlib.sha256(raw.to_csv(index=False).encode()).hexdigest()]
+    assert meta["pit_status"] == "unverified_vendor_history"
+    assert meta["units"] == "vendor_native_units;no_currency_conversion;consult_metric_dictionary"
+    assert meta["retrieved_at"] == "2025-02-04T12:00:00+00:00"
+
+
+@pytest.mark.parametrize("value", [True, False, "not-numeric", float("inf")])
+def test_invalid_fundamental_values_refused(monkeypatch, value):
+    row = financial()
+    row["eps"] = value
+    wire(monkeypatch, [pd.DataFrame([row])])
+    with pytest.raises(ProviderError, match="invalid ARQ"):
+        fetch_fundamentals(SharadarClient(api_key="x"), symbols=("AAPL",),
+                          start="2025-02-01", end="2025-03-01", metrics=("eps",))
+
+
+@pytest.mark.parametrize("day", ["2025-02-01", "2025-03-01"])
+@pytest.mark.parametrize("value", [2., 3., ""])
+def test_duplicate_fundamental_keys_refused(monkeypatch, value, day):
+    second = financial(day)
+    second["eps"] = value
+    wire(monkeypatch, [pd.DataFrame([financial("2025-02-02"), financial(day), second])])
+    with pytest.raises(ProviderError, match="invalid ARQ"):
+        fetch_fundamentals(SharadarClient(api_key="x"), symbols=("AAPL",),
+                          start="2025-02-01", end="2025-03-01", metrics=("eps",))
+
+
+def test_duplicate_fundamental_columns_refused(monkeypatch):
+    raw = pd.DataFrame([financial()])
+    raw = pd.concat([raw, raw[["eps"]]], axis=1)
+    monkeypatch.setattr(SharadarClient, "fetch", lambda *a, **kw: (raw, {}))
+    with pytest.raises(ProviderError, match="invalid ARQ"):
+        fetch_fundamentals(SharadarClient(api_key="x"), symbols=("AAPL",),
+                          start="2025-02-01", end="2025-03-01", metrics=("eps",))
+
+
+def test_distinct_filings_and_report_periods_are_preserved(monkeypatch):
+    amendment = financial("2025-02-02")
+    amendment["eps"] = 3.
+    other_period = financial()
+    other_period["reportperiod"] = "2024-09-30"
+    wire(monkeypatch, [pd.DataFrame([financial(), amendment, other_period])])
+    frame, _ = fetch_fundamentals(
+        SharadarClient(api_key="x"), symbols=("AAPL",), start="2025-02-01",
+        end="2025-03-01", metrics=("eps",))
+    assert len(frame) == 3
+    quarter = frame.loc[frame.fiscal_period_end.eq(datetime(2024, 12, 31).date())]
+    assert quarter.value.tolist() == [2., 3.]
+    assert quarter.knowable_at.tolist() == [
+        pd.Timestamp("2025-02-04", tz="UTC"), pd.Timestamp("2025-02-05", tz="UTC")]
 
 
 def test_provider_requires_explicit_key():
