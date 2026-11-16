@@ -1,12 +1,14 @@
 """Synthetic-only tests for stage-1 bar preparation and the stage-2 private universe preview."""
 import hashlib
 import json
+import shutil
 from datetime import date
 from pathlib import Path
 
 import pytest
 
 from algua.calendar.market_calendar import MarketCalendar
+from algua.data.files import write_partitioned_bars
 from algua.data.sharadar_bars_prep import prepare_bars
 from algua.data.sharadar_identity import IdentityCompileError, compile_identity_artifact
 from algua.data.sharadar_universe import FROZEN_RULES_SHA256, compute_universe_preview
@@ -52,7 +54,8 @@ def _evidence(tmp_path, ident, prep, *, absent=None, cert_from="2023-01-01", omi
         "episodes": [{"start": "2023-01-03", **start}],
         "listing_status_certified": [{"start": cert_from, **start, "known_from": cert_known}],
         "eligibility": [{"start": "2023-01-01", **start, "issuer_domicile": "US",
-                         "venue": "XNYS", "instrument": "ordinary_common_stock",
+                         "venue": "XNYS",
+                         "instrument": "ordinary_common_stock_including_REIT_and_BDC_common_shares",
                          "currency": currency}],
         "certified_absent_sessions": [str(d) for d in absent.get(k, ())]}
         for k, p in [*IDS.items(), *extra] if k != omit]
@@ -94,7 +97,7 @@ def test_stage1_refuses_inputs_not_matching_compiler_hashes(tmp_path):
                      as_of="2024-03-02T00:00:00+00:00", store=store)
 
 
-def test_exact_boundary_selected_and_output_unqualified(tmp_path):
+def test_frozen_rule_instrument_selected_and_output_unqualified(tmp_path):
     store, ident, prep, _ = _build(tmp_path)  # 10 * 2,000,000 == 20,000,000 exactly
     r = _run(store, ident, prep, _evidence(tmp_path, ident, prep))
     doc = json.loads(r.body)
@@ -201,6 +204,21 @@ def test_stage2_requires_snapshot_bound_to_same_identity_artifact(tmp_path):
     ev = _evidence(tmp_path, other, prep)
     with pytest.raises(IdentityCompileError):
         _run(store, other, prep, ev)
+
+
+def test_stage2_refuses_payload_changed_without_manifest_hash_change(tmp_path):
+    store, ident, prep, _ = _build(tmp_path)
+    ev = _evidence(tmp_path, ident, prep)
+    rec = store.get_snapshot(prep.snapshot_id)
+    bars = store.read_bars(prep.snapshot_id).copy()
+    bars.iloc[0, bars.columns.get_loc("close")] += 1
+    canon = bars.reset_index().rename(columns={"timestamp": "ts"})
+    payload = store.data_dir / rec.data_path
+    shutil.rmtree(payload)
+    payload.mkdir(parents=True)
+    write_partitioned_bars(canon.sort_values(["symbol", "ts"]), payload)
+    with pytest.raises(IdentityCompileError):  # row-count readback alone is not content integrity
+        _run(store, ident, prep, ev)
 
 
 def test_threshold_is_exact_beyond_28_significant_digits(tmp_path):

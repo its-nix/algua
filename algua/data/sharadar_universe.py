@@ -24,6 +24,7 @@ import numpy as np
 
 from algua.calendar.market_calendar import MarketCalendar
 from algua.contracts.canonical import canonical_json
+from algua.data.files import compose_bars_symbol_hash, logical_bars_hash
 from algua.data.models import Dataset
 from algua.data.sharadar_bars_prep import load_identity_artifact
 from algua.data.sharadar_evidence import Episode, SecurityEvidence, parse_evidence
@@ -116,6 +117,13 @@ def compute_universe_preview(*, store: DataStore, snapshot_id: str, identities: 
     bars = store.read_bars(snapshot_id)
     if bars.empty or not set(bars["symbol"].unique()) <= ident.ids:
         raise IdentityCompileError("snapshot has symbols that are not artifact stable IDs")
+    canon = bars.reset_index().rename(columns={"timestamp": "ts"})
+    actual_hash = compose_bars_symbol_hash([
+        (str(symbol), len(group), logical_bars_hash(group))
+        for symbol, group in canon.groupby("symbol", sort=False)
+    ])
+    if actual_hash != rec.content_hash:
+        raise IdentityCompileError("stage-1 bars payload does not match its snapshot hash")
     cal = MarketCalendar(cfg["calendar"])
     # calendar membership is validated for EVERY bar date, but bars on/after `end` never feed the
     # computation (no future influence)
@@ -169,7 +177,7 @@ def compute_universe_preview(*, store: DataStore, snapshot_id: str, identities: 
     price_min = Fraction(Decimal(str(cfg["price"]["minimum_USD_inclusive"])))
     liq_min = Fraction(Decimal(str(cfg["liquidity"]["minimum_USD_inclusive"])))
     elig = cfg["eligibility"]
-    want = (elig["issuer_domicile"], None, "ordinary_common_stock", elig["currency"])
+    want = (elig["issuer_domicile"], None, elig["instrument"], elig["currency"])
     venues = set(elig["listing_venues"])
 
     members_by_date: dict[date, list[str]] = {}
