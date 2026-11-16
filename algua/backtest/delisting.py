@@ -93,10 +93,13 @@ def apply_delisting_exits(
         first_bar = col.first_valid_index()
         sym_index = col.dropna().index  # this symbol's OWN traded bars (T == sym_index[-1])
         sym_records = list(records.get(c, []))
+        ends_early = T < panel_end
 
-        # A future settlement remains an unvalued claim even beyond this evaluation window.
+        # After trading ends early, future settlement leaves an unvalued claim.
         # Earlier records must also agree with the symbol's observed trading history.
         for r in sym_records:
+            if not ends_early and r.delisting_date > panel_end_date:
+                continue  # ordinary holdings at evaluation end remain open
             if r.delisting_date > T.date():
                 # Targets cannot establish actual flatness; the overlay has no claim valuation.
                 raise DelistingExitError(
@@ -126,7 +129,6 @@ def apply_delisting_exits(
             )
         record = candidates[0] if candidates else None
         held = bool(abs(weights_eff.loc[T, c]) > _WEIGHT_EPS)
-        ends_early = T < panel_end
 
         if record is not None and held:
             weights_exec.loc[T:, c] = 0.0

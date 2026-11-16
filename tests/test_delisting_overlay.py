@@ -151,3 +151,19 @@ def test_phantom_post_delisting_weight_is_suppressed():
     T = adj.index[1]
     assert (w_x.loc[adj_x.index > T, "B"] == 0.0).all()   # phantom weights suppressed
     assert forced == []                                    # nothing realized (wasn't held at T)
+
+
+@pytest.mark.parametrize("terminal_target", [0.0, 0.5])
+@pytest.mark.parametrize("assume_last_close", [False, True])
+def test_future_settlement_does_not_end_ordinary_traded_window(
+    terminal_target, assume_last_close,
+):
+    adj = _grid({"A": [10, 11, 12, 13], "B": [20, 21, 22, 23]})
+    weights = _grid({"A": [0.5] * 4, "B": [terminal_target] * 4})
+    records = {"B": [DelistingRecord(date(2020, 1, 5), 5.0, "vendor")]}
+    prices_out, weights_out, forced = apply_delisting_exits(
+        adj, weights, records, assume_terminal_last_close=assume_last_close,
+    )
+    pd.testing.assert_frame_equal(prices_out, adj)
+    pd.testing.assert_frame_equal(weights_out, weights)
+    assert forced == []
