@@ -94,12 +94,9 @@ def apply_delisting_exits(
         sym_index = col.dropna().index  # this symbol's OWN traded bars (T == sym_index[-1])
         sym_records = list(records.get(c, []))
 
-        # Integrity: a record dated within the panel that resolves (against this symbol's own
-        # bars) to a bar BEFORE its terminal bar means the symbol kept trading past the stated
-        # delisting — a data inconsistency. Fail closed.
+        # A future settlement remains an unvalued claim even beyond this evaluation window.
+        # Earlier records must also agree with the symbol's observed trading history.
         for r in sym_records:
-            if r.delisting_date > panel_end_date:
-                continue
             if r.delisting_date > T.date():
                 # Targets cannot establish actual flatness; the overlay has no claim valuation.
                 raise DelistingExitError(

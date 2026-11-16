@@ -99,11 +99,11 @@ def test_period_ends_on_delisting_applies_terminal_price():
     assert forced and forced[0]["bar"] == T.isoformat()
 
 
-def test_record_after_panel_end_skipped():
+def test_record_after_panel_end_refuses_unvalued_claim():
     adj = _grid({"A": [10, 11, 12, 13], "B": [10, 11, np.nan, np.nan]})
     w = _grid({"A": [0.5] * 4, "B": [0.5, 0.5, 0.0, 0.0]})
     recs = {"B": [DelistingRecord(date(2021, 6, 1), 5.0, "vendor")]}
-    with pytest.raises(DelistingExitError, match="no delisting record"):
+    with pytest.raises(DelistingExitError, match="cannot backdate.*settlement"):
         apply_delisting_exits(adj, w, recs)
 
 
@@ -124,7 +124,7 @@ def test_symbol_never_traded_skipped():
 
 
 @pytest.mark.parametrize("terminal_target", [0.0, 0.5])
-@pytest.mark.parametrize("settlement_day", [3, 4])
+@pytest.mark.parametrize("settlement_day", [3, 4, 5])
 @pytest.mark.parametrize("assume_last_close", [False, True])
 def test_later_settlement_refuses_instead_of_crediting_last_trade(
     terminal_target, settlement_day, assume_last_close,
