@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import stat
@@ -5,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from algua.data import sharadar_identity
 from algua.data.sharadar_identity import (
     IdentityCompileError,
     compile_identity_artifact,
@@ -161,3 +163,62 @@ def test_cli_stdout_has_only_safe_summary(tmp_path):
         str(bad[0]), "--actions", str(bad[1]), "--out", str(tmp_path / "o2.json")])
     assert res.exit_code == 1 and "ZZLEAK" not in res.stdout
     assert not (tmp_path / "o2.json").exists()
+
+
+def test_hash_binds_exact_parsed_bytes_despite_source_mutation(tmp_path, monkeypatch):
+    t, a = _files(tmp_path, actions=_pair("2020-01-06", "ZZNEW", "ZZA", "ZZB"))
+    original = t.read_bytes()
+    real = sharadar_identity.read_tickers
+
+    def mutating_reader(copy):
+        t.write_text(T_HEAD + "SEP,900009,ZZEVIL,E,NYSE,N,X,,\n")  # source changes mid-parse
+        assert copy != t and stat.S_IMODE(copy.stat().st_mode) == 0o600
+        assert stat.S_IMODE(copy.parent.stat().st_mode) == 0o700
+        return real(copy)
+
+    monkeypatch.setattr(sharadar_identity, "read_tickers", mutating_reader)
+    art = compile_identity_artifact(t, a)
+    assert art.tickers_sha256 == hashlib.sha256(original).hexdigest()
+    assert [i["permaticker"] for i in _doc(art)["identities"]] == [900001, 900002]
+
+
+def test_temp_copy_is_removed(tmp_path, monkeypatch):
+    t, a = _files(tmp_path)
+    seen = []
+    real = sharadar_identity.read_actions
+    monkeypatch.setattr(sharadar_identity, "read_actions",
+                        lambda p: (seen.append(p), real(p))[1])
+    compile_identity_artifact(t, a)
+    assert seen and not seen[0].exists() and not seen[0].parent.exists()
+
+
+def test_oversized_source_refused_generically(tmp_path, monkeypatch):
+    t, a = _files(tmp_path, actions="2020-01-06,split,ZZSECRET,n,2,,\n")
+    monkeypatch.setattr(sharadar_identity, "MAX_ACTIONS_BYTES", 40)
+    with pytest.raises(IdentityCompileError, match="size limit") as exc:
+        compile_identity_artifact(t, a)
+    assert "ZZSECRET" not in str(exc.value)
+
+
+def test_row_limit_and_symlink_input_refused(tmp_path, monkeypatch):
+    t, a = _files(tmp_path, actions=_pair("2020-01-06", "ZZNEW", "ZZA", "ZZB"))
+    monkeypatch.setattr(sharadar_identity, "MAX_ROWS", 1)
+    with pytest.raises(IdentityCompileError, match="row limit"):
+        compile_identity_artifact(t, a)
+    monkeypatch.undo()
+    link = tmp_path / "L.csv"
+    os.symlink(t, link)
+    with pytest.raises(IdentityCompileError):
+        compile_identity_artifact(link, a)
+
+
+def test_output_parent_symlink_refused(tmp_path):
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    os.symlink(real_dir, tmp_path / "linkdir")
+    root = Path("/nonexistent-repo-root")
+    with pytest.raises(IdentityCompileError):
+        write_private_new(tmp_path / "linkdir" / "o.json", b"{}", repo_root=root)
+    with pytest.raises(IdentityCompileError):  # missing child beneath a symlinked ancestor
+        write_private_new(tmp_path / "linkdir" / "new" / "o.json", b"{}", repo_root=root)
+    assert not list(real_dir.iterdir())

@@ -16,13 +16,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
 
 from algua.data.importers.sharadar_tables import read_actions, read_tickers
-from algua.primitives.atomic_io import fsync_dir, fsync_file
 
 SCHEMA = "algua.sharadar.identity_events.v1"
 _FROM, _TO = "tickerchangefrom", "tickerchangeto"
@@ -42,25 +43,45 @@ class IdentityArtifact:
     event_count: int
 
 
-def _sha256_file(path: Path) -> str:
-    if path.is_symlink() or not path.is_file():
-        raise IdentityCompileError("input must be a regular file")
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+MAX_TICKERS_BYTES = 64 << 20
+MAX_ACTIONS_BYTES = 512 << 20
+MAX_ROWS = 5_000_000
 
 
-def _read_hashed(path: Path, reader, label: str) -> tuple[pd.DataFrame, str]:
-    before = _sha256_file(path)
+def _capture(path: Path, limit: int) -> bytes:
+    """Read the source ONCE (bounded, no symlink) and return the exact bytes."""
     try:
-        frame = reader(path)
-    except Exception:  # vendor/pandas messages can quote cell text
-        raise IdentityCompileError(f"{label} export failed schema validation") from None
-    if _sha256_file(path) != before:
-        raise IdentityCompileError(f"{label} export changed while being read")
-    return frame, before
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        with os.fdopen(fd, "rb") as fh:
+            if not stat.S_ISREG(os.fstat(fh.fileno()).st_mode):
+                raise IdentityCompileError("input must be a regular file")
+            data = fh.read(limit + 1)
+    except IdentityCompileError:
+        raise
+    except OSError:
+        raise IdentityCompileError("input could not be read as a regular file") from None
+    if len(data) > limit:
+        raise IdentityCompileError("input exceeds the size limit")
+    return data
+
+
+def _read_hashed(path: Path, reader, label: str, limit: int) -> tuple[pd.DataFrame, str]:
+    """Hash the captured bytes and parse a private temp copy of those SAME bytes, so the hash
+    binds exactly what was parsed whatever happens to the source afterwards."""
+    data = _capture(path, limit)
+    digest = hashlib.sha256(data).hexdigest()
+    with tempfile.TemporaryDirectory(prefix="algua-ident-") as tmp:  # mkdtemp: 0700
+        copy = Path(tmp) / "export.csv"
+        fd = os.open(copy, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        try:
+            frame = reader(copy)
+        except Exception:  # vendor/pandas messages can quote cell text
+            raise IdentityCompileError(f"{label} export failed schema validation") from None
+    if len(frame) > MAX_ROWS:
+        raise IdentityCompileError(f"{label} export exceeds the row limit")
+    return frame, digest
 
 
 def _stable_key(permaticker: int) -> str:
@@ -116,8 +137,8 @@ def _events(actions: pd.DataFrame, by_ticker: dict[str, int]) -> list[dict]:
 
 
 def compile_identity_artifact(tickers_path: Path, actions_path: Path) -> IdentityArtifact:
-    tickers, tickers_sha = _read_hashed(tickers_path, read_tickers, "TICKERS")
-    actions, actions_sha = _read_hashed(actions_path, read_actions, "ACTIONS")
+    tickers, tickers_sha = _read_hashed(tickers_path, read_tickers, "TICKERS", MAX_TICKERS_BYTES)
+    actions, actions_sha = _read_hashed(actions_path, read_actions, "ACTIONS", MAX_ACTIONS_BYTES)
     by_ticker = _identities(tickers)
     events = _events(actions, by_ticker)
     identities = [
@@ -141,34 +162,41 @@ def compile_identity_artifact(tickers_path: Path, actions_path: Path) -> Identit
 
 
 def write_private_new(path: Path, data: bytes, *, repo_root: Path) -> Path:
-    """Publish `data` at a NEW path (0600; missing parent dirs 0700). Never overwrites, never
-    follows a symlink, refuses locations inside the repository."""
-    if path.is_symlink() or path.exists():
-        raise IdentityCompileError("output path already exists; refusing to overwrite")
-    resolved = path.expanduser().resolve()
-    if resolved == repo_root or repo_root in resolved.parents:
+    """Publish `data` at a NEW path (0600; missing parent dirs 0700). Never overwrites and refuses
+    a symlink at the path OR at any ancestor (no resolving), or a location inside the repo."""
+    absolute = Path(os.path.abspath(path.expanduser()))
+    if absolute == repo_root or repo_root in absolute.parents:
         raise IdentityCompileError("output must be outside the repository")
-    missing = []
-    probe = resolved.parent
-    while not probe.exists():
-        missing.append(probe)
-        probe = probe.parent
-    for d in reversed(missing):
+    parts = [absolute, *absolute.parents]
+    if any(p.is_symlink() for p in parts):
+        raise IdentityCompileError("output path must not involve symlinks")
+    if absolute.exists():
+        raise IdentityCompileError("output path already exists; refusing to overwrite")
+    for d in reversed([p for p in parts[1:] if not p.exists()]):
         d.mkdir(mode=0o700)
         d.chmod(0o700)
-    tmp = resolved.parent / f".{resolved.name}.{os.getpid()}.tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    # Operate through a directory fd opened without following links, so a parent swapped for a
+    # symlink after the check cannot redirect the write.
+    dfd = os.open(absolute.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    tmp_name = f".{absolute.name}.{os.getpid()}.tmp"
     try:
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(data)
-        fsync_file(tmp)
-        os.link(tmp, resolved)  # atomic and fails if the destination appeared meanwhile
-    except FileExistsError:
-        raise IdentityCompileError("output path already exists; refusing to overwrite") from None
-    finally:
+        fd = os.open(tmp_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600,
+                     dir_fd=dfd)
         try:
-            os.unlink(tmp)
-        except FileNotFoundError:
-            pass
-    fsync_dir(resolved.parent)
-    return resolved
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(data)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.link(tmp_name, absolute.name, src_dir_fd=dfd, dst_dir_fd=dfd)  # no overwrite
+        except FileExistsError:
+            raise IdentityCompileError(
+                "output path already exists; refusing to overwrite") from None
+        finally:
+            try:
+                os.unlink(tmp_name, dir_fd=dfd)
+            except FileNotFoundError:
+                pass
+        os.fsync(dfd)
+    finally:
+        os.close(dfd)
+    return absolute
