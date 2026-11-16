@@ -35,7 +35,7 @@ describe('pwa manifest', () => {
 
   it('the service worker navigation fallback never takes /share', async () => {
     const { NAV_DENYLIST } = await import('./swRoutes')
-    for (const path of ['/share', '/share?x=1', '/api/inbox', '/healthz']) {
+    for (const path of ['/share', '/share?x=1', '/api/inbox', '/healthz', '/oauth2', '/oauth2/start?rd=%2F', '/oauth2/callback?code=x']) {
       expect(NAV_DENYLIST.some((re) => re.test(path))).toBe(true)
     }
     for (const path of ['/inbox', '/inbox?shared=1', '/shared-things', '/']) {
