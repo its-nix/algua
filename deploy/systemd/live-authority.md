@@ -57,7 +57,8 @@ These source checks are not deployment acceptance. The interpreter executes befo
 inspect itself; its ELF loader/shared libraries, stdlib/native extension dependencies, system
 OpenSSH dependencies, entry and service manager/configuration must all be reviewed, inventoried
 and runtime-unwritable. The existing materializer records an external Python and explicitly does
-not produce a self-contained runtime. This draft does not certify that external closure. Installed CLI imports also reach vectorbt/Numba,
+not produce a self-contained runtime. This draft does not certify that external closure.
+Installed CLI imports also reach vectorbt/Numba,
 which needs a usable cache locator for a nonroot process. The isolated test uses a disposable cache;
 no production cache policy is supplied or certified here. Resolve its generated executable/cache
 trust and prewarming requirements without changing trading numerics before installation. Prove
