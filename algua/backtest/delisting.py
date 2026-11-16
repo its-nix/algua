@@ -21,6 +21,12 @@ _WEIGHT_EPS = 1e-12
 
 @dataclass(frozen=True)
 class DelistingRecord:
+    """Legacy adjusted-unit proceeds dated when settlement is effective.
+
+    The date is not a last-trade/suspension marker. This schema does not establish
+    historical knowledge time or a complete verified-PIT terminal package.
+    """
+
     delisting_date: date
     terminal_price: float  # per-share terminal proceeds, in adj_close units; strictly > 0
     source: str
@@ -38,9 +44,8 @@ class DelistingExitError(Exception):
 
 def _resolve_bar(index: pd.DatetimeIndex, d: date) -> pd.Timestamp | None:
     """Greatest bar in `index` whose date is <= d (as-of). None if d precedes the first bar.
-    Calendar-free. Callers pass the SYMBOL's own traded bars (not the union panel index) so a
-    vendor delisting_date that lands a day past the last trade — on a date present in the union
-    index only because another symbol traded then — still resolves to this symbol's terminal bar.
+    Calendar-free. Callers pass the SYMBOL's own traded bars (not the union panel index).
+    This lookup validates price history; it never authorizes moving settlement to an earlier day.
     `index` is sorted; binary search makes this O(log n)."""
     # bars are daily UTC timestamps; compare against end-of-day d to include a same-date bar.
     # +1 day cutoff with side="left" includes any timestamp strictly before (d+1) 00:00,
@@ -88,13 +93,20 @@ def apply_delisting_exits(
         first_bar = col.first_valid_index()
         sym_index = col.dropna().index  # this symbol's OWN traded bars (T == sym_index[-1])
         sym_records = list(records.get(c, []))
+        ends_early = T < panel_end
 
-        # Integrity: a record dated within the panel that resolves (against this symbol's own
-        # bars) to a bar BEFORE its terminal bar means the symbol kept trading past the stated
-        # delisting — a data inconsistency. Fail closed.
+        # After trading ends early, future settlement leaves an unvalued claim.
+        # Earlier records must also agree with the symbol's observed trading history.
         for r in sym_records:
-            if r.delisting_date > panel_end_date:
-                continue
+            if not ends_early and r.delisting_date > panel_end_date:
+                continue  # ordinary holdings at evaluation end remain open
+            if r.delisting_date > T.date():
+                # Targets cannot establish actual flatness; the overlay has no claim valuation.
+                raise DelistingExitError(
+                    f"{c}: cannot backdate terminal settlement {r.delisting_date.isoformat()} "
+                    f"to last traded bar {T.date().isoformat()}; delayed settlement and "
+                    "interim claim valuation are unsupported"
+                )
             d_bar = _resolve_bar(sym_index, r.delisting_date)
             if d_bar is not None and d_bar != T:
                 raise DelistingExitError(
@@ -117,7 +129,6 @@ def apply_delisting_exits(
             )
         record = candidates[0] if candidates else None
         held = bool(abs(weights_eff.loc[T, c]) > _WEIGHT_EPS)
-        ends_early = T < panel_end
 
         if record is not None and held:
             weights_exec.loc[T:, c] = 0.0
