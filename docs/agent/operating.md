@@ -70,3 +70,13 @@ foundation responsibilities below remain useful orientation, not an exhaustive s
 ## JSON everywhere
 Commands print indented JSON so an agent can parse results and a human can read them.
 Parse stdout; use exit codes for pass/fail (e.g. `doctor`, illegal `transition`).
+
+## Draft installed authority build
+
+The [installed authority draft](../../deploy/systemd/live-authority.md) separates normal,
+credential-free source development from an installed-only live build. Live assembly replaces the
+source policy at build time; paths, environment and CLI arguments cannot select development keys
+in that artifact. All existing signed consumers share one sealed snapshot verifier. Installed
+enrollment refuses. Source development and unsigned paper behavior remain unchanged.
+This is reviewable source, not installed acceptance: runtime inventory, dedicated UID/isolation,
+outage procedures, installation and human activation remain separate obligations.

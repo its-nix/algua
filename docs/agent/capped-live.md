@@ -67,3 +67,9 @@ Before real deployment, verify economic reconciliation and restart recovery, mon
 and an installed trust anchor that the runtime user cannot write. The reviewed-code child is not
 an OS sandbox. VPS source/data inspection does not establish these deployment properties. Actual
 activation still needs the owner's exact USD ceiling, reviewed instruments and human signature.
+
+The [installed authority draft](../../deploy/systemd/live-authority.md) routes capped activation,
+capital resizing and frozen trade-time verification through the same installed signer snapshot
+as strict live authority. An explicit `anchor` argument cannot override the installed fixed path.
+No separate frozen keyfile, namespace, approval payload, capital rule or activation permission is
+introduced. Development builds stay credential-free; installed runtime acceptance remains blocked.
