@@ -1,14 +1,18 @@
 """Direct Sharadar research ingestion. Availability assumptions never certify PIT evidence."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 
+import algua
 from algua.cli._common import ok
 from algua.cli.app import emit
 from algua.cli.errors import json_errors
 from algua.config.settings import get_settings
 from algua.data.providers.sharadar_client import SharadarClient
 from algua.data.providers.sharadar_fundamentals import fetch_fundamentals
+from algua.data.sharadar_identity import compile_identity_artifact, write_private_new
 from algua.data.store import DataStore, normalize_symbols
 from algua.primitives.timeparse import now_iso
 
@@ -39,3 +43,24 @@ def ingest_fundamentals(
         source_metadata=metadata,
     )
     emit(ok({"snapshot": rec.to_dict()}))
+
+
+@sharadar_app.command("compile-identities")
+@json_errors
+def compile_identities(
+    tickers: Path = typer.Option(..., "--tickers", help="local TICKERS CSV export"),
+    actions: Path = typer.Option(..., "--actions", help="local ACTIONS CSV export"),
+    out: Path = typer.Option(..., "--out", help="NEW private artifact path outside the repo"),
+) -> None:
+    """Compile private stable identities + explicit ticker-change events (unqualified input).
+
+    Offline: no network, key, DB or feed change. The artifact (0600) holds the detail; stdout
+    carries only counts, hashes and the path. Coverage/completeness stay unverified.
+    """
+    art = compile_identity_artifact(tickers, actions)
+    root = Path(algua.__file__).resolve().parents[1]
+    path = write_private_new(out, art.body, repo_root=root)
+    emit(ok({"schema": "algua.sharadar.identity_events.v1", "coverage": "unverified",
+             "identity_count": art.identity_count, "event_count": art.event_count,
+             "tickers_sha256": art.tickers_sha256, "actions_sha256": art.actions_sha256,
+             "artifact_sha256": art.artifact_sha256, "artifact_path": str(path)}))
