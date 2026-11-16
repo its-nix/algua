@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in to Algua</title>
+  <style>
+    body { color: #171717; background: #fafafa; font: 17px/1.5 system-ui, sans-serif;
+      max-width: 30rem; margin: 12vh auto; padding: 1.5rem; }
+    h1 { font-size: 1.7rem; }
+    button { padding: .85rem 1.2rem; border: 0; border-radius: .65rem;
+      color: white; background: #171717; font: inherit; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: wait; }
+    button:focus-visible { outline: 3px solid #2563eb; outline-offset: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Sign in to Algua</h1>
+  <p>Refresh this device’s saved app, then sign in with Google.</p>
+  <p>You may need to enable alerts again after this refresh.</p>
+  <button id="continue" type="button">Continue with Google</button>
+  <p id="status" role="status" aria-live="polite"></p>
+  <noscript>Enable JavaScript to refresh the saved app and continue.</noscript>
+  <script>
+    const button = document.getElementById('continue');
+    const status = document.getElementById('status');
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      status.textContent = 'Refreshing the saved app…';
+      try {
+        const appScope = new URL('/', window.location.origin).href;
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.filter(r => r.scope === appScope).map(r => r.unregister()));
+        }
+        if ('caches' in window) {
+          const names = await caches.keys();
+          await Promise.all(names.filter(n => n.startsWith('workbox-precache-') && n.endsWith(appScope)).map(n => caches.delete(n)));
+        }
+        window.location.replace('/oauth2/start?rd=%2F');
+      } catch {
+        status.textContent = 'Refresh failed. Close this tab, open this link again and retry.';
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

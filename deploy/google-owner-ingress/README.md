@@ -29,6 +29,21 @@ not acceptance of unattended live trading or trust-anchor deployment hardening.
 
 ## Owner provisioning (required before activation)
 
+### Recover an expired cached dashboard
+
+`https://algua.itsnix.cloud/api/auth/recover` serves a fixed public recovery document, with no
+application data. It is an exact GET/HEAD exception; all private API, asset and PWA routes remain
+authenticated. Its button removes only this origin's root-scope worker and root Workbox precache,
+then opens the fixed Google sign-in path. Query parameters cannot choose a redirect. The user may
+need to enable alerts again after this one-time repair. Normal session recovery preserves the
+worker and push subscription.
+
+This path is needed for clients with the old worker: it cached OAuth navigation and could not
+download its protected replacement after the session expired. Keep the inline-script hash in
+`auth-recovery.conf` synchronized with the HTML; the focused CSP test checks the exact bytes.
+
+### OAuth client and DNS
+
 1. In Hostinger DNS replace/create **only** these website A records (TTL 300 during cutover):
 
    | Name | Type | Value |
@@ -65,7 +80,7 @@ usermod -a -G algua-web-edge algua-ingress
 install -d -o root -g root -m 0755 /etc/algua-ingress
 install -d -o root -g algua-auth -m 0750 /etc/algua-google-auth
 install -d -o root -g root -m 0755 /usr/local/lib/algua-google-auth /var/lib/algua-acme
-install -o root -g root -m 0644 deploy/google-owner-ingress/nginx.conf deploy/google-owner-ingress/oauth-headers.conf deploy/google-owner-ingress/dashboard.conf /etc/algua-ingress/
+install -o root -g root -m 0644 deploy/google-owner-ingress/nginx.conf deploy/google-owner-ingress/oauth-headers.conf deploy/google-owner-ingress/dashboard.conf deploy/google-owner-ingress/auth-recovery.conf deploy/google-owner-ingress/auth-recovery.html /etc/algua-ingress/
 install -o root -g algua-auth -m 0640 deploy/google-owner-ingress/oauth2-proxy.cfg /etc/algua-google-auth/
 install -o root -g algua-auth -m 0640 /dev/null /etc/algua-google-auth/owner-email
 install -o root -g root -m 0600 /dev/null /etc/algua-google-auth/secrets.env
