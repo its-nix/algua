@@ -13,6 +13,7 @@ vendor values: errors reach stdout and the inputs are licensed data.
 """
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import os
@@ -51,7 +52,7 @@ MAX_ROWS = 5_000_000
 def _capture(path: Path, limit: int) -> bytes:
     """Read the source ONCE (bounded, no symlink) and return the exact bytes."""
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
         with os.fdopen(fd, "rb") as fh:
             if not stat.S_ISREG(os.fstat(fh.fileno()).st_mode):
                 raise IdentityCompileError("input must be a regular file")
@@ -136,6 +137,23 @@ def _events(actions: pd.DataFrame, by_ticker: dict[str, int]) -> list[dict]:
     return events
 
 
+def _sanitized(message: str):
+    """Any unexpected failure (OS, temp, parser) becomes fixed value-free text: raw exception
+    strings can carry paths or vendor cell text and the shared CLI decorator prints str(exc)."""
+    def deco(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            try:
+                return fn(*args, **kwargs)
+            except IdentityCompileError:
+                raise
+            except Exception:
+                raise IdentityCompileError(message) from None
+        return wrapper
+    return deco
+
+
+@_sanitized("identity compilation failed")
 def compile_identity_artifact(tickers_path: Path, actions_path: Path) -> IdentityArtifact:
     tickers, tickers_sha = _read_hashed(tickers_path, read_tickers, "TICKERS", MAX_TICKERS_BYTES)
     actions, actions_sha = _read_hashed(actions_path, read_actions, "ACTIONS", MAX_ACTIONS_BYTES)
@@ -161,25 +179,36 @@ def compile_identity_artifact(tickers_path: Path, actions_path: Path) -> Identit
                             len(identities), len(events))
 
 
+def _open_dir(name: str, parent_fd: int | None, *, create: bool) -> int:
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    try:
+        return os.open(name, flags, dir_fd=parent_fd)
+    except FileNotFoundError:
+        if not create or parent_fd is None:
+            raise
+    os.mkdir(name, 0o700, dir_fd=parent_fd)  # mode only narrows under umask; no chmod needed
+    return os.open(name, flags, dir_fd=parent_fd)
+
+
+@_sanitized("output could not be written")
 def write_private_new(path: Path, data: bytes, *, repo_root: Path) -> Path:
-    """Publish `data` at a NEW path (0600; missing parent dirs 0700). Never overwrites and refuses
-    a symlink at the path OR at any ancestor (no resolving), or a location inside the repo."""
+    """Publish `data` at a NEW path (0600; missing parent dirs 0700). Never overwrites. Walks the
+    path from `/` one directory fd at a time (O_NOFOLLOW), so a symlink at any component, even one
+    swapped in mid-call, is refused rather than followed. Refuses locations inside the repo."""
     absolute = Path(os.path.abspath(path.expanduser()))
     if absolute == repo_root or repo_root in absolute.parents:
         raise IdentityCompileError("output must be outside the repository")
-    parts = [absolute, *absolute.parents]
-    if any(p.is_symlink() for p in parts):
-        raise IdentityCompileError("output path must not involve symlinks")
-    if absolute.exists():
-        raise IdentityCompileError("output path already exists; refusing to overwrite")
-    for d in reversed([p for p in parts[1:] if not p.exists()]):
-        d.mkdir(mode=0o700)
-        d.chmod(0o700)
-    # Operate through a directory fd opened without following links, so a parent swapped for a
-    # symlink after the check cannot redirect the write.
-    dfd = os.open(absolute.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
-    tmp_name = f".{absolute.name}.{os.getpid()}.tmp"
+    *dirs, name = absolute.parts[1:]
+    fds: list[int] = []
     try:
+        fds.append(_open_dir("/", None, create=False))
+        for comp in dirs:
+            try:
+                fds.append(_open_dir(comp, fds[-1], create=True))
+            except OSError:  # ELOOP/ENOTDIR (symlink or non-directory) or any other refusal
+                raise IdentityCompileError("output path must be real directories only") from None
+        dfd = fds[-1]
+        tmp_name = f".{name}.{os.getpid()}.tmp"
         fd = os.open(tmp_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600,
                      dir_fd=dfd)
         try:
@@ -187,7 +216,7 @@ def write_private_new(path: Path, data: bytes, *, repo_root: Path) -> Path:
                 fh.write(data)
                 fh.flush()
                 os.fsync(fh.fileno())
-            os.link(tmp_name, absolute.name, src_dir_fd=dfd, dst_dir_fd=dfd)  # no overwrite
+            os.link(tmp_name, name, src_dir_fd=dfd, dst_dir_fd=dfd)  # atomic, no overwrite
         except FileExistsError:
             raise IdentityCompileError(
                 "output path already exists; refusing to overwrite") from None
@@ -198,5 +227,6 @@ def write_private_new(path: Path, data: bytes, *, repo_root: Path) -> Path:
                 pass
         os.fsync(dfd)
     finally:
-        os.close(dfd)
+        for f in fds:
+            os.close(f)
     return absolute
