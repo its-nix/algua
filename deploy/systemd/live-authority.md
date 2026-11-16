@@ -13,6 +13,8 @@ acceptance status; a paper descriptor/adoption receipt grants no live authority.
 selects a different artifact during assembly, never during live execution. Review its inventory,
 the policy hashes in both source and installed package, the commit-substituted live entry and all
 external runtime dependencies before installation. Do not run the paper adoption helper on it.
+Assembly refuses when either executing builder differs from its requested-commit source; runtime
+provenance records both the materializer and authority assembler hashes in the final inventory.
 The recipe is unprivileged preparation only; no merge, root install, credential provisioning or
 service activation follows from it.
 
@@ -58,10 +60,15 @@ inspect itself; its ELF loader/shared libraries, stdlib/native extension depende
 OpenSSH dependencies, entry and service manager/configuration must all be reviewed, inventoried
 and runtime-unwritable. The existing materializer records an external Python and explicitly does
 not produce a self-contained runtime. This draft does not certify that external closure.
-Installed CLI imports also reach vectorbt/Numba,
-which needs a usable cache locator for a nonroot process. The isolated test uses a disposable cache;
-no production cache policy is supplied or certified here. Resolve its generated executable/cache
-trust and prewarming requirements without changing trading numerics before installation. Prove
+Full locked-dependency materialization and disposable immutable source/site/entry probes reproduced
+the CLI startup blocker in vectorbt's `set_seed_nb`. Numba's source-backed cache locators try to
+create a temporary file before loading any cached overload. Root prewarming that function and
+making its `.nbi`/`.nbc` files and directories runtime-read-only still refuses with `no locator
+available`; prewarming alone is not a solution. A writable diagnostic cache lets startup pass,
+but Numba unpickles cache indexes and compiled objects, so that is an executable trust boundary,
+not accepted production configuration. The installed runtime scan does not validate external
+Numba cache directories. No production cache policy is supplied or certified here. Resolve that
+boundary without disabling JIT or changing trading numerics before installation. Prove
 mount/namespace restrictions on the intended host, including overlays; no runtime capability,
 user namespace or service-control route may replace trusted paths. A container source test is
 not that proof. Validate runtime checks against the target layout; conservative symlink/ACL

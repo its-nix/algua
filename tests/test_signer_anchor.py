@@ -63,6 +63,38 @@ def test_build_time_policy_separation(tmp_path, development):
         root / 'uv.lock').read_bytes()
 
 
+@pytest.mark.parametrize('changed', [None, 'build-live-artifact.py', 'build-paper-release.py'])
+def test_live_build_binds_executed_builders_to_requested_source(tmp_path, monkeypatch, changed):
+    builder = _builder()
+    helper = builder._helper()
+    root = _artifact(tmp_path)
+    scripts = root / 'deploy/scripts'
+    scripts.mkdir(parents=True)
+    for name in ('build-live-artifact.py', 'build-paper-release.py', 'algua-live-entry'):
+        shutil.copyfile(REPO / 'deploy/scripts' / name, scripts / name)
+    if changed:
+        (scripts / changed).write_text('# another revision\n')
+    (root / 'application-runtime.json').write_text(json.dumps({
+        'builder_sha256': helper.sha(Path(helper.__file__)),
+    }))
+    monkeypatch.setattr(helper, 'build', lambda *args: None)
+    monkeypatch.setattr(builder, '_helper', lambda: helper)
+    monkeypatch.setattr(builder.sys, 'platform', 'linux')
+    descriptor = tmp_path / 'live.json'
+    if changed:
+        with pytest.raises(ValueError, match='builder_source_mismatch'):
+            builder.build(tmp_path, 'a' * 40, root, descriptor)
+        assert not descriptor.exists()
+        assert (root / 'algua/registry/signer_anchor_dev.py').is_file()
+    else:
+        result = builder.build(tmp_path, 'a' * 40, root, descriptor)
+        runtime = json.loads((root / 'application-runtime.json').read_text())
+        assert runtime['authority_builder_sha256'] == helper.sha(Path(builder.__file__))
+        assert runtime['builder_sha256'] == helper.sha(Path(helper.__file__))
+        assert result['files']['application-runtime.json'] == helper.sha(
+            root / 'application-runtime.json')
+
+
 def test_installed_artifact_direct_import_has_no_development_escape(tmp_path):
     root = _artifact(tmp_path)
     _builder().assemble_policy(root, development=False)

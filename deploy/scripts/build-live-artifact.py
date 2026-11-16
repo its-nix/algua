@@ -62,6 +62,11 @@ def build(repository: Path, commit: str, output: Path, descriptor: Path,
     with TemporaryDirectory(prefix='algua-authority-build-') as private:
         # Reuse dependency materialization, never its paper descriptor as live authority.
         helper.build(repository, commit, output, Path(private) / 'application.json')
+    # The inventoried recipes must be the recipes that actually assembled this release.
+    # Otherwise an older checkout can silently apply its policy to a different commit.
+    for recipe in (Path(__file__), Path(helper.__file__)):
+        helper.require(helper.sha(recipe) == helper.sha(output / 'deploy/scripts' / recipe.name),
+                       'builder_source_mismatch')
     policy_files = assemble_policy(output, development=development)
     profile = 'algua-development/v1' if development else 'algua-installed-live/v1'
     if not development:
@@ -69,6 +74,7 @@ def build(repository: Path, commit: str, output: Path, descriptor: Path,
         template.write_text(template.read_text().replace('@COMMIT@', commit))
     runtime = json.loads((output / 'application-runtime.json').read_text())
     runtime.update(profile=profile, trusted_or_approved=False,
+                   authority_builder_sha256=helper.sha(Path(__file__)),
                    authority_policy_files=policy_files,
                    startup='Python -I -S; explicit site-packages; no .pth execution',
                    installed_acceptance='BLOCKED: runtime/UID/isolation/outage review required')
