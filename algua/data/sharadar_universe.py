@@ -13,9 +13,11 @@ import json
 import math
 from bisect import bisect_left
 from collections import Counter
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import date
-from decimal import Context, Decimal, Inexact, localcontext
+from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
@@ -36,7 +38,6 @@ from algua.data.store import DataStore
 SCHEMA = "algua.sharadar.universe_preview.v1"
 FROZEN_RULES_SHA256 = "38d880b7b6079fd460d48e5bb144b14c74a0089f55fff37e7cfc1ecee867c7b2"
 MATERIALIZER_REV = "sharadar-universe-preview/1"
-_EXACT = Context(prec=400, traps=[Inexact])
 VALID, ABSENT, UNKNOWN, INVALID = 0, 1, 2, 3
 
 
@@ -63,7 +64,7 @@ class _Sec:
         self.code = np.full(n, UNKNOWN, dtype=np.int8)
         self.close: dict[int, str] = {}
         self.vol: dict[int, str] = {}
-        self.dv: dict[int, Decimal] = {}
+        self.dv: dict[int, Fraction] = {}
         self.cum: dict[int, np.ndarray] = {}
 
     def finish(self) -> None:
@@ -73,9 +74,9 @@ class _Sec:
     def count(self, kind: int, lo: int, hi: int) -> int:  # inclusive indices
         return int(self.cum[kind][hi + 1] - self.cum[kind][lo])
 
-    def dollar_volume(self, i: int) -> Decimal:
+    def dollar_volume(self, i: int) -> Fraction:
         if i not in self.dv:
-            self.dv[i] = Decimal(self.close[i]) * Decimal(self.vol[i])
+            self.dv[i] = Fraction(Decimal(self.close[i])) * Fraction(Decimal(self.vol[i]))
         return self.dv[i]
 
 
@@ -102,7 +103,9 @@ def compute_universe_preview(*, store: DataStore, snapshot_id: str, identities: 
     ident = load_identity_artifact(identities)
     rec = store.get_snapshot(snapshot_id)
     if (rec.dataset != Dataset.BARS or rec.metadata.provider != "sharadar"
-            or rec.metadata.timeframe != "1d" or rec.metadata.adjustment != "none"):
+            or rec.metadata.timeframe != "1d" or rec.metadata.adjustment != "none"
+            or (rec.metadata.source_metadata or {}).get("identity_artifact_sha256")
+            != ident.sha256):
         raise IdentityCompileError("snapshot is not a stage-1 Sharadar 1d raw bars snapshot")
     ev_bytes = _capture(evidence, 256 << 20)
     ev = parse_evidence(ev_bytes, identity_sha256=ident.sha256, bars_content_hash=rec.content_hash,
@@ -111,9 +114,16 @@ def compute_universe_preview(*, store: DataStore, snapshot_id: str, identities: 
         raise IdentityCompileError("start must be before end")
 
     bars = store.read_bars(snapshot_id)
-    if not set(bars["symbol"].unique()) <= ident.ids:
+    if bars.empty or not set(bars["symbol"].unique()) <= ident.ids:
         raise IdentityCompileError("snapshot has symbols that are not artifact stable IDs")
     cal = MarketCalendar(cfg["calendar"])
+    # calendar membership is validated for EVERY bar date, but bars on/after `end` never feed the
+    # computation (no future influence)
+    if not all(cal.is_session(d) for d in {ts.date() for ts in bars.index.unique()}):
+        raise IdentityCompileError("snapshot has a bar on a non-XNYS-session date")
+    bars = bars[[ts.date() < end for ts in bars.index]]
+    if bars.empty:
+        raise IdentityCompileError("snapshot has no bars before the range end")
     first_bar = bars.index.min().date()
     sessions = cal.sessions_in_range(min(first_bar, ev.inventory_from, start), end)
     pos = {d: i for i, d in enumerate(sessions)}
@@ -156,21 +166,21 @@ def compute_universe_preview(*, store: DataStore, snapshot_id: str, identities: 
     cap = int(cfg["selection"]["maximum_securities"])
     hist_min = int(cfg["history_floor"]["minimum_valid_observed_sessions"])
     win = int(cfg["liquidity"]["sessions"])
-    price_min = Decimal(str(cfg["price"]["minimum_USD_inclusive"]))
-    liq_min = Decimal(str(cfg["liquidity"]["minimum_USD_inclusive"]))
+    price_min = Fraction(Decimal(str(cfg["price"]["minimum_USD_inclusive"])))
+    liq_min = Fraction(Decimal(str(cfg["liquidity"]["minimum_USD_inclusive"])))
     elig = cfg["eligibility"]
     want = (elig["issuer_domicile"], None, "ordinary_common_stock", elig["currency"])
     venues = set(elig["listing_venues"])
 
     members_by_date: dict[date, list[str]] = {}
     refused: dict[date, Counter[str]] = {}
-    with localcontext(_EXACT):
+    with nullcontext():  # Fraction arithmetic is exact at any float64 exponent
         for t in eval_dates:
             ti = pos[t]
             why: Counter[str] = Counter()
             if not (ev.inventory_from <= t < ev.inventory_to):
                 why["unknown_universe_inventory"] += 1
-            ranked: list[tuple[Decimal, str]] = []
+            ranked: list[tuple[Fraction, str]] = []
             for sid in sorted(secs):
                 if why.get("unknown_universe_inventory"):
                     break
@@ -213,7 +223,7 @@ def compute_universe_preview(*, store: DataStore, snapshot_id: str, identities: 
                     if prefix_unknown or s.count(UNKNOWN, lo, ti):
                         why["history_floor_undecidable_unknown_prefix"] += 1
                     continue
-                if Decimal(s.close[ti]) < price_min:
+                if Fraction(Decimal(s.close[ti])) < price_min:
                     continue
                 dvs = sorted(s.dollar_volume(i) for i in range(ti - win + 1, ti + 1))
                 median = (dvs[win // 2 - 1] + dvs[win // 2]) / 2

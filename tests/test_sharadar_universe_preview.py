@@ -23,7 +23,8 @@ IDS = {"ZZA": 900001, "ZZB": 900002, "ZZC": 900003}
 SID = {k: f"SHARADAR:PERMATICKER:{p}" for k, p in IDS.items()}
 
 
-def _build(tmp_path, *, vol=None, skip=None, extra=()):
+def _build(tmp_path, *, vol=None, skip=None, extra=(), px=None):
+    px = px or {}
     vol = {"ZZA": 2_000_000, "ZZB": 2_000_000, "ZZC": 2_000_000, **(vol or {})}
     skip = skip or {}
     t, a, s = tmp_path / "T.csv", tmp_path / "A.csv", tmp_path / "S.csv"
@@ -31,7 +32,8 @@ def _build(tmp_path, *, vol=None, skip=None, extra=()):
         + "".join(f"SEP,{p},{k},n,NYSE,N,X,,\n" for k, p in extra))
     a.write_text(A_HEAD)
     s.write_text(S_HEAD + "".join(
-        f"{k},{d},10,10,10,10,{vol[k]},10,10,{d}\n"
+        f"{k},{d},{px.get(k, 10)},{px.get(k, 10)},{px.get(k, 10)},{px.get(k, 10)},{vol[k]},"
+        f"{px.get(k, 10)},{px.get(k, 10)},{d}\n"
         for k in IDS for d in SESS if d not in skip.get(k, ())))
     art = compile_identity_artifact(t, a)
     ident = tmp_path / "ident.json"
@@ -65,9 +67,9 @@ def _evidence(tmp_path, ident, prep, *, absent=None, cert_from="2023-01-01", omi
     return p
 
 
-def _run(store, ident, prep, ev):
+def _run(store, ident, prep, ev, start=LAST, end=END):
     return compute_universe_preview(store=store, snapshot_id=prep.snapshot_id, identities=ident,
-                                    rules=RULES, evidence=ev, start=LAST, end=END, out=None,
+                                    rules=RULES, evidence=ev, start=start, end=end, out=None,
                                     repo_root=ROOT)
 
 
@@ -183,3 +185,31 @@ def test_listing_certification_not_yet_known_is_unknown(tmp_path):
     ev.write_text(json.dumps(doc))
     with pytest.raises(IdentityCompileError):  # not known by t: unknown listing status
         _run(store, ident, prep, ev)
+
+
+def test_historical_subrange_of_longer_snapshot_ignores_future_bars(tmp_path):
+    store, ident, prep, _ = _build(tmp_path)
+    ev = _evidence(tmp_path, ident, prep)
+    r = _run(store, ident, prep, ev, SESS[-40], SESS[-30])
+    assert r.computed_dates == 10 and _members(r) == set(SID.values())
+
+
+def test_stage2_requires_snapshot_bound_to_same_identity_artifact(tmp_path):
+    store, ident, prep, _ = _build(tmp_path)
+    other = tmp_path / "ident2.json"
+    other.write_bytes(ident.read_bytes() + b"\n")  # different bytes, same content
+    ev = _evidence(tmp_path, other, prep)
+    with pytest.raises(IdentityCompileError):
+        _run(store, other, prep, ev)
+
+
+def test_threshold_is_exact_beyond_28_significant_digits(tmp_path):
+    from decimal import Decimal
+    from fractions import Fraction
+    px, v_lo, v_hi = "10.000000000000002", "1999999.9999999998", "1999999.9999999999"
+    exact = lambda v: Fraction(Decimal(px)) * Fraction(Decimal(str(float(v)))) >= 20_000_000  # noqa: E731
+    store, ident, prep, _ = _build(tmp_path, px={"ZZB": px, "ZZC": px},
+                                   vol={"ZZB": float(v_lo), "ZZC": float(v_hi)})
+    r = _run(store, ident, prep, _evidence(tmp_path, ident, prep))
+    assert (SID["ZZB"] in _members(r)) is exact(v_lo)
+    assert (SID["ZZC"] in _members(r)) is exact(v_hi)
