@@ -15,6 +15,13 @@ from algua.data.providers.sharadar_client import SharadarClient
 from algua.data.providers.sharadar_fundamentals import fetch_fundamentals
 from algua.data.sharadar_bars_prep import prepare_bars
 from algua.data.sharadar_identity import compile_identity_artifact, write_private_new
+from algua.data.sharadar_metadata import (
+    SCHEMA as METADATA_SCHEMA,
+)
+from algua.data.sharadar_metadata import (
+    prepare_metadata,
+    publish_metadata,
+)
 from algua.data.sharadar_universe import compute_universe_preview
 from algua.data.store import DataStore, normalize_symbols
 from algua.primitives.timeparse import now_iso
@@ -67,6 +74,26 @@ def compile_identities(
              "identity_count": art.identity_count, "event_count": art.event_count,
              "tickers_sha256": art.tickers_sha256, "actions_sha256": art.actions_sha256,
              "artifact_sha256": art.artifact_sha256, "artifact_path": str(path)}))
+
+
+@sharadar_app.command("prepare-metadata")
+@json_errors
+def prepare_metadata_cmd(
+    tickers: Path = typer.Option(..., "--tickers", help="local TICKERS CSV export"),
+    out: Path = typer.Option(..., "--out",
+                             help="NEW private artifact path outside every checkout"),
+) -> None:
+    """Preserve every TICKERS row as unqualified metadata (no join, no PIT certification).
+
+    Offline: no network, key, DB, store or feed change. The artifact (0600) holds the rows;
+    stdout carries only schema, status, row count, hashes and the path.
+    """
+    root = Path(algua.__file__).resolve().parents[1]
+    art = prepare_metadata(tickers)
+    path = publish_metadata(out, art.body, repo_root=root)
+    emit(ok({"schema": METADATA_SCHEMA, "status": "unqualified", "row_count": art.row_count,
+             "tickers_sha256": art.tickers_sha256, "artifact_sha256": art.artifact_sha256,
+             "artifact_path": str(path)}))
 
 
 @sharadar_app.command("prepare-bars")

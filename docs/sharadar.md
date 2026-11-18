@@ -85,6 +85,34 @@ The current vendor ticker is a restated storage key. This command infers no hist
 intervals, listing history or universe membership. Coverage and completeness remain unverified;
 it publishes no snapshot and changes no trading feed or qualification.
 
+## TICKERS metadata preparation (unqualified)
+
+Preserve every TICKERS table row before any SEP/SF1 join:
+
+```bash
+uv run algua data sharadar prepare-metadata \
+  --tickers /private/sharadar/TICKERS.csv \
+  --out /private/sharadar-preparation/tickers-metadata.json
+```
+
+`--out` must be a new path outside this checkout, the main repository and every linked worktree.
+The file is created at mode 0600 and is never overwritten. It is not point-in-time certified:
+`verified_pit` is false, coverage and completeness stay unverified, and the command infers no
+listing intervals, membership or alias history. It joins nothing, publishes no snapshot and
+changes no feed or qualification gate.
+
+Cell text is kept exactly. There is no trim, case fold, or integer/date conversion. Only an
+empty CSV field becomes JSON null. Every other string stays literal, including `NA`, `NULL`,
+`null`, `N/A`, `None` and `nan`. `source_columns` is the export header in order. A column absent
+from that list was not in the file; a present null was an empty cell. Extra columns are copied
+as text and are not interpreted. Optional columns such as `currency`, `location`, `secfilings`,
+`cusips`, `figi`, `relatedtickers`, `lastupdated`, `siccode`, `sicsector` and `sicindustry` are
+not required. `category` stays a required baseline field. A leading UTF-8 BOM is not part of the
+first header name; the input hash still covers the captured bytes, BOM included. Duplicate
+headers, a blank line and a row whose field count differs from the header are refused with fixed
+text that does not echo the row. Stdout carries only schema, status, row count, hashes and the
+path — never vendor row values.
+
 ## Stable-identity bars and private universe preview (unqualified)
 
 Stage 1 freezes bars under stable IDs; stage 2 computes a private preview of the frozen
