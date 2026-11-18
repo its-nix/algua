@@ -19,8 +19,8 @@ from algua.data.sharadar_metadata import (
     SCHEMA as METADATA_SCHEMA,
 )
 from algua.data.sharadar_metadata import (
-    assert_output_outside_checkouts,
     prepare_metadata,
+    publish_metadata,
 )
 from algua.data.sharadar_universe import compute_universe_preview
 from algua.data.store import DataStore, normalize_symbols
@@ -89,9 +89,8 @@ def prepare_metadata_cmd(
     stdout carries only schema, status, row count, hashes and the path.
     """
     root = Path(algua.__file__).resolve().parents[1]
-    assert_output_outside_checkouts(out, root)
     art = prepare_metadata(tickers)
-    path = write_private_new(out, art.body, repo_root=root)
+    path = publish_metadata(out, art.body, repo_root=root)
     emit(ok({"schema": METADATA_SCHEMA, "status": "unqualified", "row_count": art.row_count,
              "tickers_sha256": art.tickers_sha256, "artifact_sha256": art.artifact_sha256,
              "artifact_path": str(path)}))

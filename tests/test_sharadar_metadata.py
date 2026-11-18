@@ -13,8 +13,8 @@ from algua.data.importers.sharadar_tables import TICKERS_COLUMNS, read_tickers
 from algua.data.sharadar_metadata import (
     SCHEMA,
     MetadataPrepareError,
-    assert_output_outside_checkouts,
     prepare_metadata,
+    publish_metadata,
 )
 
 HEAD = (
@@ -258,7 +258,7 @@ def test_legacy_read_tickers_still_projects_sep_rows(tmp_path):
     assert "currency" not in frame.columns
 
 
-def test_output_refuses_every_linked_checkout_and_prefix_lookalikes(tmp_path):
+def _layout(tmp_path):
     main = tmp_path / "main"
     admin = main / ".git" / "worktrees" / "wt"
     admin.mkdir(parents=True)
@@ -267,23 +267,139 @@ def test_output_refuses_every_linked_checkout_and_prefix_lookalikes(tmp_path):
     (other / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
     (admin / "commondir").write_text("../..\n", encoding="utf-8")
     (admin / "gitdir").write_text(f"{other / '.git'}\n", encoding="utf-8")
-    outside = tmp_path / "safe" / "out.json"
-    lookalike = tmp_path / "main-extra" / "out.json"
+    return main, admin, other
+
+
+def _publish(out, root):
+    return publish_metadata(out, b"{}", repo_root=root)
+
+
+def test_output_refuses_every_linked_checkout_and_prefix_lookalikes(tmp_path):
+    main, _admin, other = _layout(tmp_path)
     for blocked in (other / "out.json", main / "nested" / "out.json", main / "out.json"):
         with pytest.raises(MetadataPrepareError, match="outside the repository"):
-            assert_output_outside_checkouts(blocked, other)
-    assert_output_outside_checkouts(outside, other)
-    assert_output_outside_checkouts(lookalike, other)
-    assert "SECRETHEAD" not in "output must be outside the repository"
+            _publish(blocked, other)
+        assert not blocked.exists()
+    assert not (main / "nested").exists()
+    out = _publish(tmp_path / "safe" / "out.json", other)
+    assert stat.S_IMODE(out.stat().st_mode) == 0o600
+    _publish(tmp_path / "main-extra" / "out.json", other)
+    with pytest.raises(MetadataPrepareError, match="already exists"):
+        _publish(out, other)
 
 
 def test_running_worktree_refuses_a_sibling_inside_the_main_repo():
     root = Path(algua.__file__).resolve().parents[1]
     with pytest.raises(MetadataPrepareError, match="outside the repository"):
-        assert_output_outside_checkouts(root / "out.json", root)
-    if (root / ".git").is_file():
+        _publish(root / "out.json", root)
+    assert not (root / "out.json").exists()
+
+
+def test_git_pointer_spelled_through_an_alias_still_matches_by_inode(tmp_path):
+    main, admin, other = _layout(tmp_path)
+    alias = tmp_path / "alias"
+    alias.symlink_to(tmp_path)
+    # pointers spell the checkouts through a symlink; the output uses the real path
+    (other / ".git").write_text(f"gitdir: {alias / 'main' / '.git' / 'worktrees' / 'wt'}\n")
+    (admin / "commondir").write_text(f"{alias / 'main' / '.git'}\n")
+    (admin / "gitdir").write_text(f"{alias / 'other-wt' / '.git'}\n")
+    for blocked in (main / "out.json", other / "out.json"):
         with pytest.raises(MetadataPrepareError, match="outside the repository"):
-            assert_output_outside_checkouts(root.parent / "out.json", root)
+            _publish(blocked, other)
+    # a symlinked output spelling is refused by the O_NOFOLLOW walk
+    with pytest.raises(MetadataPrepareError, match="real directories"):
+        _publish(alias / "main" / "out.json", other)
+    assert not (main / "out.json").exists()
+
+
+def test_case_variant_output_inside_a_checkout_is_refused(tmp_path):
+    root = tmp_path / "Repo"
+    root.mkdir()
+    if not (tmp_path / "repo").exists():
+        pytest.skip("case-sensitive filesystem")
+    with pytest.raises(MetadataPrepareError, match="outside the repository"):
+        _publish(tmp_path / "repo" / "sub" / "out.json", root)
+    assert list(root.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "breakage",
+    [
+        "git_symlink",
+        "commondir_symlink",
+        "worktrees_symlink",
+        "entry_unreadable",
+        "entry_missing_gitdir",
+        "commondir_binary",
+        "gitdir_symlink",
+        "git_fifo",
+    ],
+)
+def test_malformed_git_layout_fails_closed_with_fixed_text(tmp_path, breakage):
+    main, admin, other = _layout(tmp_path)
+    decoy = tmp_path / "decoy"
+    decoy.write_text("gitdir: /nowhere\n")
+    if breakage == "git_symlink":
+        (other / ".git").unlink()
+        (other / ".git").symlink_to(decoy)
+    elif breakage == "commondir_symlink":
+        (admin / "commondir").unlink()
+        (admin / "commondir").symlink_to(decoy)
+    elif breakage == "worktrees_symlink":
+        real = main / ".git" / "wt-real"
+        (main / ".git" / "worktrees").rename(real)
+        (main / ".git" / "worktrees").symlink_to(real)
+        # the running root is main so worktrees is read directly
+        other = main
+    elif breakage == "entry_unreadable":
+        (admin / "gitdir").chmod(0)
+        if os.access(admin / "gitdir", os.R_OK):
+            pytest.skip("permissions not enforced")
+    elif breakage == "entry_missing_gitdir":
+        (admin / "gitdir").unlink()
+    elif breakage == "commondir_binary":
+        (admin / "commondir").write_bytes(b"\xff\xfeSECRETCELL")
+    elif breakage == "gitdir_symlink":
+        (admin / "gitdir").unlink()
+        (admin / "gitdir").symlink_to(decoy)
+    elif breakage == "git_fifo":
+        (other / ".git").unlink()
+        os.mkfifo(other / ".git")
+    out = tmp_path / "safe" / "out.json"
+    with pytest.raises(MetadataPrepareError) as exc:
+        _publish(out, other)
+    assert "SECRET" not in str(exc.value) and "codec" not in str(exc.value)
+    assert not out.exists()
+
+
+def test_absent_git_entry_and_absent_worktrees_are_root_only(tmp_path):
+    bare = tmp_path / "plain"
+    bare.mkdir()
+    _publish(tmp_path / "o1" / "out.json", bare)
+    (bare / ".git").mkdir()
+    _publish(tmp_path / "o2" / "out.json", bare)
+    with pytest.raises(MetadataPrepareError, match="outside the repository"):
+        _publish(bare / "out.json", bare)
+
+
+def test_parent_swapped_after_discovery_cannot_redirect_the_write(tmp_path, monkeypatch):
+    from algua.data import sharadar_metadata_paths as mod
+
+    main, _admin, other = _layout(tmp_path)
+    parent = tmp_path / "stage"
+    real = mod._discover
+
+    def swap(*args, **kwargs):
+        ids = real(*args, **kwargs)
+        parent.mkdir()
+        parent.rmdir()
+        parent.symlink_to(main)
+        return ids
+
+    monkeypatch.setattr(mod, "_discover", swap)
+    with pytest.raises(MetadataPrepareError, match="real directories"):
+        _publish(parent / "out.json", other)
+    assert not (main / "out.json").exists()
 
 
 def _cli():
@@ -382,3 +498,75 @@ def test_cli_parser_and_checkout_errors_are_json_and_write_nothing(tmp_path):
         assert not inside.exists()
     finally:
         inside.unlink(missing_ok=True)
+
+
+def test_kernel_alias_to_checkout_descendant_is_refused_via_dotdot_chain(tmp_path, monkeypatch):
+    main, _admin, other = _layout(tmp_path)
+    nested = main / "nested"
+    nested.mkdir()
+    (tmp_path / "safe" / "alias").mkdir(parents=True)
+    real_open = os.open
+
+    def aliased(path, flags, *args, **kwargs):
+        if path == "alias" and kwargs.get("dir_fd") is not None:
+            return real_open(nested, flags)  # bind-mount-like: not a checkout, below one
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", aliased)
+    with pytest.raises(MetadataPrepareError, match="outside the repository"):
+        _publish(tmp_path / "safe" / "alias" / "new" / "out.json", other)
+    assert list(nested.iterdir()) == []
+    assert sorted(p.name for p in main.iterdir()) == [".git", "nested"]
+
+
+def test_listed_worktree_whose_root_is_gone_refuses(tmp_path):
+    _main, admin, other = _layout(tmp_path)
+    (admin / "gitdir").write_text(f"{tmp_path / 'gone' / '.git'}\n", encoding="utf-8")
+    out = tmp_path / "safe" / "out.json"
+    with pytest.raises(MetadataPrepareError, match="outside every worktree"):
+        _publish(out, other)
+    assert not out.exists()
+
+
+def test_cli_invalid_utf8_pointer_is_one_fixed_error(tmp_path, monkeypatch):
+    runner, app = _cli()
+    _main, admin, other = _layout(tmp_path)
+    (admin / "commondir").write_bytes(b"\xff\xfeSECRETCELL")
+    (other / "algua").mkdir()
+    monkeypatch.setattr(algua, "__file__", str(other / "algua" / "__init__.py"))
+    out = tmp_path / "safe" / "meta.json"
+    res = runner.invoke(
+        app,
+        [
+            "data",
+            "sharadar",
+            "prepare-metadata",
+            "--tickers",
+            str(_write(tmp_path, OLD)),
+            "--out",
+            str(out),
+        ],
+    )
+    assert res.exit_code == 1
+    body = json.loads(res.stdout)
+    assert body["ok"] is False
+    assert "could not confirm output is outside every worktree" in json.dumps(body)
+    assert "SECRET" not in res.stdout and "codec" not in res.stdout and "utf" not in res.stdout
+    assert not out.exists() and not out.parent.exists()
+
+
+@pytest.mark.parametrize("which", ["gitdir", "common"])
+def test_referenced_git_admin_dir_that_is_a_symlink_is_refused(tmp_path, which):
+    main, admin, other = _layout(tmp_path)
+    if which == "gitdir":
+        link = tmp_path / "admin-link"
+        link.symlink_to(admin)
+        (other / ".git").write_text(f"gitdir: {link}\n", encoding="utf-8")
+    else:
+        link = tmp_path / "common-link"
+        link.symlink_to(main / ".git")
+        (admin / "commondir").write_text(f"{link}\n", encoding="utf-8")
+    out = tmp_path / "safe" / "out.json"
+    with pytest.raises(MetadataPrepareError, match="outside every worktree"):
+        _publish(out, other)
+    assert not out.exists() and not out.parent.exists()

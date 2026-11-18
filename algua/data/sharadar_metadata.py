@@ -16,7 +16,6 @@ import functools
 import hashlib
 import io
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,6 +26,15 @@ from algua.data.sharadar_identity import (
     IdentityCompileError,
     _capture,
 )
+from algua.data.sharadar_metadata_paths import MetadataPrepareError, publish_metadata
+
+__all__ = [
+    "MetadataArtifact",
+    "MetadataPrepareError",
+    "SCHEMA",
+    "prepare_metadata",
+    "publish_metadata",
+]
 
 SCHEMA = "algua.sharadar.tickers_metadata.v1"
 _BOM = b"\xef\xbb\xbf"
@@ -38,10 +46,6 @@ _NOTES = (
     "a column absent from source_columns was not in the export; a present null was an empty cell",
     "no interval, membership, point-in-time certification or feed publication is inferred",
 )
-
-
-class MetadataPrepareError(ValueError):
-    """Refusal with fixed, value-free text."""
 
 
 @dataclass(frozen=True)
@@ -134,66 +138,3 @@ def prepare_metadata(path: Path) -> MetadataArtifact:
     }
     body = (json.dumps(doc, indent=2, sort_keys=True) + "\n").encode("utf-8")
     return MetadataArtifact(body, hashlib.sha256(body).hexdigest(), digest, len(rows))
-
-
-def _read_text(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except OSError:
-        raise MetadataPrepareError("could not confirm output is outside every worktree") from None
-
-
-def _pointer(text: str, base: Path) -> Path:
-    raw = text.strip()
-    prefix = "gitdir:"
-    if raw.startswith(prefix):
-        raw = raw[len(prefix) :].strip()
-    if not raw:
-        raise MetadataPrepareError("could not confirm output is outside every worktree")
-    path = Path(raw)
-    if not path.is_absolute():
-        path = base / path
-    return Path(os.path.abspath(path))
-
-
-def checkout_roots(repo_root: Path) -> tuple[Path, ...]:
-    """Running checkout, the main worktree, and every linked worktree this git dir lists.
-
-    A checkout with no ``.git`` entry yields only ``repo_root``. An unreadable git layout
-    refuses rather than guessing: the output must be outside every repository and worktree.
-    """
-    root = Path(os.path.abspath(repo_root))
-    roots = {root}
-    git_entry = root / ".git"
-    try:
-        is_file = git_entry.is_file()
-        is_dir = git_entry.is_dir()
-    except OSError:
-        raise MetadataPrepareError("could not confirm output is outside every worktree") from None
-    if is_file:
-        gitdir = _pointer(_read_text(git_entry), root)
-        common = _pointer(_read_text(gitdir / "commondir"), gitdir)
-        roots.add(common.parent)
-        worktrees = common / "worktrees"
-    elif is_dir:
-        worktrees = git_entry / "worktrees"
-    else:
-        return (root,)
-    try:
-        entries = list(worktrees.iterdir()) if worktrees.is_dir() else []
-    except OSError:
-        raise MetadataPrepareError("could not confirm output is outside every worktree") from None
-    for entry in entries:
-        pointer = entry / "gitdir"
-        if not pointer.is_file():
-            continue
-        roots.add(_pointer(_read_text(pointer), entry).parent)
-    return tuple(roots)
-
-
-def assert_output_outside_checkouts(path: Path, repo_root: Path) -> None:
-    """Refuse an output path inside this checkout, the main repo, or a linked worktree."""
-    absolute = Path(os.path.abspath(path.expanduser()))
-    for root in checkout_roots(repo_root):
-        if absolute == root or root in absolute.parents:
-            raise MetadataPrepareError("output must be outside the repository")
