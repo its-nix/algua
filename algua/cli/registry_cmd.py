@@ -345,8 +345,9 @@ def enroll_approver(
         help="the gate this key authenticates: 'go-live' (forward_tested->live signature), the "
              "only signed approval"),
 ) -> None:
-    """Enroll an approver PUBLIC key for the go-live signing namespace. The trust comes from
-    committing this through code-owner review — the gates use the reviewed copy on main."""
+    """Enroll a development PUBLIC key; human-reviewed installation owns live enrollment."""
+    from algua.registry import signer_anchor
+    signer_anchor.require_enrollment_allowed()
     if namespace not in _NAMESPACE_CHOICES:
         raise ValueError(
             f"--namespace must be one of {sorted(_NAMESPACE_CHOICES)}, got {namespace!r}")
@@ -370,8 +371,7 @@ def enroll_approver(
                     enrolled.add(fields[i + 1])
     if keyblob in enrolled:
         raise ValueError("that public key is already enrolled")
-    # ALWAYS write an explicit namespaces= restriction (never an unscoped line): an unscoped line
-    # would authenticate EVERY namespace, not just go-live (#329).
+    # Explicit restriction prevents authentication for unintended namespaces (#329).
     line = f'{name} namespaces="{namespaces_field}" {keytype} {keyblob}\n'
     with ALLOWED_SIGNERS_PATH.open("a") as fh:
         fh.write(line)

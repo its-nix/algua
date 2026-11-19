@@ -114,3 +114,9 @@ API references checked during implementation: [latest quote](https://docs.alpaca
 [orders](https://docs.alpaca.markets/us/reference/postorder),
 [account activities](https://docs.alpaca.markets/us/docs/account-activities),
 [fractional trading](https://docs.alpaca.markets/us/docs/fractional-trading).
+
+The [installed authority draft](../../deploy/systemd/live-authority.md) makes live configuration,
+restoration and the independent watcher's existing authority checks use the installed snapshot.
+Paper configure/restore remains unsigned. Authority failure also blocks signed live reductions
+and exits; it does not flatten exposure or create an unsigned emergency path. A human-reviewed
+outage/manual-intervention procedure and installed runtime acceptance remain prerequisites.

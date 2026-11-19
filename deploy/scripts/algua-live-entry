@@ -1,0 +1,53 @@
+#!/usr/bin/python3 -IS
+"""Human-installed, commit-bound bootstrap. Its runtime is a separate acceptance obligation."""
+import json
+import os
+import pwd
+import re
+import sys
+from pathlib import Path
+
+# The build substitutes this token. No environment, CWD or mutable selector chooses a release.
+RELEASE = '/opt/algua/releases/@COMMIT@'
+
+
+def main():
+    if not re.fullmatch(r'/opt/algua/releases/[0-9a-f]{40}', RELEASE):
+        raise ValueError('unassembled live entry')
+    if os.geteuid() != pwd.getpwnam('algua-live').pw_uid or os.geteuid() == 0:
+        raise ValueError('dedicated algua-live UID required')
+    root = Path(RELEASE)
+    # No startup hooks execute: -I ignores PYTHON* and CWD; -S suppresses site/.pth.
+    # Only the reviewed release's installed site-packages is added explicitly.
+    site = root / '.venv/lib/python3.12/site-packages'
+    python = root / '.venv/bin/python'
+    if not site.is_dir() or not python.is_file():
+        raise ValueError('installed live runtime missing')
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith(('PYTHON', 'LD_', 'DYLD_'))}
+    env['PATH'] = '/usr/bin:/bin'
+    env['PYTHONDONTWRITEBYTECODE'] = '1'
+    os.chdir('/var/lib/algua-live')
+    program = f"""
+import json, sys
+sys.dont_write_bytecode = True
+sys.path.insert(0, {str(site)!r})
+try:
+    from algua.registry.signer_anchor import open_anchor, ALLOWED_SIGNERS_PATH
+    with open_anchor(ALLOWED_SIGNERS_PATH):
+        pass
+    from algua.cli.main import main
+    main()
+except Exception as exc:
+    print(json.dumps({{'ok': False, 'error': str(exc), 'code': 'live_bootstrap_refused'}}))
+    raise SystemExit(1) from None
+"""
+    os.execve(str(python), [str(python), '-I', '-S', '-c', program, *sys.argv[1:]], env)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({'ok': False, 'error': str(exc), 'code': 'live_bootstrap_refused'}))
+        raise SystemExit(1) from None

@@ -661,3 +661,31 @@ def test_live_restore_cli_still_requires_human_signature(world, monkeypatch):
     payload = json.loads(result.stdout)
     assert payload["action"] == "drawdown_challenge" and payload["namespace"] == "algua-go-live"
     assert account_state(conn, "live") == prior
+
+
+def test_installed_snapshot_live_configure_restore_and_failure_leave_paper_unsigned(
+    world, monkeypatch,
+):
+    """Consumer plumbing uses real SSH/seals; host permission acceptance has separate tests."""
+    from algua.registry import signer_anchor_installed as policy
+
+    conn, venue, signed, _ = world
+    content = live_gate.ALLOWED_SIGNERS_PATH.read_bytes()
+    monkeypatch.setattr(policy, '_check_process', lambda: None)
+    monkeypatch.setattr(policy, '_check_runtime', lambda: None)
+    monkeypatch.setattr(policy, '_read_authority', lambda: content)
+    monkeypatch.setattr(live_gate, 'signer_anchor', policy)
+    monkeypatch.setattr(live_gate, 'ALLOWED_SIGNERS_PATH', policy.ALLOWED_SIGNERS_PATH)
+    assert signed(lane='live')[0]['ok']
+    assert signed('restore', lane='live')[0]['ok']
+    prior = account_state(conn, 'live')
+
+    def refuse():
+        raise policy.AnchorError('synthetic installed anchor failure')
+
+    monkeypatch.setattr(policy, '_read_authority', refuse)
+    with pytest.raises(live_gate.SignatureError):
+        signed('restore', lane='live')
+    assert account_state(conn, 'live') == prior
+    assert signed('restore', lane='paper')[0]['ok']
+    assert not venue.sent
