@@ -1,440 +1,368 @@
-# Vision refresh — evidence, capital and market roadmap
+# Vision refresh — intraday futures for funded payouts
 
-**Status:** Draft for owner approval · **Date:** 2026-11-19 · **Owner:** Lior Nisimov
-**Origin:** owner design session ("roadmap"), 2026-11-16 → 2026-11-19, with two independent Codex
-reviews folded in.
+**Status:** Draft for owner approval · **Date:** 2026-11-21 (rewrite) · **Owner:** Lior Nisimov
+**Origin:** owner design session ("roadmap"), 2026-11-16 → 2026-11-21, with Codex and Grok reviews,
+a Codex-vs-Grok debate on futures, and a Codex simulation of prop-firm rules.
+**Supersedes:** the 2026-11-19 draft of this file (commit `1bbae69`), whose daily-stock historical-
+holdout design was rejected after outside review (§16).
 
 This document records owner decisions that amend the [PRD](../../PRD.md). Once approved, the PRD,
-operating guides and agent instructions are updated to match (see §12). Until the code described
-here is built and accepted, the operating guides keep describing what the code enforces **today**;
-every target below that is not yet enforced is labelled as a target and linked to its work card.
+operating guides and agent instructions are updated to match (§14). Until the code below is built and
+accepted, operating guides keep describing what the code enforces **today**; every unbuilt item is a
+target linked to its work card. Items marked **OPEN** need an owner answer (§15). Items marked
+*(call)* were settled by Claude and can be overridden.
 
 ---
 
 ## 1. Intent
 
-Algua exists to make net trading profit. The owner wants the machine to tell the **truth** about
-whether an edge exists — "the bitter truth over the blissful lie" — while requiring as little
-routine owner attention as possible. The owner is a capital allocator, not a reviewer: no human code
-review, no recurring decisions, one-tap approvals only where authority requires a human.
+**North star: make the owner rich from trading profit, as soon as honestly possible.** The owner is a
+capital allocator, not a reviewer: no human code review, no recurring decisions, one-tap approvals only
+where real-money authority requires a human.
 
-The path to money is fixed in this order:
+The binding constraint is capital, not ideas. A real edge on the owner's ~$15k earns little; funded
+prop accounts give $50k–150k of trading size per account for a fee. Every funded program that allows
+bots, accepts Israeli residents and is verified so far requires being **flat by the end of the trading
+day**. So Algua becomes an **intraday futures system** whose product is a frozen strategy that:
 
 ```
-personal capital ──► funded futures accounts ──► audited multi-year live record ──► client money
-  (prove an edge)       (multiply it)               (comes from both)               (scale it)
+history screen ─► freeze ─► shadow (no money) ─► personal pilot (real fills, small) ─► scale
+                                                                   └─► funded accounts (payout multiplier)
 ```
+
+The personal account is the **evidence**; funded accounts are the **multiplier**. A funded pass is never
+evidence. Client money is out of scope until a multi-year audited record and legal clearance exist.
 
 ### Goals
-- A gate that certifies only edges that are real **and** worth money, robust to multiple testing,
-  data snooping, LLM knowledge contamination and distribution shift.
-- Capital that grows only on live evidence and shrinks automatically on failure.
-- A side-agnostic core so the futures/funded lane does not require a core rewrite.
-- An ideation engine that spends research effort where yield is measured to be highest.
+- Find intraday futures edges that survive stressed costs on data generated **after** the freeze.
+- Replay every candidate under each funded firm's exact rules, so "passes and stays funded" is measured
+  before any fee is paid.
+- Keep every loss cap in code; grow capital only on affirmative post-freeze evidence.
+- Keep operating cost near **$150/month**.
 
 ### Non-goals
-- Proving alpha by a deadline. No milestone lowers a gate.
-- Forex. Options. Client money before its prerequisites (§9).
-- Intraday US-stock operation (intraday arrives with futures).
+- Daily or multi-day stock trading (lane frozen, §12). Forex spot. Options. Crypto.
+- Proving an edge by a deadline. No date lowers a bar.
 
-### Anti-goals (would be failure even if it "works")
-- Any path where agents or the owner can see holdout results and iterate on them.
-- Any gate a lucky strategy passes with meaningful probability.
-- Any design that needs recurring owner attention.
-- Responding to a thesis failure by adding features (§10).
+### Anti-goals (failure even if it "works")
+- Scaling the luckiest of many experiments without a repeat on new data.
+- Treating backtests, leaderboards or challenge passes as proof.
+- Any mechanism needing routine owner attention (including weekly logins, §10).
+- Strategies whose risk is hidden (martingale, grid, averaging down, no stop).
 
 ---
 
-## 2. Vocabulary (minimal, used everywhere)
+## 2. Owner decisions recorded in this session
+
+1. Cut operating cost to ~$150/month (measure current spend first).
+2. Replace the "prove it on history" gate with a decision framework: small, capped, expiring real-money
+   pilots buy information; scaling needs affirmative post-freeze evidence; size ≤ quarter Kelly.
+3. Speed comes from **breadth** — redefined by the pivot as distinct futures markets and distinct
+   setups, not daily stocks (the earlier "broad daily equities" item is superseded).
+4. **Pivot:** Algua is built for intraday futures aimed at funded payouts; rebuilding machinery is
+   acceptable.
+5. The research engine searches **entry × exit × sizing** (stops, trailing stops, targets,
+   reward-to-risk, win rate), under the honesty rules in §6.
+6. USD everywhere; owner deposits USD. Owner approves every payment.
+7. Passkey (WebAuthn) one-tap approvals; SSH signature as backup.
+
+---
+
+## 3. Vocabulary (minimal)
 
 | Word | Meaning | Question it answers |
 |---|---|---|
-| **train** | Oldest history. Agents build and tune freely. | — |
-| **validation** | History after train. Agents analyse failures, tweak and retry. Burned by iteration, and charged for it by the pre-screen. | "Is it worth a holdout trial?" |
-| **holdout** | The sealed most-recent history. One test per frozen strategy. Nobody sees its numbers. | **"Is the edge real and good?"** |
-| **freeze** | Code, config, data contract and model recipe hashed before the holdout. Any later change = new strategy. | "Is it the thing we tested?" |
-| **probation** | Paper trading on new data after the holdout pass. | "Is it broken?" |
-| **live** | Real money on the capital ladder. | "Is it still good?" |
-| **trial** | One holdout evaluation. Counted for life. | — |
+| **research** | Building and tuning on history (train + validation windows). Free iteration, every variant counted. | "Is it worth freezing?" |
+| **freeze** | Code, parameters, cost model, rule set and scoring plan hashed. Any later change = new strategy. | "Is it the thing we're scoring?" |
+| **shadow** | Frozen strategy runs on live market data with no money; every trade is scored. | "Does it work on data nobody had seen?" |
+| **pilot** | Frozen strategy on the personal account at minimum size with a loss budget and expiry. | "Do real fills and costs match?" |
+| **live** | Personal account above pilot size, scaled by evidence. | "Is it still good?" |
+| **funded** | A live strategy also running on prop accounts. A deployment, not a stage. | "Does it pay out?" |
+| **trial** | One frozen strategy entering shadow. Counted for life. | — |
 
-**Dropped terms:** forward / forward test / forward-tested / forward certificate, OOS as a gate term
-(walk-forward survives only as a research tool name), strict route, capped route, "five paper
-sessions", the 63-bar holdout floor, qualification profile, candidate-preview, experimental
-activation.
+**Lifecycle:** `idea → research → shadow → pilot → live → retired`, plus `dormant` (benched; can return).
+**OPEN (§15.5):** the owner chose "holdout" as a stage name in the earlier draft; with no historical
+gate that stage disappears. Proposed: `shadow` takes its place.
 
-**Lifecycle stages:** `idea → research → holdout → probation → live → retired`, plus `dormant`
-(benched; can return). `holdout` as a stage means "passed the holdout". Code renames are part of the
-migration (§11); until then docs give a one-line mapping (`backtested`→research,
-`candidate`→holdout, `paper`→probation, `forward_tested` removed).
+**Dropped:** holdout (as a gate), forward / forward-tested / forward certificate, strict and capped
+routes, probation, the 63-bar floor, the five-session qualification, t ≥ 3.72, N = 500, the dual
+benchmark, the decay rule, the "not falsified" ladder.
 
 ---
 
-## 3. Data split
+## 4. Markets and data
 
-- Source: Sharadar daily US equities (full history from ~1998; verify on the installed data).
-- **Train:** 1998 → 2013. **Validation:** 2014-01-01 → 2017-12-31.
-  **Holdout:** 2018-01-01 → 2025-12-31 (8 complete calendar years). Boundaries are exchange
-  sessions, pinned exactly; labels that cross a boundary are purged.
-- The current incomplete year belongs to no split until it completes.
-- **Sliding:** each January all three windows advance one year; the oldest holdout year enters
-  validation and the completed year enters the holdout. Research thereby keeps learning recent
-  markets and the gate always judges the latest 8 years.
-- **Precondition:** every split year must be point-in-time qualified (survivorship, delistings,
-  corporate actions, membership as of date). Unqualified years cannot be holdout years.
-- **Fundamentals:** the current ARQ provider assumes a reporting lag rather than certifying
-  availability (`algua/data/providers/sharadar_fundamentals.py`). Strategies using fundamentals are
-  **not holdout-eligible** until availability/revision semantics are certified. Price-only
-  strategies are unaffected.
-
----
-
-## 4. The holdout gate
-
-### 4.1 Eligibility (pre-screen)
-A frozen strategy may reserve a trial only if, on train+validation data alone:
-1. purged walk-forward excess return is positive against both benchmarks (§4.3) after costs; and
-2. deflated Sharpe ≥ 0.95, where the trial count includes **every** variant evaluated for it:
-   sweeps, manual edits, signal subsets, weightings, transforms and abandoned branches.
-3. It is deployable under current capital policy: long-only for stocks; both directions only for
-   instruments whose policy allows shorts (futures, later). Long-short stock evaluation is a
-   research diagnostic only.
-4. It uses only holdout-eligible inputs (§3 fundamentals rule; §6 model-feature rules).
-
-Hard rate cap: **10 trials per calendar month**.
-
-### 4.2 Trial accounting
-- A trial is **reserved atomically before any holdout data is read**; a crashed, aborted or
-  erroring evaluation still consumes its trial.
-- **Lifetime budget N = 500**, never reset, across all holdout windows. Each trial is tested at
-  one-sided α = 0.05 / 500 (critical t ≈ 3.72). Overlapping/sliding windows are covered because each
-  trial's null p-value is valid on its own window.
-- When 500 is reached the gate refuses new trials and a thesis review is opened (§10). Raising N is
-  a signed owner decision recorded in the PRD.
-
-### 4.3 Pass criteria (all required)
-Returns are daily, net of modelled costs, in excess of the cash rate.
-1. **Alpha vs SPY:** regression intercept with Newey-West (HAC) standard errors, t ≥ 3.72.
-2. **Alpha vs universe equal-weight:** same test against an equal-weight portfolio of the
-   strategy's declared universe — point-in-time membership, lagged one session, investable, with
-   its own turnover and costs.
-3. **Economic hurdle:** estimated annualised alpha ≥ **2%** against both benchmarks.
-4. **Beats SPY in money:** cumulative net return over the holdout > SPY's (sign check).
-5. **No decay:** alpha positive in ≥ 6 of 8 holdout years and over the most recent two years
-   combined. The power of this rule is checked by simulation before enforcement.
-
-Both benchmark tests must pass (intersection test; no extra correction).
-
-### 4.4 Blindness
-- Holdout bars and every holdout result live in a store the research runtime user cannot read,
-  enforced by OS permissions on the VPS. The gate runs as a separate privileged step.
-- **Agents see nothing** about holdout outcomes — not numbers, not pass/fail. Ideation inputs,
-  scorecards and bandit rewards must never contain holdout or gate outcomes, nor stage changes that
-  reveal them (the current `algua/registry/idea_scorecard.py` downstream fields are removed from
-  ideation inputs).
-- **The owner sees** pass/fail per criterion and the trial counter — never holdout numbers or
-  charts. When approving, the owner sees train/validation detail, probation results, capacity,
-  costs and gate self-test status.
-
-### 4.5 Gate self-tests
-On a schedule and before any trial: (a) seeded planted-alpha fixtures must pass; (b) a large
-random-signal simulation must pass at no more than the nominal rate (~1/10,000 per trial). Any
-failure halts the gate until fixed. Fixtures verify correctness; the simulation verifies size and
-power. Neither consumes trials or touches the real holdout.
+- **Instruments:** CME-group micro futures first (MES, MNQ, M2K, MYM, MGC, SIL, MCL, micro
+  Treasury/FX futures where liquid). E-mini sizes only after evidence and only where a funded rule set
+  needs them.
+- **Breadth:** MES, MNQ, MYM and M2K move largely together; they count as close to one bet. Breadth
+  comes from equity-index + rates + metals + energy + FX and from setups with different mechanisms.
+- **Session rule:** every strategy is flat by a configurable time before the close (default 15 minutes
+  before the earliest funded flat-by time). One frozen strategy therefore runs unchanged on personal
+  and funded accounts.
+- **Data:** minute (or finer) bars per contract with roll metadata from one vendor (Databento assumed
+  *(call)*; historical spend capped at **$200** without a new owner approval). CME calendars,
+  holidays and early closes. No survivorship or delisting problems exist for futures; continuous
+  series are built from contracts with an explicit roll rule.
+- **Windows:** history is split into train and validation for research only. History is a **screen**,
+  never proof: intraday patterns are heavily published and known to AI models, so only post-freeze data
+  counts as evidence.
 
 ---
 
-## 5. Probation, live and capital
+## 5. Evidence design
 
-### 5.1 Probation (paper)
-- Length: at least **20 sessions and** at least **3 completed rebalances**, whichever is later.
-- Pass requires:
-  1. **Mechanics:** every order submitted and resolved; zero ledger/broker difference each session;
-     no duplicates; one forced restart during an **uncertain** order survived; partial fills
-     reconciled.
-  2. **Tracking:** paper returns match a backtest replay of the same days within tolerance
-     (cumulative gap < 10% of the replay's volatility over the window).
-  3. **No blowup:** drawdown within what the strategy's validation-period volatility makes
-     plausible.
-- A platform-bug failure allows a rerun of probation after the fix without a new trial (max two);
-  a strategy change is a new strategy and needs a new trial.
+### 5.1 Research (history)
+Allowed freely on train/validation: walk-forward, sweeps, error analysis. Required before freeze:
+1. **Stressed costs:** commission + ≥1 tick slippage per side on MES-class contracts (more on thinner
+   ones), extra slippage on stops, opens, news and forced flat exits.
+2. **Random-entry control:** the same exit and sizing on time-matched random entries. A strategy that
+   does not beat its own random-entry control has no entry edge, whatever its win rate.
+3. **Prop-rule replay:** intratrade equity replayed under each target firm's rule set (§7), giving
+   estimated pass and first-payout probabilities.
+4. **Deflated Sharpe** reported as advisory, with the lineage's full variant count.
 
-### 5.2 First live step = real-cost check
-Paper cannot measure real costs. During the first live step the same replay comparison runs on
-real fills. If realised implementation costs exceed the modelled costs beyond tolerance, the
-strategy is paused automatically and its **deployment qualification** is voided; the historical
-holdout verdict stands as recorded.
+### 5.2 Trial accounting
+- The trial family is **entry × exit × sizing**. Every variant the research CLI runs is logged to its
+  lineage, including discarded ones. Agents cannot run research outside the CLI.
+- At most **6 strategies in shadow at once** *(call)*, chosen to differ in mechanism and market.
+- Shadow results never flow back into research inputs, idea scorecards or bandit rewards until the
+  strategy leaves shadow (pass or kill), to keep agents from tuning on shadow data.
 
-### 5.3 Live evidence
-- Economic evidence = actual broker-marked, benchmark-relative net returns. Replay is a diagnostic.
-- An anytime-valid confidence sequence on live alpha against the **2% hurdle**, with its target
-  and dependence assumptions specified in the implementation spec.
-- **Bench** (→ `dormant`) when the upper confidence bound of live alpha falls below zero.
-- Execution faults (reconciliation breaks, duplicate orders, stale data) stop trading immediately,
-  independent of evidence.
-- Dormant strategies keep being scored on new data and may re-climb from the first step.
+### 5.3 Shadow scoring
+- Unit: net dollar result per trade at pilot size, after stressed costs.
+- Estimate: Bayesian posterior on expectancy per trade with a **skeptical prior** (most mass at ≤ 0;
+  published intraday effects shrunk by about half). Prior, cost model, hurdle and horizon are frozen
+  with the strategy.
+- Dependence: trades are grouped into session blocks; uncertainty uses block bootstrap or clustered
+  errors.
+- **Enter pilot** when: ≥ 100 post-freeze trades *(call)*, posterior probability of positive net
+  expectancy ≥ 70%, and the prop-rule replay of the shadow path does not breach.
+- **Kill** when the posterior probability of positive net expectancy falls below 20%, or after 250
+  trades without reaching the pilot bar.
 
-### 5.4 Capital ladder (USD)
-The owner deposits USD; all limits, ledgers and reports are in USD.
+### 5.4 Pilot (personal real money)
+- Minimum size (one micro contract per signal).
+- **Loss budget OPEN (§15.2)** and expiry of 90 sessions; hitting either ends the pilot automatically.
+- Mechanics must hold: every order resolved, zero ledger/broker difference each session, flat by the
+  rule time every day, one forced restart during an uncertain order survived, roll handled.
+- Real-cost check: realised slippage and fees vs the frozen cost model; a material breach pauses the
+  pilot.
 
-| Step | 1 | 2 | 3 | 4 | 5 (cap) |
-|---|---|---|---|---|---|
-| Allocation | $600 | $900 | $1,350 | $2,000 | $3,000 |
-
-- **Step up** (needs owner passkey approval) when all hold: at least one quarter on the current
-  step; live evidence **not falsified** against the hurdle; drawdown within the step's band; next
-  step below the strategy's measured capacity.
-- **Step down** (automatic, no approval): −1 step at a 5% drawdown from the step's peak; halve at
-  10%; account halt at 20% (existing layered policy). The tighter of the per-strategy and account
-  rules binds. Peaks are cash-flow adjusted.
-- Re-climbing after a step-down follows the same step-up rule.
-- **Proof levels** — live confidence that alpha > hurdle at 97.5% — are reserved for decisions
-  beyond the ladder: raising the per-strategy cap, funded deployment of a lane, client money.
-- **Account ceilings:** $15,000 during the owner's current incubation period; $60,000 after a
-  signed owner change. Changing any ceiling or cap is a signed policy change.
-- Each approval is bound to the strategy's frozen identity, account, instrument list and exact USD
-  amount.
-
-### 5.5 Owner approval mechanism
-- Primary: **passkey (WebAuthn)** on the owner's phone through the dashboard — one tap plus
-  biometric. The server holds only a public key; agents cannot forge an approval.
-- Backup: the existing SSH signature ceremony.
-- Passwords and TOTP are rejected: the verifier must store the secret, which agents on the same
-  host could read.
-
-### 5.6 Payments
-The owner approves every payment; there is no standing spend budget. The dashboard shows monthly
-cost (data, LLM, VPS, fees) beside live P&L and alpha. The LLM bill is measured first.
+### 5.5 Scale (live)
+- Requires affirmative evidence on post-freeze trades (shadow + pilot combined): posterior 20th
+  percentile of net expectancy per trade above the hurdle, where the hurdle covers fees, stressed
+  slippage and the strategy's share of running costs.
+- Honest sample sizes: a 30% win-rate / +3R profile has a per-trade spread of ~1.8R and needs about
+  **320–520 post-freeze trades** to confirm a +0.2R edge; high-win-rate profiles need fewer.
+- **Wave-2 rule:** a strategy selected as the best of a batch repeats at the same size on new data
+  before its first step up.
+- Size ≤ quarter Kelly on the shrunk estimate; steps add one contract at a time; a step up needs owner
+  passkey approval; step-downs and benching are automatic.
 
 ---
 
-## 6. Model-based strategies
+## 6. Payoff shape — what exits can and cannot do
 
-- **ML:** the frozen object is the **recipe** — features, model class, fixed hyperparameters,
-  training-window length and retrain schedule. The holdout runs walk-forward retraining exactly as
-  live will. All tuning happens in train/validation and counts toward the pre-screen. Training must
-  be deterministic (or within a stated tolerance); the gate re-trains a sample point to verify.
-- **Model-derived text features** (LLM or encoder):
-  - *Local task on anonymised input* (sentiment, tone, guidance direction; entity, ticker and date
-    masked): holdout-eligible **only** when the model's training cutoff is verifiable and precedes
-    the holdout, or the model is trained point-in-time, **and** a raw-vs-anonymised leak probe
-    shows no systematic difference.
-  - *Knowledge tasks* (implications, relevance, return prediction): shadow-only.
-  - *Models with undisclosed or unverifiable cutoffs* (including hosted models such as TypeSafe
-    Jev): shadow-only.
-  - Hosted models additionally require an immutable score cache keyed by model version and input
-    hash; a model version change is a new strategy.
-- **Shadow qualification:** the strategy is computed on new data without capital until its live-
-  style confidence sequence clears the hurdle, then enters probation.
-- Reference: Glasserman & Lin (2023), arXiv:2309.17322 — anonymisation reduced bias from model
-  knowledge in GPT sentiment signals.
+- Stops, targets and trailing stops **reshape** the distribution of trade results; on a price path with
+  no predictability they cannot create positive expectancy, and costs make it negative. An exit adds edge
+  only when the trade's path predicts what comes next (trend persistence) or when it cuts costs.
+- Low win rate with large winners is genuinely profitable where moves persist (futures trend following,
+  multi-month evidence). Whether that survives a flat-by-close constraint is an open research question.
+- Funded trailing-drawdown rules favour **smooth equity**. Codex's simulation of FundedNext 50K Rapid
+  rules ($2,000 trailing drawdown, $1,000 daily loss, equal +0.20R expectancy, $400 risk per trade):
+
+  | Profile | Breach before first payout once funded | Evaluation → first payout |
+  |---|---|---|
+  | 30% win rate, +3R winners | ~50% | ~22% |
+  | 80% win rate, +0.5R winners | ~3% | ~94% |
+
+- Consequence: research optimises net expectancy **and** funded survival. Low-win-rate trend strategies
+  remain valid for the personal account; funded deployment prefers small risk per trade and high win
+  rate.
+- Leaderboards (Myfxbook, MQL5, Collective2, TradingView) are selection-biased idea sources, never
+  evidence.
 
 ---
 
-## 7. Idea provenance
+## 7. Funded accounts
 
-Every idea records its source, the source's publication date and the developing model. Ideas are
-classed pre-holdout, post-holdout or agent-originated. Once enough live strategies exist, holdout
-alpha versus live alpha is compared per class; a class with materially larger decay gets a stricter
-live hurdle, decided by data and logged. No source-date gate rule is imposed now.
+- **Verified so far (Nov 2026, firms' own pages):** FTMO Futures and FundedNext Futures permit
+  automated trading and VPS use and do not list Israel as restricted; both require flat by end of day.
+  Topstep's API requires orders from a personal device; Apex and Take Profit Trader ban bots; Tradeify
+  restricts Israel. FTMO's CFD Swing account allows multi-day holds but trades CFDs, not this book.
+- **Rule sets as data:** trailing/max drawdown (and how it trails), daily loss limit, flat-by time,
+  contract caps, consistency rules, payout buffers and minimums, news restrictions. One format, evaluated
+  per tick in replay, shadow and live; the same rule set gives the same verdict everywhere.
+- **Deploy to funded** only when: the strategy is live with affirmative evidence (§5.5); replay of its
+  post-freeze path under the exact rules gives a positive expected collectible payout after fees; the
+  firm's current automation, VPS and country terms are confirmed in writing that week.
+- **Copies across accounts** are allowed only where the firm's rules permit; they are modelled as
+  breaching together on the same bad day. Per-firm account caps are verified before any multi-account
+  projection is shown.
+- **Fee cap OPEN (§15.3).** A failed challenge is not retried without a new replay.
+- Payouts are not brokerage money: no customer protection; firms can void payouts; terms change. The
+  owner handles tax reporting.
 
 ---
 
 ## 8. Ideation and the signal library
 
-- **Unit of research = signal.** Ideas become signals in a library; strategies are frozen
-  combinations of library signals. One frozen combination = one trial.
-- **Admission** (deterministic, before compute): falsifiable mechanism (who loses money and why);
-  expected direction and horizon; data feasibility with timestamped input coverage; duplicate
-  screen = absolute per-date cross-sectional rank correlation on common coverage (0.8 flags,
-  followed by top-bucket overlap and P&L similarity checks).
-- **Library statistics:** train IC is diagnostic; combination candidates also need walk-forward IC
-  stability, long-only top-bucket economics and turnover after costs.
-- **Combination search** is the largest multiple-testing source: combination depth is capped and
-  every evaluated subset, weighting and transform is logged and counted in the pre-screen.
-- **Lineage ledger:** immutable source → idea → signal version → combination → evaluation links
-  with idempotent reward events.
-- **Budget allocation:** equal rotation across category × source-type arms until each arm has
-  ~10 completed pulls; then Thompson sampling with pooled category/source effects, a cap on
-  outstanding pulls per arm, batch updates and a randomized exploration floor. Reward decay is
-  calibrated against the observed outcome lag. Owner Inbox ideas use a bounded priority queue.
-- **Reward (staged):** a small capped credit for library admission; most weight on incremental
-  contribution to a pre-screen survivor, credited by research-only leave-one-out reruns (mere
-  inclusion earns nothing; ablations count as variants). Failures are classified — economic failure
-  is penalised; missing data, infrastructure errors and untried signals are not. Rewards use
-  train/validation outcomes only.
-- **Data wishlist:** ideas blocked only by missing data are recorded and ranked by distinct
-  experiments unlocked, PIT feasibility and cost, as evidence for owner purchase decisions.
+Kept from the earlier draft and retargeted to futures: ideas become library signals; strategies are
+frozen combinations; deterministic admission (falsifiable mechanism, horizon, data feasibility,
+duplicate screen); immutable lineage ledger; equal rotation across category × source arms, then
+Thompson sampling with a randomized exploration floor; staged rewards using research-window outcomes
+only; data wishlist. Owner Inbox ideas enter a bounded priority queue.
+
+**First research batch** *(call)*: MES opening-to-close continuation (Codex's proposal) compared across
+fixed-time exit, hard stop and volatility trailing stop at equal dollar risk, against random entries;
+then one setup each in rates, metals and energy. Outside sources (including YouTube channels) feed
+hypotheses only.
+
+Seeds from the Algovibes channel review (2026-11-21; weak-to-moderate evidence, a seller of a paid
+community with an incentive to debunk):
+- The Zarattini/Aziz/Barbon (2024) intraday noise-band momentum strategy on NQ (30-minute checks,
+  band/VWAP exit, flat at close) was the only intraday result that survived its random-direction
+  control (t ≈ 2.6 over 1,564 trades, ~41% win rate). It failed on ES, YM and RTY; profits were
+  concentrated in a few days; and its −$3,601 drawdown on one micro would have breached a ~$2,000
+  funded trailing drawdown. Hypotheses: it stays positive on MNQ after 2024-05 net of 2 ticks; a
+  half-size or daily-stop variant cuts funded breaches without erasing expectancy.
+- Cautions adopted as research rules: placebo-test the random-entry control itself (a biased random
+  benchmark made placebo exits look like +0.8% per trade); expect in-sample selections to collapse
+  (31.5%/yr → 1.3%/yr out of sample in one replication); a zero-edge Topstep-style challenge still
+  passes ~40% of the time, so measure payouts against fees, never pass rates.
+
+**Model-derived features:** the earlier rules stand — anonymised local tasks only with a verifiable
+cutoff and leak probe; knowledge tasks and models with unverifiable cutoffs are shadow-only, which in
+this design means they can never skip shadow.
+
+**Provenance:** every idea records its source, publication date and developing model.
 
 ---
 
-## 9. Markets, side-agnostic core and the funded path
+## 9. Capital and risk
 
-### 9.1 Market order
-1. **US stocks, daily** — now. Best odds of a first proven edge; data and infrastructure exist.
-2. **Futures** — a second research lane opens when the holdout gate is enforced in code and the
-   first stock campaign runs on qualified data. Stock edges do not port; futures edges are
-   researched natively. Intraday operation arrives here.
-3. **Forex** — dropped.
-4. **Client money** — only after ~3 years of audited live record, measured strategy capacity and
-   legal clearance (licensing in Israel and any client jurisdiction). Until then the PRD's "no
-   authority to manage client capital" stands.
-
-Funded deployment of a futures strategy requires that strategy's live proof level (§5.4). A survey
-of funded futures programs (rules, automation policy, eligibility for an Israeli resident, payout
-reliability, data/platform requirements) precedes it and informs the account-rule format.
-
-### 9.2 Side-agnostic core (build now, furnish stocks only)
-- **Signed positions** everywhere; "long-only" becomes an instrument/account **policy** checked at
-  one place with one error code. Today's short refusals (`algua/live/book_exposure.py`,
-  `algua/backtest/portfolio.py`) are replaced by that policy check.
-- **Instrument model:** asset class, multiplier, tick size, currency, margin rule, short policy,
-  calendar. Stocks/ETFs use multiplier 1, USD, cash margin, no shorts.
-- **Account rules as data:** one rule-set format expressing the layered drawdown policy, daily
-  loss, exposure caps, the per-strategy ladder and future funded rules (trailing drawdown, daily
-  loss limit, max contracts, flat-by time, consistency). Evaluated each tick; intraday evaluation
-  arrives with futures.
-- Nothing futures-specific is built now (no data adapter, rolls, CME calendar or broker).
-- **Acceptance invariants** (owner does not review code; these tests are the safety net):
-  1. existing stock strategies produce byte-identical backtests, orders and ledgers;
-  2. cash plus marked positions is conserved through a simulated short round trip after fees;
-  3. ledger-versus-broker difference is zero after long, short, partial-fill and restart scenarios;
-  4. a negative weight on a long-only instrument is refused at exactly one place with one code in
-     research, paper and live;
-  5. the same rule set gives the same verdict in backtest and live on the same data.
-- Delivery: a frozen interface contract first, then three parallel tracks (instrument model,
-  research-side signed positions, account rules), then paper/live signed positions, then an
-  integration step that runs all invariants. Agent review only.
+- **Account ceilings:** $15,000 total at risk during the incubation period; $60,000 after a signed
+  owner change. Changing any ceiling or cap is a signed policy change.
+- **Personal futures account:** a new IBKR account (or another futures broker; see §10). Futures need
+  at least $2,000 equity plus margin.
+- **Hard limits in code and at the broker:** per-strategy loss budget; account daily loss limit; account
+  flatten at a fixed drawdown; broker-held protective stops behind every position; forced flat by the
+  rule time.
+- **No new pilots or step-ups from 2027-06-01 to 2027-08-31** (birth window). Running strategies keep
+  their automatic stops.
+- **Approvals:** passkey on the owner's phone for pilot start, step-ups, funded deployment and payments;
+  SSH signature as backup. The server stores only public keys. Approval binds strategy identity,
+  account, instruments and exact USD amount.
+- **Honest expectation:** each MES round trip costs about $2.50–5; with ~$150/month running costs over
+  ~500 trades a year, average gross profit per trade must exceed roughly **$6–9** to break even. Most
+  intraday ideas are expected to fail; a plausible two-year outcome is a loss of a few thousand dollars
+  and a clear "no".
 
 ---
 
-## 10. Thesis review (PRD §29 made concrete)
+## 10. Machinery to build
 
-A thesis review opens automatically at the first of:
-1. 100 holdout trials on qualified data with zero passes while gate self-tests are green;
-2. 18 months after gate enforcement with no strategy past probation;
-3. 24 months of operating cost with no live strategy whose evidence is not falsified;
-4. the 500-trial budget is exhausted.
+| Part | Notes |
+|---|---|
+| Instrument model + signed positions | Multiplier, tick, margin, sessions, roll rule; long/short everywhere. Existing short refusals become one policy check. |
+| Futures data | Vendor adapter, contract history with rolls, continuous series, CME calendar with early closes. |
+| Intraday loop | Bar-driven decision loop within the session, durable state, restart reconciliation against the broker, forced flat-by. |
+| Personal broker adapter | **New**: the repo's only broker is Alpaca, which does not offer futures. IBKR is the default *(call)*. IBKR's Gateway needs periodic re-authentication; the design must remove that weekly owner action or switch broker. |
+| Funded order route | **Stage-0 blocker.** FTMO Futures and FundedNext run on NinjaTrader, Tradovate or TradingView; Tradovate's API excludes prop accounts. The likely route is a NinjaTrader bridge on a Windows machine. Feasibility, cost and the firms' acceptance of it must be confirmed before any funded code. |
+| Rule-set engine | One format for personal and funded rules; same verdict in replay, shadow, pilot and live. |
+| Shadow scorer | Post-freeze trade ledger, Bayesian estimate, kill/enter decisions, owner dashboard view. |
+| Cost meter | Monthly data, LLM, server and fee cost beside P&L. |
 
-These triggers start a diagnosis (power, funnel losses, data limits), not an automatic verdict —
-zero passes in 100 trials is common even at a true 1% pass rate. The review ends in one recorded
-decision: change approach (data, market, strategy class), change scale (cost, cadence), or stop.
-Adding features is not an allowed outcome.
+**Acceptance invariants** (the safety net, since the owner does not review code): cash plus marked
+positions conserved through long and short round trips after fees; zero ledger-versus-broker difference
+after long, short, partial-fill, roll and restart scenarios; flat at the rule time in every replayed and
+live session; same rule-set verdict in replay and live on the same data; a strategy cannot trade without
+a matching frozen identity and approval.
 
----
-
-## 11. Migration
-
-- **Build the new gate alongside the old, cut over, delete the old.** Removed after cutover:
-  `paper promote`, the 63-session forward gate, forward certificates, the `forward_tested` stage,
-  the 63-bar holdout floor and `Sharpe > 0` gate, the five-session qualification and the capped
-  route's separate ceremony steps. Identity-bound probation/holdout evidence replaces the forward
-  certificate **before** its precondition (`algua/registry/transitions.py`) is removed.
-- **Kept:** layered account risk, SSH signing (as backup), single-use identities, the `t→t+1`
-  rule, PIT checks, the JSON CLI contract.
-- **Legacy research is contaminated** (built on data inside the new holdout). Existing strategies
-  are retired as pre-gate. Legacy results — KB research runs, family notes, MLflow runs, idea-pool
-  outcomes, VPS research records — are archived to the owner's private Drive with their trial
-  counts and provenance, then removed from every agent-reachable location. Research worktrees are
-  shallow so git history is not an easy path back. Ideas themselves are re-derivable and are not
-  preserved for agents. This is "no direct path", not a sealed wall; gate self-tests and live
-  evidence are the backstop.
-- Verified on the VPS on 2026-11-20: the research registry and the paper risk registry contain
-  **zero strategies**; no paper or live operator units are installed; only paper broker
-  credentials exist (no live keys). Migration therefore needs no position draining or human
-  ceremony. Re-check immediately before cutover.
+Rough effort *(call)*: 4–8 agent weeks to one IBKR micro contract through paper acceptance; 2–4 weeks per
+funded route once the route is confirmed.
 
 ---
 
-## 12. Context-file and board updates (first implementation step)
+## 11. Thesis review
 
-- **PRD:** add this document's decisions as an owner amendment: vocabulary; evidence design; capital
-  ladder and ceilings in USD (replacing §21's ₪ budget); payment rule; market order and stages
-  (replacing §24 and §25's phase list with §13 below); §22 funded/external capital; §29 triggers.
-- **CLAUDE.md, AGENTS.md, README, `docs/agent/*`, `.opencode/agents/*`, `.opencode/skills/*`:**
-  adopt the vocabulary; describe the single route; mark each not-yet-enforced item as a target
-  with its card; stop describing the strict/capped routes as current options once removed.
-- Personal financial context never enters this public repository; only the capital rules do.
-- **Todoist (Algua project):** retire cards built on the old route; add cards for every
-  implementation item here, in the stage order of §13, with dependencies.
+Opens automatically at the first of: 40 frozen trials with none reaching pilot; 12 months after the
+intraday loop is accepted with no strategy past pilot; 24 months of running cost with no live strategy
+above its hurdle. The review diagnoses (costs, data, power, funnel losses) and ends in one recorded
+decision: change approach, change scale, or stop. Adding features is not an allowed outcome.
 
 ---
 
-## 13. Stages
+## 12. Migration
 
-| Stage | Goal | Ends when |
+- **Daily stock lane: frozen** *(call)*. Code stays; timers and paid stock data stop; no new work.
+  Delete later if unused for a year.
+- The old gates (`paper promote`, forward certificates, `forward_tested`, the 63-bar floor, capped
+  route ceremonies) are removed when the new lifecycle lands; identity-bound evidence replaces the
+  forward certificate before its precondition in `algua/registry/transitions.py` is removed.
+- Kept: layered account risk, SSH signing (backup), single-use identities, the `t → t+1` rule, the JSON
+  CLI contract.
+- Legacy stock research is archived to the owner's private Drive and removed from agent-reachable
+  locations (as decided earlier); it does not touch futures research.
+- Verified on the VPS on 2026-11-20: zero strategies in the research and paper registries; no
+  paper/live operator units; only paper broker credentials. No draining is needed.
+
+---
+
+## 13. Stages and timeline
+
+| When | Stage | Money at risk |
 |---|---|---|
-| **1. Proven machine** | Qualified Sharadar history; holdout gate, blindness and self-tests enforced; migration done; side-agnostic core built in parallel; ideation/signal library | Gate enforced, self-tests green, first campaign running |
-| **2. First edge** | Campaigns on qualified data → holdout pass → probation → first live step | First live strategy |
-| **3. Proven edge** | Ladder climbs; 2–3 uncorrelated edges | A strategy reaches the proof level |
-| **4. Funded** | Futures lane (opened at end of Stage 1) produces futures edges; funded program chosen; intraday risk | Funded payouts |
-| **5. Scale** | More edges, funded accounts, ceiling increases | — |
-| **6. External capital** | §9.1 prerequisites met | Licensed client money |
+| Dec 2026 | **0. Verify and cut:** measure and cut cost to ~$150/month; confirm the funded order route, per-firm account caps, IBKR futures account and re-auth handling. | None |
+| Dec 2026 – Feb 2027 | **1. Build:** data, instrument model, intraday loop, IBKR adapter, rule engine, shadow scorer. Research on history in parallel. | Data ≤ $200 |
+| Feb – May 2027 | **2. Shadow → first pilots.** First frozen batch in shadow; pilots start when the bar is met and the start month is approved (§15.1). | Pilot budgets |
+| Jun – Aug 2027 | **Birth window:** no new risk. | Running pilots only |
+| Sep 2027 + | **3. Scale and funded:** wave-2 repeats; step-ups on evidence; first funded challenge if §7 holds. Honest earliest funded scaling: **month 9–12**. | Ladder + fee cap |
 
-Work in progress: two tracks at a time — the Stage 1 critical path (data → gate → migration →
-campaign) and the side-agnostic core — each internally parallelised against frozen interface
-contracts.
+Work in progress: two parallel tracks against frozen interface contracts (data/loop/broker, and rule
+engine/shadow scorer). Agent review only.
 
 ---
 
-## 14. Approaches considered
+## 14. Context-file and board updates (after approval)
+
+- **PRD:** owner amendment with this document's decisions (north star, market, vocabulary, evidence,
+  capital in USD, funded path, stages, thesis triggers), replacing the stock-first phase list.
+- **CLAUDE.md, AGENTS.md, README, `docs/agent/*`, `.opencode/agents/*`, `.opencode/skills/*`:** adopt the
+  vocabulary; describe the stock lane as frozen; mark unbuilt items as targets with their cards.
+- Personal financial context never enters this public repository; only the capital rules do.
+- **Todoist (Algua):** retire old-route and stock-lane cards; add cards in §13 order with dependencies.
+
+---
+
+## 15. OPEN — owner decisions needed
+
+1. **First personal pilot start:** month 1 (Grok), month 3 (Claude), or month 6 (Codex) after the
+   machinery is accepted.
+2. **Pilot loss budget per strategy:** $250 (Codex), $600 (earlier draft), or $2,000 (Grok).
+3. **Funded fee cap over two years:** $300 (Codex), $1,000 (Grok), or $1,500.
+4. **Personal broker:** IBKR (default), given its periodic re-authentication; or another futures broker
+   with an unattended API.
+5. **Stage name:** replace "holdout" with `shadow` (proposed), or another name.
+
+---
+
+## 16. Approaches considered
 
 | Decision | Chosen | Rejected and why |
 |---|---|---|
-| Evidence of edge | Sealed historical holdout + live evidence | Paper forward economic gate (63 sessions): too slow to prove anything; tiered entry bars: an extra moving part |
-| Multiple testing | Lifetime Bonferroni N=500 | Alpha-investing: complex, path-dependent; recomputed bars: could revoke a pass after money is in |
-| Holdout window | Sliding 8 years | Expanding: research frozen on pre-2018 markets |
-| "Good" | Alpha vs both benchmarks + beats SPY + hurdle + decay | Raw excess only: unfair to low-beta/long-short; alpha only: can lose to SPY in money |
-| Holdout visibility | Nobody sees numbers | Owner sees failures: the owner becomes a leak |
-| Live step-ups | Not falsified + time | Proof at every step: 5–10 years to the cap |
-| Bar size | Daily stocks; intraday with futures | 4h stock bars: no extra evidence per year, no PIT intraday data, lopsided sessions |
-| Market | Stocks → futures; forex dropped | Futures first: discards the near-finished stock pipeline |
-| Legacy research | Archive to Drive, remove from agents | Keep visible: contaminates the holdout via memory |
-| Ideation allocation | Equal rotation then Thompson sampling | Hand-set thesis weights; owner-set themes (recurring involvement) |
+| What the system is for | Intraday futures for funded payouts | Daily stocks: cannot make the owner rich at $15k even with an edge; FTMO CFD Swing: CFDs, financing costs, thin universe |
+| Evidence | Freeze, then score only post-freeze trades | Sealed 2018–2025 stock holdout: contaminated by AI-model knowledge and prior research; t ≥ 3.72 had almost no power |
+| Scaling | Affirmative posterior evidence, wave-2 repeat, quarter Kelly | "Not falsified" ladder: lets a zero-edge strategy climb |
+| Exits | Search entry × exit × sizing with a random-entry control | Exit tuning alone: cannot create edge on unpredictable paths |
+| Funded payoff shape | Optimise for funded survival as well as expectancy | Leaderboard-style low win rate: ~22% evaluation-to-payout vs ~94% at equal expectancy |
+| Funded route | Wait for a confirmed bot + server route | Home rig for Topstep: an internet outage near the close breaches the account and pages the owner |
+| Personal futures timing | OPEN (§15.1) | — |
 
----
+## 17. Left to the builder
 
-## 15. Clarifications (builder check, 2026-11-19)
-
-Items marked *(call)* were settled by Claude without the owner; the owner can override.
-
-1. **Data visibility by runtime.** *(call)* The research runtime reads only train and validation
-   bars. Holdout bars **and the current incomplete year** (the next holdout year) are unreadable to
-   research. The operator, paper and live runtimes read all bars; they do not do research. Research
-   agents also cannot read lifecycle stages beyond `research`, probation or live results, because
-   any of these reveals a holdout verdict. The dashboard shows them to the owner only.
-2. **Variant counting for the pre-screen.** *(call)* Counted per strategy lineage (a lineage is
-   rooted at the admitted signals/idea and inherits every derived variant). Every backtest,
-   walk-forward or sweep the research CLI executes is logged with its lineage ID, on train or
-   validation data alike — the CLI is the instrumentation point, so agent code edits cannot escape
-   it. DSR is computed on the validation-period returns of the selected variant. Funnel-wide
-   multiplicity is the holdout counter's job (§4.2), not the pre-screen's.
-3. **Agent autonomy.** Agents may reserve trials, run the gate, and move `research → holdout →
-   probation` autonomously, mirroring today's ceiling. The research worker's own ceiling stays at
-   `research`. **The first live step ($600) needs the owner's passkey approval**, as do all
-   step-ups; step-downs and benching never do.
-4. **Decay-rule power.** *(call)* Simulation runs before the first trial. If the 6-of-8 rule rejects
-   a true alpha that clears the other criteria more than 30% of the time, it is relaxed to 5 of 8.
-   Whatever is chosen is fixed before the first trial and never changed while trials are counted.
-5. **Legacy removal scope.** *(call, per the owner's "no direct path" decision)* Delete from the
-   current tree and every runtime store; research worktrees are shallow; **no git history
-   rewrite**. The Drive archive is produced by an owner-side session (not a research agent) before
-   deletion.
-6. **January slide.** *(call)* A recorded pass stands — it is a verdict on the window it was tested
-   on. Frozen strategies that never took a trial must re-run the pre-screen on the new validation
-   window. The trial counter never resets; the monthly cap is calendar-based.
-7. **Passkey trust boundary.** *(call)* WebAuthn assertions are verified inside the platform
-   (`algua/`), against public keys held with the existing approval anchor next to
-   `approvers/allowed_signers`. `web/` only relays challenge and assertion; the platform never trusts
-   a web-reported verdict.
-8. **Ideation sequencing.** *(call)* The lineage ledger and signal admission are on the Stage 1
-   critical path, because the pre-screen cannot count variants without them. The first campaign may
-   run single-signal strategies; combination search and the bandit follow once the ledger exists.
-9. **Payments.** *(call)* Policy plus the cost display only. Agents have no payment means, so no
-   spending-approval feature is built.
-
-## 16. Left to the builder
-
-Exact tolerances where this document gives only intent (probation tracking tolerance details, cost
-breach tolerance, confidence-sequence family), file/module layout, schema design, the OS-permission
-mechanism for the holdout store, and test fixtures — each to be fixed in the component's
-implementation spec and covered by tests before cutover.
+Exact cost-stress parameters per contract, the Bayesian prior family, block length for dependence,
+roll rule details, file and module layout, schema design, and test fixtures (FundedNext 50K Rapid rules
+from Codex's simulation are the first rule-set fixture) — each fixed in its component spec and covered
+by tests before acceptance.
