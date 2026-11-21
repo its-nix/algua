@@ -338,7 +338,10 @@ Adding features is not an allowed outcome.
   shallow so git history is not an easy path back. Ideas themselves are re-derivable and are not
   preserved for agents. This is "no direct path", not a sealed wall; gate self-tests and live
   evidence are the backstop.
-- Running paper tenants are drained and retired after `fleet status` is checked.
+- Verified on the VPS on 2026-11-20: the research registry and the paper risk registry contain
+  **zero strategies**; no paper or live operator units are installed; only paper broker
+  credentials exist (no live keys). Migration therefore needs no position draining or human
+  ceremony. Re-check immediately before cutover.
 
 ---
 
