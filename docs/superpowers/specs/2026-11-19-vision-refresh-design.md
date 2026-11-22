@@ -1,438 +1,405 @@
 # Vision refresh — intraday futures for funded payouts
 
-**Status:** Draft for owner approval · **Date:** 2026-11-21 (rewrite, revision 2) · **Owner:** Lior Nisimov
-**Origin:** owner design session ("roadmap"), 2026-11-16 → 2026-11-21, with Codex and Grok reviews,
-a Codex-vs-Grok debate on futures, a Codex simulation of prop-firm rules, a builder check, and a
-second hostile Codex + Grok review (both: "approve Stage 0 only; fix the bars, hurdle and route").
-**Supersedes:** the 2026-11-19 draft of this file (commit `1bbae69`), whose daily-stock historical-
-holdout design was rejected after outside review (§16).
+**Status:** Draft for owner approval · **Date:** 2026-11-22 (revision 3) · **Owner:** Lior Nisimov
+**Origin:** owner design session, 2026-11-16 → 2026-11-22, with Codex, Grok and Codex Astra reviews
+(debate on futures, prop-rule simulation, two hostile reviews, three architecture reviews).
+**Companion diagram:** the "Algua Data Flow" artifact (private) shows the same design visually.
+**Supersedes:** revision 2 (commit `5e6d116`) and the 2026-11-19 daily-stock draft (`1bbae69`).
 
 This document records owner decisions that amend the [PRD](../../PRD.md). Once approved, the PRD,
-operating guides and agent instructions are updated to match (§14). Until the code below is built and
-accepted, operating guides keep describing what the code enforces **today**; every unbuilt item is a
-target linked to its work card. Items marked *(call)* were settled by Claude and can be
-overridden by the owner (§15 lists them).
+operating guides and agent instructions are updated to match (§15). Until the code below is built and
+accepted, operating guides keep describing what the code enforces **today**. Items marked *(call)*
+were settled by Claude and can be overridden by the owner (§16 lists them).
 
 ---
 
 ## 1. Intent
 
 **North star: make the owner rich from trading profit, as soon as honestly possible.** The owner is a
-capital allocator, not a reviewer: no human code review, no recurring decisions, one-tap approvals only
-where real-money authority requires a human.
+capital allocator, not a reviewer: no human code review, no recurring decisions, one-tap signed
+approvals only where real money requires a human.
 
-The binding constraint is capital, not ideas. A real edge on the owner's ~$15k earns little; funded
-prop accounts give $50k–150k of trading size per account for a fee. Every funded program that allows
-bots, accepts Israeli residents and is verified so far requires being **flat by the end of the trading
-day**. So Algua becomes an **intraday futures system** whose product is a frozen strategy that:
-
-```
-history screen ─► freeze ─► shadow (no money) ─► personal pilot (real fills, small) ─► scale
-                                                                   └─► funded accounts (payout multiplier)
-```
-
-The personal account is the **evidence**; funded accounts are the **multiplier**. A funded pass is never
-evidence. Client money is out of scope until a multi-year audited record and legal clearance exist.
+The binding constraint is capital, not ideas. Funded prop accounts give $50k–150k of trading size for
+a fee, and every verified bot-friendly firm requires being **flat by the end of the trading day**. So
+Algua is an **intraday CME micro futures system**. The personal IBKR account produces the
+**evidence**; funded accounts are a later **multiplier** on the same strategy. A funded pass is never
+evidence.
 
 ### Goals
-- Find intraday futures edges that survive stressed costs on data generated **after** the freeze.
-- Replay every candidate under each funded firm's exact rules, so "passes and stays funded" is measured
-  before any fee is paid.
-- Keep every loss cap in code; grow capital only on affirmative post-freeze evidence.
-- Keep operating cost near **$150/month** (live market data from the broker, not a separate vendor).
+- Find intraday futures edges that survive realistic execution, judged on data research never saw.
+- Keep the system small enough to build in about three weeks and run unattended.
+- Keep every loss limit in code and at the broker; grow size only on evidence.
+- Operating cost near **$150/month**.
 
 ### Non-goals
-- Daily or multi-day stock trading (lane frozen, §12). Forex spot. Options. Crypto.
+- Daily or multi-day stock trading (lane frozen, §13). Spot forex, options, crypto.
 - Proving an edge by a deadline. No date lowers a bar.
 
 ### Anti-goals (failure even if it "works")
-- Scaling the luckiest of many experiments without a repeat on new data.
+- Scaling the luckiest of many experiments.
 - Treating backtests, leaderboards or challenge passes as proof.
-- Any mechanism needing routine owner attention beyond the accepted weekly broker login (§10).
-- Strategies whose risk is hidden (martingale, grid, averaging down, no stop).
+- Machinery that manages a problem when one rule could make it impossible (§3).
+- Hidden-risk strategies (martingale, grid, averaging down, no stop).
+- Anything needing routine owner attention beyond the weekly broker login.
 
 ---
 
-## 2. Owner decisions recorded in this session
+## 2. Owner decisions
 
-1. Cut operating cost to ~$150/month (measure current spend first).
-2. Replace the "prove it on history" gate with a decision framework: small, capped, expiring real-money
-   pilots buy information; scaling needs affirmative post-freeze evidence; size ≤ quarter Kelly.
-3. Speed comes from **breadth** — redefined by the pivot as distinct futures markets and distinct
-   setups, not daily stocks (the earlier "broad daily equities" item is superseded).
-4. **Pivot:** Algua is built for intraday futures aimed at funded payouts; rebuilding machinery is
-   acceptable.
-5. The research engine searches **entry × exit × sizing** (stops, trailing stops, targets,
-   reward-to-risk, win rate), under the honesty rules in §6.
-6. USD everywhere; owner deposits USD. Owner approves every payment.
-7. Passkey (WebAuthn) one-tap approvals; SSH signature as backup.
-8. **No funded route → personal futures only.** If no firm confirms a bot-from-our-server route in
-   writing by 2027-01-15, Algua continues as a personal intraday futures system with its own budget
-   and stop date (§11); funded is revisited when a route appears.
-9. **Flat by end of day for every strategy, personal included,** for now. Overnight strategies may be
-   added later as new strategies with their own evidence.
-10. **Personal broker: IBKR**, accepting a weekly login (§10).
-11. **Pilot loss budget: $600 per strategy.**
-
----
-
-## 3. Vocabulary (minimal)
-
-| Word | Meaning | Question it answers |
-|---|---|---|
-| **research** | Building and tuning on history (train + validation windows). Free iteration, every variant counted. | "Is it worth freezing?" |
-| **freeze** | Code, parameters, cost model, rule set and scoring plan hashed. Any later change = new strategy. | "Is it the thing we're scoring?" |
-| **shadow** | Frozen strategy runs on live market data with no money; every trade is scored. | "Does it work on data nobody had seen?" |
-| **pilot** | Frozen strategy on the personal account at minimum size with a loss budget and expiry. | "Do real fills and costs match?" |
-| **live** | Personal account above pilot size, scaled by evidence. | "Is it still good?" |
-| **funded** | A live strategy also running on prop accounts. A deployment, not a stage. | "Does it pay out?" |
-| **trial** | One frozen strategy entering shadow. Counted for life. | — |
-
-**Lifecycle:** `idea → research → shadow → pilot → live → retired`, plus `dormant` (benched; can return).
-*(call)* The owner chose "holdout" as a stage name in the earlier draft; with no historical gate that
-stage disappears and `shadow` takes its place.
-
-**Dropped:** holdout (as a gate), forward / forward-tested / forward certificate, strict and capped
-routes, probation, the 63-bar floor, the five-session qualification, t ≥ 3.72, N = 500, the dual
-benchmark, the decay rule, the "not falsified" ladder.
+1. Operating cost ~$150/month.
+2. **Pivot:** Algua is built for intraday futures aimed at funded payouts; a **lean new core** replaces
+   the old machinery rather than refactoring it.
+3. Research searches **entry × exit × sizing** (stops, trailing stops, targets, reward-to-risk, win
+   rate) under the honesty rules in §7.
+4. **Flat by end of day** for every strategy, for now.
+5. **Personal broker: IBKR**, with a weekly login.
+6. **Live step 1 loss budget: $600 per strategy.**
+7. **No funded route → personal futures only.**
+8. **Stage 0 is our own research** of funded routes; we don't wait on firms. Fallbacks in order:
+   API bridge → TradingView → the owner sends orders by hand (last resort).
+9. Stages: **research → holdout → paper → live → retired.** "Paper trading" replaces "shadow".
+   Pilot and live are one stage, **live, with a ladder**. Funded is an extra account of a live
+   strategy, not a stage.
+10. **A strategy is an insert-only row;** evidence is appended immutably. Any change is a new row
+    (no separate "freeze" step).
+11. **The holdout stays,** as a blind screen (§6.2).
+12. **The design lens (§3):** one structural rule instead of counters, ledgers, caps or adjustments.
+    In particular: research never sees holdout results, and every trade is scored by one simulator.
+13. Code is generic, clean where it matters, and as simple as possible.
+14. USD everywhere; the owner approves every payment.
 
 ---
 
-## 4. Markets and data
+## 3. The six rules
 
-- **Instruments:** CME-group micro futures first (MES, MNQ, M2K, MYM, MGC, SIL, MCL, micro
-  Treasury/FX futures where liquid). E-mini sizes only after evidence and only where a funded rule set
-  needs them.
-- **Breadth:** MES, MNQ, MYM and M2K move largely together; they count as close to one bet. Breadth
-  comes from equity-index + rates + metals + energy + FX and from setups with different mechanisms.
-- **Session rule (owner decision):** every strategy is flat by its frozen cutoff, default **15:00 CT**
-  *(call)* — before FundedNext's 15:10 CT and FTMO's 16:10 ET (15:10 CT) flat times. The cutoff and an
-  entry blackout before it are part of the frozen identity; a different schedule is a new strategy.
-- **Data:** historical minute bars per contract with roll metadata from Databento (usage-based;
-  capped at **$200** without a new owner approval). **Live data comes from the IBKR account's CME
-  subscription** *(call)*, because Databento's live CME plan ($199/month) alone breaks the budget.
-  Replay uses minute bars with conservative intrabar ordering (stop before target; trailing-drawdown
-  peak taken at the bar's worst point) *(call)*; tick data is bought only if measured replay-versus-
-  live disagreement requires it. Raw contract data, roll decisions, rule versions and seeds are pinned
-  so every decision can be reproduced. CME calendars,
-  holidays and early closes. No survivorship or delisting problems exist for futures; continuous
-  series are built from contracts with an explicit roll rule.
-- **Windows:** history is split into train and validation for research only. History is a **screen**,
-  never proof: intraday patterns are heavily published and known to AI models, so only post-freeze data
-  counts as evidence.
+Each rule replaces a set of special cases with one behaviour that makes the problem impossible.
+
+| # | Rule | What goes wrong without it | What it removes |
+|---|---|---|---|
+| 1 | **Information only flows outward.** Research hands strategies out through a one-way mailbox and never receives anything back: no holdout result, no paper/live numbers, no hint of which strategies trade. | Research tweaks a failed strategy and resubmits; a zero-edge idea retried 20 times passes a 5% test ~64% of the time. | Retry counters, "same idea" families, submission caps, pass-rate surveillance. |
+| 2 | **Evidence is calculated, never hand-entered.** One simulator turns every signal (backtest, paper, live) into a full modeled trade; scores are always derived from it. | Separate paper and live scores with a correction between them. | Separate evidence streams, manual adjustments. |
+| 3 | **If anything is uncertain, no new entries.** Exits and protection keep working. One trade in progress at a time. | A crash after sending a buy leads to a second buy: 2 contracts, protection on 1. | Per-failure special handling. |
+| 4 | **Every open position has protection held at IBKR,** sent in one package with the entry. | A server crash leaves a position unprotected. | A separate watchdog trading engine. |
+| 5 | **Change only while flat:** go-live, new versions, size steps and contract rolls happen only with no open position, as one signed, immutable package. | A new version inherits an unknown open trade; a roll forgets the old month. | Hand-over logic, stage-transition machinery. |
+| 6 | **Real money sets the limits.** Loss limits, margin and funded drawdowns use actual fills and cash; simulated numbers only judge strategies. | The simulator says −$300, slippage made it −$450, and the $400 limit never fires. | Mixing two meanings of P&L. |
+
+What the rules do **not** remove (Astra, review 3): loss totals and equity peaks, fees, margin,
+approval replay protection, the order journal, and the safety tests. Where possible these are
+calculated from recorded facts rather than tracked separately.
 
 ---
 
-## 5. Evidence design
+## 4. Vocabulary and lifecycle
 
-### 5.1 Research (history)
-Allowed freely on train/validation: walk-forward, sweeps, error analysis. Required before freeze:
-1. **Stressed costs:** commission and exchange fees (~$1.22 per MES round turn at IBKR) plus ≥1 tick
-   slippage per side on MES-class contracts (more on thinner ones), extra slippage on stops, opens,
-   news and forced flat exits.
-2. **Random-entry control:** the same exit and sizing on time-matched random entries; the control itself
-   is placebo-tested. A strategy that does not beat its control has no entry edge, whatever its win rate.
-3. **Prop-rule replay** (when a funded route exists): intratrade equity replayed under the target
-   firm's full rule set (§7) **at the contract count and dollar risk that would actually be sent to
-   that firm**, giving estimated pass, first-payout and collectible-dollar figures.
-4. **Deflated Sharpe** reported as advisory, with the lineage's full variant count.
-
-### 5.2 Trial accounting
-- The trial family is **entry × exit × sizing**. Every variant the research CLI runs is logged to its
-  lineage, including discarded ones; agents cannot run research outside the CLI. Ideas taken from
-  published or online sources record that source, since their search happened outside Algua.
-- At most **6 strategies in shadow at once** *(call)*, chosen to differ in mechanism and market. Agents
-  freeze strategies, fill shadow slots and kill strategies on their own.
-- Shadow and pilot results never flow back into research inputs, idea scorecards or bandit rewards
-  while the strategy or any descendant is still being scored; dates a researcher has seen are burned
-  for descendants' confirmation.
-
-### 5.3 Shadow
-- Unit: result per trade in R and in dollars at one micro, net of the cost model in §5.1. Running
-  costs are charged at scale and funded decisions, not per trade.
-- Fills are simulated internally under the stressed cost model on live broker data *(call)*; the IBKR
-  paper account is used for mechanics only (§5.4).
-- Estimate: Bayesian posterior on expectancy per trade with a **skeptical prior frozen in the
-  component spec before the first freeze**; trades are grouped into session blocks.
-- **Calibration before the first pilot:** the whole rule (entry bar, kill rule, repeated looks,
-  correlated variants) is simulated under zero-edge and weak-edge campaigns; the zero-edge pilot-entry
-  rate and the expected number of false pilots per year are published on the dashboard.
-- **Enter pilot** (an explicit, capped information buy — roughly 30% of zero-edge strategies are
-  expected to get in): ≥ 100 post-freeze trades over ≥ 40 sessions, posterior P(net expectancy > 0)
-  ≥ 70%, and, if a funded route exists, a passing replay for at least one target firm.
-- **Kill** when P(net expectancy > 0) falls below 20% after at least 60 trades, or after 250 trades
-  without reaching the pilot bar.
-- Shadow keeps scoring throughout pilot and live.
-
-### 5.4 Paper acceptance and pilot
-- **Paper acceptance (once per executor version, before any cash order):** on the IBKR paper account,
-  every order resolved; zero ledger/broker difference each session; partial fills; disconnect and
-  stale-feed recovery; flat by cutoff every day; forced restart during an uncertain order; roll handled.
-- **Pilot:** one micro contract per signal on the personal account; **$600 loss budget** and **90
-  sessions**; either ends the pilot automatically. Starting a pilot needs the owner's signed approval.
-- Real-cost check: realised fees and slippage against the frozen model; a material breach pauses the
-  pilot.
-- **Expiry without a verdict** returns the strategy to shadow-only; it may start a second pilot (new
-  approval) once it again meets the entry bar on trades after the first pilot ended. Maximum two pilots
-  per strategy.
-
-### 5.5 Scale (live)
-- **Pilot → live is the first step-up** and needs owner approval.
-- The scale decision uses **only trades after the pilot-entry decision** (shadow and pilot together),
-  so the streak that crossed the entry bar is not counted twice.
-- Requires: posterior 20th percentile of net expectancy above the hurdle, where the hurdle covers fees,
-  stressed slippage and the strategy's share of running costs at the intended size; at least 100 real
-  pilot fills matched to the cost model.
-- **Wave-2 rule:** the batch is the set of strategies that entered pilot in the same calendar quarter;
-  the one selected for scaling must re-meet the pilot bar on ≥ 100 trades taken after its selection.
-- Honest sample sizes: a 30% win-rate / +3R profile (per-trade spread ~1.8R) needs about **520
-  independent trades** for 80% power on a +0.2R edge; clustering and a positive hurdle need more. At
-  one trade per session that is about two years, so throughput comes from strategies that trade
-  several times per session and from unrelated markets.
-- Size ≤ quarter Kelly on the shrunk estimate, rounded **down** to whole contracts; steps add one
-  contract; step-ups need owner approval; step-downs and benching are automatic.
-
----
-
-## 6. Payoff shape — what exits can and cannot do
-
-- Stops, targets and trailing stops **reshape** the distribution of trade results; on a price path with
-  no predictability they cannot create positive expectancy, and costs make it negative. An exit adds edge
-  only when the trade's path predicts what comes next (trend persistence) or when it cuts costs.
-- Low win rate with large winners is genuinely profitable where moves persist (futures trend following,
-  multi-month evidence). Whether that survives a flat-by-close constraint is an open research question.
-- Funded trailing-drawdown rules favour **smooth equity**. Codex's simulation of FundedNext 50K Rapid
-  rules ($2,000 trailing drawdown, $1,000 daily loss, equal +0.20R expectancy, $400 risk per trade):
-
-  | Profile | Breach before first payout once funded | Evaluation → first payout |
-  |---|---|---|
-  | 30% win rate, +3R winners | ~50% | ~22% |
-  | 80% win rate, +0.5R winners | ~3% | ~94% |
-
-- Consequence: research optimises net expectancy **and** funded survival. Low-win-rate trend strategies
-  remain valid for the personal account; funded deployment prefers small risk per trade and high win
-  rate.
-- Leaderboards (Myfxbook, MQL5, Collective2, TradingView) are selection-biased idea sources, never
-  evidence.
-
----
-
-## 7. Funded accounts
-
-- **Verified so far (Nov 2026, firms' own pages):** FTMO Futures and FundedNext Futures permit
-  automated trading and VPS use and do not list Israel as restricted; both require flat by end of day.
-  Both run on NinjaTrader, Tradovate or TradingView. Tradovate's retail API excludes prop accounts;
-  Topstep's API requires orders from a personal device; Apex and Take Profit Trader ban bots; Tradeify
-  restricts Israel. FTMO's CFD Swing account allows multi-day holds but trades CFDs, not this book.
-- **Stage 0 go/no-go (deadline 2027-01-15):** a firm confirms in writing the exact route (most likely
-  NinjaTrader with a NinjaScript executor on a Windows server), hosting, Israeli residency, copying
-  across accounts, payout and KYC workflow; then a demonstration on the actual account type shows
-  unattended order, cancel, reconnect and flatten. No funded code is written before this passes. If it
-  fails, Algua is personal-futures-only (§2.8).
-- **Two executors:** the Python executor (IBKR) and, if the route passes, a NinjaScript executor.
-  Order-level parity tests between them run before any fee is paid.
-- **Rule sets as data:** trailing/max drawdown (and how it trails), daily loss limit, flat-by time,
-  contract caps, consistency and news rules, payout buffers, minimums and caps. One format, the same
-  verdict in replay, shadow and live.
-- **Deploy to funded** only when: the strategy is live with affirmative evidence (§5.5); replay of its
-  post-entry path under the exact rules at the size to be sent gives positive expected collectible
-  dollars after fees, the firm's split, payout buffers and a haircut for discretionary voids; the
-  firm's current terms are confirmed in writing that week.
-- **Copies across accounts** only where the firm permits; modelled as breaching together on the same
-  bad day; no cross-account hedging. Per-firm account caps are verified before any multi-account
-  projection is shown.
-- **Fees:** cap **$1,000 over two years including monthly evaluation subscriptions and resets**
-  *(call)*; subscriptions are cancelled the day an attempt ends; no retry without a new replay.
-- Payouts are not brokerage money: no customer protection; firms can void payouts; terms change. The
-  owner handles tax reporting.
-
----
-
-## 8. Ideation and the signal library
-
-Kept from the earlier draft and retargeted to futures: ideas become library signals; strategies are
-frozen combinations; deterministic admission (falsifiable mechanism, horizon, data feasibility,
-duplicate screen); immutable lineage ledger; equal rotation across category × source arms, then
-Thompson sampling with a randomized exploration floor; staged rewards using research-window outcomes
-only; data wishlist. Owner Inbox ideas enter a bounded priority queue.
-
-**First research batch** *(call)*: MES opening-to-close continuation (Codex's proposal) compared across
-fixed-time exit, hard stop and volatility trailing stop at equal dollar risk, against random entries;
-then one setup each in rates, metals and energy. Outside sources (including YouTube channels) feed
-hypotheses only.
-
-Seeds from the Algovibes channel review (2026-11-21; weak-to-moderate evidence, a seller of a paid
-community with an incentive to debunk):
-- The Zarattini/Aziz/Barbon (2024) intraday noise-band momentum strategy on NQ (30-minute checks,
-  band/VWAP exit, flat at close) was the only intraday result that survived its random-direction
-  control (t ≈ 2.6 over 1,564 trades, ~41% win rate). It failed on ES, YM and RTY; profits were
-  concentrated in a few days; and its −$3,601 drawdown on one micro would have breached a ~$2,000
-  funded trailing drawdown. Hypotheses: it stays positive on MNQ after 2024-05 net of 2 ticks; a
-  half-size or daily-stop variant cuts funded breaches without erasing expectancy.
-- Cautions adopted as research rules: placebo-test the random-entry control itself (a biased random
-  benchmark made placebo exits look like +0.8% per trade); expect in-sample selections to collapse
-  (31.5%/yr → 1.3%/yr out of sample in one replication); a zero-edge Topstep-style challenge still
-  passes ~40% of the time, so measure payouts against fees, never pass rates.
-
-**Model-derived features:** the earlier rules stand — anonymised local tasks only with a verifiable
-cutoff and leak probe; knowledge tasks and models with unverifiable cutoffs are shadow-only, which in
-this design means they can never skip shadow.
-
-**Provenance:** every idea records its source, publication date and developing model.
-
----
-
-## 9. Capital and risk
-
-- **Incubation budget *(call)*: $15,000 maximum cumulative net loss over the incubation period,**
-  counting realised and open trading losses, broker and exchange fees, funded-program fees and Algua's
-  running costs. Reaching it halts all trading and opens a thesis review. Money deposited at the
-  broker is also capped at $15,000. Raising either needs a signed owner change; the earlier $60k
-  escalation is removed from the incubation policy.
-- **Account limits *(call)*:** personal account daily loss limit **$400** (no new entries, open
-  positions flattened); account flatten and halt at **$1,500** below its peak, restored only by owner
-  approval. Per-strategy pilot budget **$600** (owner decision). Concurrent pilots are limited so the
-  sum of open pilot budgets fits the remaining incubation budget.
-- **Hard limits in code and at the broker:** broker-held protective stops behind every position;
-  forced flat by the cutoff; a trade whose single micro would exceed the remaining allowance is skipped.
-  Drawdown state is durable across restarts.
-- **No new pilots or step-ups from 2027-06-01 to 2027-08-31** (birth window). Running strategies keep
-  their automatic stops.
-- **Approvals:** the owner signs pilot start, step-ups, funded deployment, limit restoration and
-  payments. The existing SSH signature serves first pilots; passkey (WebAuthn) replaces it as the
-  primary method later *(call)*. The server stores only public keys; signer anchors live outside the
-  agent-writable tree. Approval binds strategy identity, account, instruments and exact USD amount.
-- **Honest expectation:** most intraday ideas are expected to fail; a plausible two-year outcome is a
-  loss of a few thousand dollars and a clear "no".
-
----
-
-## 10. Machinery to build
-
-| Part | Notes |
+| Word | Meaning |
 |---|---|
-| Instrument model + signed positions | Multiplier, tick, margin, sessions, roll rule; long/short everywhere. Existing short refusals become one policy check. |
-| Futures data | Vendor adapter, contract history with rolls, continuous series, CME calendar with early closes. |
-| Intraday loop | Bar-driven decision loop within the session, durable state, restart reconciliation against the broker, forced flat-by. |
-| Personal broker adapter | **New**: the repo's only broker is Alpaca, which does not offer futures. IBKR (owner decision). IB Gateway needs a manual login about weekly: the dashboard pushes a reminder; while unauthenticated, no new entries are taken and broker-held stops protect open positions. |
-| Funded executor | Only after the Stage 0 go/no-go (§7): NinjaScript executor on a Windows server with parity tests. |
-| Paper acceptance harness | Scenario runner for §5.4 on the IBKR paper account. |
-| Rule-set engine | One format for personal and funded rules; same verdict in replay, shadow, pilot and live. |
-| Shadow scorer | Post-freeze trade ledger, Bayesian estimate, kill/enter decisions, owner dashboard view. |
-| Cost meter | Monthly data, LLM, server and fee cost beside P&L. |
+| **strategy row** | Code + settings + simulator version, hashed. Insert-only; any change is a new row. |
+| **research** | Building and tuning on train + validation history, in a sandbox. |
+| **holdout** | One blind test per row on a sealed 2-year window. A screen, not proof. |
+| **paper** | The row runs on the IBKR paper account: real order handling, no money. Proves mechanics. |
+| **live** | The row trades real money on IBKR, on a ladder of sizes. |
+| **deployment package** | One signed, immutable bundle: row hash, account, contract, limits, expiry, one-time number. |
+| **retired** | Terminal. A benched strategy is a halted deployment, not a separate stage. |
 
-**Acceptance invariants** (the safety net, since the owner does not review code): cash plus marked
-positions conserved through long and short round trips after fees; zero ledger-versus-broker difference
-after long, short, partial-fill, roll and restart scenarios; flat at the rule time in every replayed and
-live session; same rule-set verdict in replay and live on the same data; a strategy cannot trade without
-a matching frozen identity and approval.
-
-Rough effort *(call)*: 4–8 agent weeks to one IBKR micro contract through paper acceptance; 2–4 weeks
-for a funded executor once the route is confirmed.
-
-**Build rules *(call)*:** the stock lane may break — shared contracts (lifecycle, registry, risk,
-ledgers, bar schema) change freely and stock-only code and tests are deleted rather than kept green;
-the research registry (zero strategies) may be reset after its database is archived. Agent-reviewed
-changes merge on their own, except changes to the live-money wall, risk limits and signer anchors,
-which also need the owner's one-tap merge approval (no code reading). The old gates are deleted only
-after the new lifecycle's evidence ledger is enforcing.
+`idea → research → holdout → paper → live → retired`. The stage is **derived** from the row's appended
+evidence and active deployment, not stored as separately managed state *(call)*.
 
 ---
 
-## 11. Thesis review
+## 5. Markets and data
 
-Opens automatically at the first of: the incubation loss budget is reached; 40 frozen trials with
-none reaching pilot; 12 months after paper acceptance with no strategy past pilot; 24 months of
-running cost with no live strategy above its hurdle; in personal-futures-only mode, **2028-12-31**
-without a live strategy above its hurdle. The review diagnoses (costs, data, power, funnel losses)
-and ends in one recorded decision: change approach, change scale, or stop. Adding features is not an
-allowed outcome.
+- **Instruments:** CME micro futures. Version 1 trades **MES only**; MNQ, M2K, MYM, MGC, MCL and micro
+  rates/FX follow. MES/MNQ/MYM/M2K are close to one bet; breadth comes from rates, metals, energy, FX
+  and distinct mechanisms.
+- **Session:** flat by **15:00 CT** by default *(call)* (before FundedNext's 15:10 CT and FTMO's
+  16:10 ET). The daily close starts 5 minutes before the earlier of 15:00 or that day's early close.
+  The cutoff is part of the row.
+- **Data:** historical minute bars per contract from Databento, capped at **$200**. Live data from
+  the IBKR CME subscription (Databento live at $199/month breaks the budget). Continuous series are
+  for research only, never order prices. Every order names the exact contract (conId, expiry).
+- **One session definition** (rule 5) drives data, contract choice and permitted exposure, shared by
+  the backtester and the runner. UTC internally; Chicago time for schedules; clock-skew check.
 
 ---
 
-## 12. Migration
+## 6. Evidence
 
-- **Daily stock lane: frozen** *(call)*. Code stays; timers and paid stock data stop; no new work.
-  Delete later if unused for a year.
+### 6.1 Research
+On train + validation only, freely: walk-forward, sweeps, error analysis. Required before handing a
+row out:
+1. Scored by the simulator (§6.3).
+2. **Random-entry control:** the same exit and sizing on time-matched random entries; the control is
+   itself placebo-tested. Not beating it means no entry edge, whatever the win rate.
+3. **Prop-rule replay** at real size when a funded route exists (§9).
+4. Deflated Sharpe, advisory.
+
+Research runs sandboxed: no network beyond allowed sources, no live keys, no write access to running
+code or signing files, **no read access to the trading database** (rule 1).
+
+### 6.2 Holdout (blind screen)
+- Fixed window: the latest 2 years, sealed until incubation ends; then the newest 2 years are sealed
+  and the old window becomes research data.
+- Judged by a separate process that alone reads the sealed files and writes only to the trading side.
+- **Pass bar:** net profit after simulator costs at **5% one-sided** (session-aware statistics), and
+  beats random entries. Too few trades: inconclusive, never extended after seeing results.
+- **Blind:** research never learns the result (rule 1), so no shot counts or caps are needed. The
+  owner steers research only by broad themes, never in response to a specific result.
+- Duplicates are rejected by a hash of the **full package** (code + settings), so a parameter tweak
+  counts as the same row.
+- Honest limits: about 5% of zero-edge rows still pass; paper and live filter them. Sealing files
+  cannot erase what papers or AI models already know about these markets.
+- Why 5%, not Astra's earlier 1% with ≤10 candidates: at 500 holdout trades (SD 1.2R) a real +0.10R
+  edge passes 59% of the time at 5% versus 32% at 1%; with no feedback, retries cannot inflate the
+  false-pass rate.
+
+### 6.3 The simulator (rule 2)
+- Turns every signal into a **complete modeled position path**: entry eligibility, fills and
+  non-fills (limit orders need the price to trade through), latency, slipped stops, fees, forced
+  flat, and the worse outcome when a minute bar cannot order stop and target.
+- Scores backtest, holdout, paper and live signals identically. A signal traded on both paper and live
+  counts once. Evidence keeps its label (train, validation, holdout, post-holdout); uniform scoring
+  does not make training results independent.
+- **Audit:** every real live order attempt, filled or not, is compared with the simulator's
+  prediction. First review after ~30 live attempts, then continuously. If reality is worse, the
+  simulator becomes more pessimistic (a new version) and all scores are recalculated; original
+  decisions are never overwritten. A rescore can disqualify a strategy, never revive a retired one or
+  raise its size. A large divergence stops new entries at once.
+- Strategies decide from modeled state, not from actual fills, so rescoring a whole policy is exact.
+
+### 6.4 Paper
+- Same runner as live on the IBKR paper account. Proves mechanics: every order resolved, protection
+  in place, flat by cutoff, restart and disconnect recovery.
+- **Live step 1** after **≥10 clean paper sessions** and the owner's signed package.
+- Paper signals count as evidence via the simulator; paper fills are not trusted (IBKR documents its
+  simulator's limits).
+
+### 6.5 Live ladder
+- **Step 1:** 1 MES contract, **$600** loss budget, review at 90 sessions.
+- **Step up** (one contract, signed package, while flat): ≥100 simulator-scored post-holdout trades
+  (paper and live, each signal once) with the posterior 20th percentile of net expectancy above the
+  hurdle (fees, stressed slippage and its share of running costs); simulator audit clean; partial-fill
+  protection tested before any size above 1 contract.
+- **Kill** when P(net expectancy > 0) falls below 20% after ≥60 trades. Steps down and halts are
+  automatic. Size ≤ quarter Kelly, rounded down.
+- Honest sample sizes: a 30% win-rate / +3R profile (SD ~1.8R) needs ~320–520 independent trades to
+  confirm +0.2R; throughput comes from strategies trading several times per session and from unrelated
+  markets.
+
+---
+
+## 7. Payoff shape — what exits can and cannot do
+
+- Stops, targets and trailing stops **reshape** results; on an unpredictable path they cannot create
+  expectancy, and costs make it negative. Hence the random-entry control.
+- Funded trailing-drawdown rules favour smooth equity. Codex's simulation of FundedNext 50K Rapid at
+  equal +0.20R and $400 risk: a 30%/+3R profile reaches the first payout ~22% of the time vs ~94%
+  for 80%/+0.5R. Research optimises net expectancy **and** funded survival.
+- Leaderboards (Myfxbook, MQL5, Collective2, TradingView) are idea sources, never evidence.
+
+---
+
+## 8. Capital and risk (rule 6)
+
+- **Incubation budget *(call)*:** $15,000 maximum cumulative net loss, counting trading losses, fees,
+  funded fees and running costs. Reaching it halts all trading and opens a thesis review (§12).
+  Reserved: ~$3,600 operations, $1,000 funded fees, $200 data, leaving ~$10,200 for trading losses.
+- **Planned risk ~$50 per trade** including stressed costs *(call)*: limits trigger action; fast
+  markets, halts and limit moves can jump past them.
+- **Account limits *(call)*:** daily loss $400 (no entries, flatten); halt at $1,500 below peak,
+  restored only by signed approval; $600 per strategy at step 1; margin checked before entry and while
+  holding. Peaks and totals derive from actual fills and survive restarts.
+- **Quiet period:** no new live steps, step-ups or funded purchases from 2027-06-01 to 2027-08-31.
+  Running strategies keep their automatic limits.
+- **Approvals:** signed deployment packages (go-live, step-up, funded, limit restoration, payments).
+  SSH signing from the phone first, tested before the first live order; passkey later *(call)*.
+  Signer anchors live outside the agent-writable tree.
+- **Honest expectation:** most ideas fail; a plausible outcome is a loss of a few thousand dollars and
+  a clear "no".
+
+---
+
+## 9. Funded accounts (a later, separate qualification)
+
+- **Verified so far (Nov 2026):** FTMO Futures and FundedNext Futures allow bots and VPS, don't
+  restrict Israel, require flat by end of day, run on NinjaTrader / Tradovate / TradingView.
+  Tradovate's API excludes prop accounts; Topstep's API needs a personal device; Apex and Take Profit
+  Trader ban bots; Tradeify restricts Israel.
+- **Stage 0 (ours, by 2027-01-15):** research the exact route (API bridge, then TradingView, then
+  manual), hosting, residency, payout and KYC. No funded code in version 1.
+- **First challenge** only after ≥50 real IBKR trades over ≥20 sessions with clean reconciliation
+  and the simulator audit passing; the route must qualify on its own (platform, automation
+  permission, exact rules) — MES evidence does not certify another route.
+- One challenge at a time, ≤$150 each, ≤$300 before the first payout, **$1,000 total** including
+  renewals and resets. Buy only if replay under the firm's exact rules shows expected payouts ≥2× all
+  fees after halving the payout estimate. Optimise payout, not pass rate.
+- Payouts are not brokerage money: firms can void payouts and change terms.
+
+---
+
+## 10. Ideation
+
+Kept from earlier drafts, retargeted to futures: ideas with a stated mechanism ("who loses money to
+us, and why"), provenance on every idea, an owner Inbox, and a deterministic duplicate screen. Bandit
+rewards use **research-window outcomes only** (rule 1).
+
+**First research batch** *(call)*: MES open-to-close continuation across fixed-time exit, hard stop
+and volatility trailing stop at equal dollar risk, against random entries. Seeds from the Algovibes
+review: the Zarattini/Aziz/Barbon (2024) noise-band momentum on NQ (survived its random-direction
+control on NQ only; its drawdown would breach a ~$2,000 funded trailing limit), tested on MNQ after
+2024-05 net of 2 ticks, plus a half-size variant.
+
+---
+
+## 11. The system
+
+### 11.1 Components (version 1)
+One codebase, one machine, one broker:
+
+| Layer | Parts |
+|---|---|
+| Outside | IBKR (paper + live accounts), market data, the owner's phone |
+| Program | **Backtester** (research sandbox; holdout judged separately) · **Runner** (paper and live, same code) · **Command line** (JSON, kept from today) |
+| Core (pure functions) | **Strategy** (closed bars → target with stop and target) · **Risk check** (actual fills and cash) · **Simulator** |
+| Storage | Parquet price files (train / validation / sealed holdout) · one SQLite database (trading side only; research can't read it) |
+| Operations | systemd, one-runner lock per account, outside heartbeat, off-server backups with tested restore |
+
+Version 1 scope: **one strategy, one MES contract, one IBKR account.** Deleted from version 1:
+portfolio allocation, multi-account coordination, sizing math beyond 1 contract, funded executors,
+a separate watchdog engine, the old gates and ceremonies.
+
+### 11.2 The runner
+- Each minute: read the bar and IBKR's positions and orders → strategy target → risk check → send the
+  difference as one order with protection attached → record fills.
+- Also reacts instantly to broker events (fills, rejections, cancels, disconnects) and to a timer.
+- **Order journal** (rule 3): intent ID written before sending; broker IDs; deduplicated executions;
+  commissions. IBKR's state alone cannot tell "nothing happened" from "entry and stop both filled".
+  Any unresolved submission blocks new entries. One entry episode at a time.
+- Exit orders are classified separately from position changes and replaced only after IBKR confirms
+  the cancel.
+- Manual changes or broker liquidation: block entries, alert; never undo a manual flatten.
+- After restarts, the daily reset and the weekly login: full reconciliation before trading resumes.
+
+### 11.3 Protection at IBKR (rule 4)
+Construction to verify on the paper account in **days 1–3**: entry parent plus three opposite-side
+children (stop, limit target, market order with Good-After-Time ~14:55 CT) sharing `parentId` and one
+exit-only OCA group in "block" mode; the final child transmits. Never put the entry in the exit
+group. Confirm every leg is acknowledged and that the dormant timed child doesn't interfere.
+**Fallback:** ordinary bracket plus a runner-sent timed close, which loses crash-proof timed exits;
+not accepted silently. Nothing executes during a market halt.
+
+### 11.4 Edge cases (minimal fixes)
+
+| Group | Fix |
+|---|---|
+| Orders and fills | 1 contract (exits activate only after a full fill); blocked OCA; classify exits; serialize changes |
+| Surprises at the broker | Whole-account check; unexpected state blocks entries and alerts |
+| Data and clock | Stale or missing bars block signals, never exits; validate timestamps, duplicates, gaps; act on the next bar |
+| Contract rolls | Exact contract on every order; choose at session start; switch only while flat; no trading near expiry |
+| Fast markets | $50 planned risk; margin checks; limits are triggers, not guarantees |
+| Program and server | One-runner lock; broken database stops entries (IBKR holds exits); tested restore |
+| Evidence | Simulator models non-fills and full paths; versioned rescoring; worse-case intrabar ordering |
+| Approvals and secrets | Research sandboxed; holdout judge locked down; packages signed with expiry and one-time number |
+
+### 11.5 Safety tests before the first real order
+1. **Crash anywhere:** kill the runner before, during and after sending, and mid-trade; shut down the
+   gateway through the timed exit. Nothing duplicates; the position stays protected and is flat on time.
+2. **Exits and races:** stop/target/timed exit together, rejections. Never overfill; rejections block
+   and alert.
+3. **Same decisions:** identical bars into backtester and runner across gaps, a roll and a DST change;
+   rescoring after a simulator change reproduces exactly; unfilled attempts are kept.
+4. **Limits, backups and leaks:** restart after a losing day, restore and replay, replay an old
+   approval, edit a limit unsigned, try to read a holdout result from research. All refused or
+   preserved.
+
+### 11.6 Build
+About **3 weeks with two agents in parallel** (history side, broker side): week 1 shared types, price
+data, simulator and backtester (research starts on history immediately); week 2 runner on IBKR paper
+with attached protection; week 3 the four safety tests, then paper trading. Days 1–3 include the
+IBKR protection test.
+
+**Build rules *(call)*:** the stock lane may break; the empty research registry may be reset after
+archiving. Agent-reviewed changes merge on their own, except changes to the live-money wall, risk
+limits and signer anchors, which need the owner's one-tap merge approval (no code reading).
+
+---
+
+## 12. Thesis review
+
+Opens automatically at the first of: the incubation loss budget is reached; 40 holdout submissions
+with none reaching live step 2; 12 months after paper starts with no strategy past step 1; in
+personal-futures-only mode, **2028-12-31** without a live strategy above its hurdle. It ends in one
+recorded decision: change approach, change scale, or stop. Adding features is not an allowed outcome.
+
+---
+
+## 13. Migration
+
+- **Daily stock lane: frozen** *(call)*. Timers and paid stock data stop; code deleted later if unused.
 - The old gates (`paper promote`, forward certificates, `forward_tested`, the 63-bar floor, capped
-  route ceremonies) are removed when the new lifecycle lands; identity-bound evidence replaces the
-  forward certificate before its precondition in `algua/registry/transitions.py` is removed.
-- Kept: layered account risk, SSH signing (backup), single-use identities, the `t → t+1` rule, the JSON
-  CLI contract.
-- Legacy stock research is archived to the owner's private Drive and removed from agent-reachable
-  locations (as decided earlier); it does not touch futures research.
-- Verified on the VPS on 2026-11-20: zero strategies in the research and paper registries; no
-  paper/live operator units; only paper broker credentials. No draining is needed.
+  route ceremonies) are removed once the new core enforces its rules.
+- Kept: the JSON CLI contract, SSH signing, the `t → t+1` rule, the recovery principle of
+  `algua/execution/live_ledger.py` (not its Alpaca assumptions).
+- Verified on the VPS on 2026-11-20: zero strategies in the registries; no paper/live operator units;
+  only paper broker credentials.
 
 ---
 
-## 13. Stages and timeline
+## 14. Timeline
 
 | When | Stage | Money at risk |
 |---|---|---|
-| Dec 2026 – 15 Jan 2027 | **0. Verify and cut:** measure and cut cost to ~$150/month; funded-route go/no-go (§7) including Israeli KYC, payout and tax workflow; open IBKR futures account and confirm data and login handling; per-firm account caps. | None |
-| Dec 2026 – Mar 2027 | **1. Build:** data, instrument model, intraday loop, IBKR adapter, rule engine, shadow scorer, paper acceptance. Research on history in parallel. | Data ≤ $200 |
-| Mar – May 2027 | **2. Shadow → paper acceptance → first pilots.** | $600 per pilot |
-| Jun – Aug 2027 | **Birth window:** no new pilots or step-ups. | Running pilots only |
-| Sep 2027 – 2028 | **3. Scale, then funded.** Wave-2 repeats and step-ups on evidence; a first funded attempt only after a strategy is live with affirmative evidence. | Ladder + $1,000 fee cap |
+| Dec 2026 – 15 Jan 2027 | **0. Verify:** cut cost; our own funded-route research; open the IBKR futures account and data | None |
+| Dec 2026 (~3 weeks) | **1. Build** (§11.6); research on history from week 1 | Data ≤ $200 |
+| Jan 2027 | **2. Paper → live step 1** after ≥10 clean sessions | $600 per strategy |
+| Feb – May 2027 | **3. Ladder** on evidence; first funded challenge only after ≥50 real trades | Ladder + fee caps |
+| Jun – Aug 2027 | **Quiet period:** no new steps or purchases | Running strategies only |
+| Sep 2027 onward | Scale and funded on evidence | Within the $15k budget |
 
-**Honest timing:** confirming an edge needs hundreds of independent post-entry trades. A strategy
-trading several times per session could be scaled in late 2027; at one trade per session, scaling and
-any funded attempt land in **2028**. No date lowers a bar.
-
-Work in progress: two parallel tracks against frozen interface contracts (data/loop/broker, and rule
-engine/shadow scorer). Agent review only, except the protected changes in §10.
+No date lowers a bar.
 
 ---
 
-## 14. Context-file and board updates (after approval)
+## 15. Context-file and board updates (after approval)
 
-- **PRD:** owner amendment with this document's decisions (north star, market, vocabulary, evidence,
-  capital in USD, funded path, stages, thesis triggers), replacing the stock-first phase list.
-- **CLAUDE.md, AGENTS.md, README, `docs/agent/*`, `.opencode/agents/*`, `.opencode/skills/*`:** adopt the
-  vocabulary; describe the stock lane as frozen; mark unbuilt items as targets with their cards.
-- Personal financial context never enters this public repository; only the capital rules do.
-- **Todoist (Algua):** retire old-route and stock-lane cards; add cards in §13 order with dependencies.
-
----
-
-## 15. Claude's calls for the owner to check
-
-Owner decisions are in §2. These were settled by Claude and can be overridden:
-1. Stage name `shadow` replaces `holdout`.
-2. Incubation budget = $15,000 cumulative net loss including running costs and fees; $60k escalation
-   removed from the incubation policy.
-3. Personal account daily loss $400; account flatten and halt at $1,500 below peak.
-4. Funded fee cap $1,000 over two years, subscriptions included.
-5. Default cutoff 15:00 CT for every strategy.
-6. Live data from the IBKR subscription; historical data from Databento ≤ $200.
-7. Shadow entry ≥ 100 trades over ≥ 40 sessions at 70% (an information buy); kill below 20% after 60
-   trades or at 250 trades; maximum 6 strategies in shadow; maximum two pilots per strategy.
-8. Owner one-tap merge approval for changes to the live-money wall, risk limits and signer anchors;
-   everything else merges on agent review.
-9. The stock lane may break during the rebuild; the empty registry may be reset after archiving.
-10. SSH signature for first pilots; passkey later.
+- **PRD:** owner amendment with this document's decisions.
+- **CLAUDE.md, AGENTS.md, README, `docs/agent/*`, `.opencode/*`:** adopt the vocabulary and six
+  rules; mark unbuilt items as targets with their cards.
+- Personal context never enters this public repository; only the capital rules do.
+- **Todoist (Algua):** retire old-route and stock-lane cards; add Stage 0 and build cards in §14 order.
 
 ---
 
-## 16. Approaches considered
+## 16. Claude's calls for the owner to check
+
+1. Incubation budget $15,000 cumulative net loss including running costs and fees.
+2. Daily loss $400; halt at $1,500 below peak; ~$50 planned risk per trade.
+3. Funded fee cap $1,000; one challenge at a time; ≤$150 each.
+4. Default cutoff 15:00 CT.
+5. Live data from IBKR; history from Databento ≤ $200.
+6. Holdout bar 5% one-sided; kill below 20% after 60 trades; step up after ≥100 post-holdout trades.
+7. Stage derived from evidence rather than stored.
+8. Owner one-tap merge approval only for the live-money wall, risk limits and signer anchors.
+9. Stock lane frozen and allowed to break; empty registry may be reset after archiving.
+10. SSH signing first; passkey later.
+
+---
+
+## 17. Approaches considered
 
 | Decision | Chosen | Rejected and why |
 |---|---|---|
-| What the system is for | Intraday futures for funded payouts | Daily stocks: cannot make the owner rich at $15k even with an edge; FTMO CFD Swing: CFDs, financing costs, thin universe |
-| Evidence | Freeze, then score only post-freeze trades | Sealed 2018–2025 stock holdout: contaminated by AI-model knowledge and prior research; t ≥ 3.72 had almost no power |
-| Scaling | Affirmative posterior evidence, wave-2 repeat, quarter Kelly | "Not falsified" ladder: lets a zero-edge strategy climb |
-| Exits | Search entry × exit × sizing with a random-entry control | Exit tuning alone: cannot create edge on unpredictable paths |
-| Funded payoff shape | Optimise for funded survival as well as expectancy | Leaderboard-style low win rate: ~22% evaluation-to-payout vs ~94% at equal expectancy |
-| Funded route | Wait for a confirmed bot + server route | Home rig for Topstep: an internet outage near the close breaches the account and pages the owner |
-| Funded route missing | Continue as personal futures only, with a stop date | Revert to daily stocks: cannot make the owner rich; home rig for Topstep: outages breach the account |
-| Overnight holding | Flat by cutoff for every strategy, for now | Overnight on personal: more edges but a second evidence track and gap risk |
-| Personal broker | IBKR with a weekly login | Tradovate API: needs a live account plus add-on and stays unverified for unattended use |
-| Live data | Broker subscription | Databento live: $199/month breaks the budget |
+| What the system is for | Intraday futures for funded payouts | Daily stocks: can't make the owner rich at $15k |
+| Architecture | Lean new core, one program, broker-held exits | Refactor of the stock platform; Astra's first design (too slow, too much machinery) |
+| Holdout leakage | Blind holdout (rule 1) | Per-idea shot counts; ≤10 candidates at 1% (rejects two thirds of real +0.10R edges) |
+| Paper vs live evidence | One simulator scores every signal (rule 2) | Separate scores; paired gap adjustments |
+| Execution truth | Broker state + small journal | Broker state alone (ambiguous after downtime); full order framework |
+| Exits | Entry × exit × sizing with a random-entry control | Exit tuning alone: cannot create edge |
+| Funded route | Our own research; API → TradingView → manual | Waiting on firms' confirmation; home rig for Topstep |
+| Stages | Research → holdout → paper → live (ladder) | Separate pilot and funded stages; a "freeze" step |
+| Personal broker | IBKR with a weekly login | Tradovate API (unverified for unattended use); Alpaca (no futures) |
 
-## 17. Left to the builder
+## 18. Left to the builder
 
-Exact cost-stress parameters per contract, the Bayesian prior family, block length for dependence,
-roll rule details, file and module layout, schema design, and test fixtures (FundedNext 50K Rapid rules
-from Codex's simulation are the first rule-set fixture) — each fixed in its component spec and covered
-by tests before acceptance.
+Exact simulator parameters per contract, the Bayesian prior, block length for dependence, roll timing,
+module layout, schema and fixtures (FundedNext 50K Rapid rules are the first rule-set fixture), each
+fixed in its component spec and covered by tests.
