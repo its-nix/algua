@@ -27,6 +27,34 @@ Todoist is the shared execution board for agents and Lior; GitHub holds code and
 evidence. The current priorities and acceptance boundaries are in §25. This amendment changes
 product direction and task coordination, not executable gates or deployment/trading authority.
 
+Owner amendment, 2026-11-22 — **vision refresh (supersedes conflicting text below).** The owner
+approved the [vision refresh design](superpowers/specs/2026-11-19-vision-refresh-design.md) (revision 5). Where this document conflicts with it, the
+design governs product direction:
+
+- **What Algua is for:** an **intraday CME micro futures** system (MES first, flat every day by the
+  earlier of 15:00 CT and the early close) aimed at trading profit, with funded prop accounts as a
+  later payout multiplier. The daily stock lane is frozen. Built as a **lean new core**, not a refactor.
+- **Lifecycle:** `research → holdout → paper → live (a ladder of sizes) → retired`. A strategy is an
+  insert-only row; any change is a new row; evidence is appended immutably. The holdout is a blind
+  screen; paper (IBKR paper account) proves mechanics and supplies cheap forward evidence; live step 1
+  is 1 MES contract with a $600 loss budget. Funded accounts are extra accounts of a live strategy.
+- **Seven rules** replace counters, caps and special cases: (1) information only flows outward from
+  research; (2) evidence is calculated by one simulator, never hand-entered; (3) uncertainty blocks
+  new entries; (4) protection is held at IBKR, never removed while exposed, and every close uses the
+  episode's single exit authority; (5) changes happen only while quiescent, through one signed
+  package, with one active executor; (6) real account equity sets the limits; (7) only validated
+  answers cross from unprivileged strategy code into a tiny trusted executor.
+- **Capital:** $15,000 maximum cumulative net loss through 2028-12-31 including fees and running
+  costs; ~$50 planned risk per trade; daily loss $400; halt at $1,500 below peak; operating cost
+  ~$150/month; funded fees capped at $1,000; a quiet period with no new deployments June–August 2027.
+- **Sequence:** Stage 0 (our own funded-route research, IBKR account), a ~3-week build to a paper
+  prototype, ≥10 clean paper sessions, a signed live commissioning run, then live step 1. This
+  replaces the §25 current milestone and phase list, the §24 90-day objective, and the stock-first
+  parts of §§12, 13, 16, 21 and 22.
+
+This amendment changes product direction only. Present gates, permissions and runtime controls stay
+as the operating guides describe until the new core is built, reviewed and enforcing.
+
 ---
 
 # 1. North Star
@@ -549,6 +577,8 @@ remains unchanged. Existing purchase/access tasks retain their scope; this docum
 
 # 12. Markets and timeframes
 
+> **Superseded in part by the 2026-11-22 owner amendment** (top of this document; [design](superpowers/specs/2026-11-19-vision-refresh-design.md)).
+
 The first complete operating scope is:
 
 - liquid US stocks and ETFs,
@@ -602,6 +632,8 @@ architecture or turn extra bars into independent evidence.
 ---
 
 # 13. Portfolio
+
+> **Superseded in part by the 2026-11-22 owner amendment** (top of this document; [design](superpowers/specs/2026-11-19-vision-refresh-design.md)).
 
 Algua should ultimately operate a **portfolio of weakly correlated edges**, not search indefinitely for one perfect strategy.
 
@@ -706,6 +738,8 @@ Every live order must be traceable through:
 ---
 
 # 16. Shadow and paper operation
+
+> **Superseded in part by the 2026-11-22 owner amendment** (top of this document; [design](superpowers/specs/2026-11-19-vision-refresh-design.md)).
 
 Paper and shadow execution remain permanent parts of Algua.
 
@@ -878,6 +912,8 @@ duplicate initiators and competing authoritative writers.
 
 # 21. Capital
 
+> **Superseded in part by the 2026-11-22 owner amendment** (top of this document; [design](superpowers/specs/2026-11-19-vision-refresh-design.md)).
+
 Total initial Algua experiment budget:
 
 **₪10,000**
@@ -938,6 +974,8 @@ live configuration. Unconfigured legacy behavior is distinct from an opted-in ac
 ---
 
 # 22. External and funded capital
+
+> **Superseded in part by the 2026-11-22 owner amendment** (top of this document; [design](superpowers/specs/2026-11-19-vision-refresh-design.md)).
 
 Personal savings are not the only potential scaling path.
 
@@ -1034,6 +1072,8 @@ isolated execution mechanics are demonstrated; it never waives investment accept
 
 # 24. 90-day objective
 
+> **Superseded in part by the 2026-11-22 owner amendment** (top of this document; [design](superpowers/specs/2026-11-19-vision-refresh-design.md)).
+
 The initial objective is not to prove lifetime alpha.
 
 It is to prove that the machine is becoming real.
@@ -1069,6 +1109,8 @@ historical replay remain explicitly labeled and cannot replace real scheduled op
 ---
 
 # 25. Development sequence
+
+> **Superseded in part by the 2026-11-22 owner amendment** (top of this document; [design](superpowers/specs/2026-11-19-vision-refresh-design.md)).
 
 The architecture is designed as a complete system from the beginning.
 

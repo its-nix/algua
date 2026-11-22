@@ -1,9 +1,9 @@
 # Vision refresh — intraday futures for funded payouts
 
-**Status:** Draft for owner approval · **Date:** 2026-11-22 (revision 4) · **Owner:** Lior Nisimov
+**Status:** Approved by the owner 2026-11-22 (revision 5) · **Owner:** Lior Nisimov
 **Origin:** owner design session, 2026-11-16 → 2026-11-22, with Codex, Grok and Codex Astra reviews
-(debate on futures, prop-rule simulation, two hostile reviews, four architecture reviews). Revision 4
-applies Astra's review of revision 3 ("approve with fixes").
+(debate on futures, prop-rule simulation, two hostile reviews, five architecture reviews). Revisions
+4 and 5 apply Astra's reviews of revisions 3 and 4 (both "approve with fixes").
 **Companion diagram:** the "Algua Data Flow" artifact (private) shows the same design visually.
 **Supersedes:** revision 2 (commit `5e6d116`) and the 2026-11-19 daily-stock draft (`1bbae69`).
 
@@ -81,13 +81,13 @@ by construction where it can and **reduces** it where it can't; the table says w
 
 | # | Rule | What goes wrong without it | Precise meaning and limits |
 |---|---|---|---|
-| 1 | **Information only flows outward.** Research hands rows out through a one-way mailbox and never receives anything back: no holdout result, no paper/live numbers, no hint of which strategies trade. | Research tweaks a failed strategy and resubmits; a zero-edge idea retried 20 times passes a 5% test ~64% of the time. | Prevents feedback-driven tuning. Does **not** prevent luck: of 20 independent zero-edge rows, ~64% of the time at least one passes. So a holdout pass earns paper observation only (§6.2). |
-| 2 | **Evidence is calculated, never hand-entered.** One simulator turns every signal into a full modeled trade; every score is derived from it. | Separate paper and live scores with a correction between them. | Prevents inconsistent scoring, not model error. A simulator change **replays the whole strategy from the immutable bars** (a changed fill can change later decisions). Trades used to calibrate the simulator are never counted as confirmation. |
-| 3 | **If anything is uncertain, no new entries.** | A crash after sending a buy leads to a second buy: 2 contracts, protection on 1. | **One execution episode owns every order, entries and exits, until each is resolved.** The runner never sends a second exit while one's outcome is unknown, and never re-enters to replace a position that was actually stopped out. |
-| 4 | **Every open position has protection held at IBKR,** sent in one package with the entry, and **never removed while exposed.** | A server crash, or a cancel-then-replace gap, leaves a position unprotected. | Version 1 uses a fixed stop and target per trade and never modifies them. Trailing stops wait for a tested safe-modify method. Conditional on the §11.3 test; nothing executes during a market halt. |
-| 5 | **Change only while quiescent.** Go-live, new versions, size steps and contract rolls happen only with **zero positions, zero working orders and zero unresolved submissions**, under the execution lock. | A waiting order fills just after a new version starts; a roll forgets the old month. | Each change is one signed, immutable package covering the complete executable identity (code, dependencies, settings, account, contract, limits). |
-| 6 | **Real money sets the limits.** Loss limits, margin and funded drawdowns use **marked account equity**: actual fills, open positions at current prices, accrued fees, adjusted for deposits and withdrawals. | The simulator says −$300, slippage made it −$450, and the $400 limit never fires. | Deposits and futures settlement never reset loss budgets or peaks. Simulated numbers only judge strategies. |
-| 7 | **Only answers cross into the executor.** Research-written strategy code runs unprivileged (no credentials, no network, no database writes); only its validated target (long / short / flat, stop, target) crosses into a tiny trusted executor that holds the keys. | A buggy or malicious strategy touches the broker or the signing files. | Replaces trust in "pure functions" with an enforced boundary. Approvals cannot substitute for it. |
+| 1 | **Information only flows outward.** Research hands rows out through a one-way mailbox and never receives anything back: no holdout result, no paper/live numbers, no hint of which strategies trade. | Research tweaks a failed strategy and resubmits; a zero-edge idea retried 20 times passes a 5% test ~64% of the time. | Prevents feedback-driven tuning. Does **not** prevent luck: of 20 independent zero-edge rows, ~64% of the time at least one passes. So a holdout pass earns paper observation only (§6.2). The **only** channel back is the global simulator version (market-wide cost parameters, never strategy-specific results). Logs, agent memory and maintenance work keep strategy outcomes out of research. |
+| 2 | **Evidence is calculated, never hand-entered.** One simulator turns every signal into a full modeled trade; every score is derived from it. | Separate paper and live scores with a correction between them. | Prevents inconsistent scoring, not model error. There is **one canonical modeled episode stream** per row; real execution may skip an episode (e.g. while blocked) but never invents or repeats one, and each episode is scored once. Trades used to calibrate the simulator are never counted as confirmation. |
+| 3 | **If anything is uncertain, no new entries.** | A crash after sending a buy leads to a second buy: 2 contracts, protection on 1. | **One execution episode owns every order, entries and exits, until every child order is terminal**, even after the position is closed (a stray sell must not open a short). The executor never sends a second exit while one's outcome is unknown and never re-enters to replace a position that was actually stopped out. |
+| 4 | **Every open position has protection held at IBKR,** sent in one package with the entry, and **never removed while exposed.** **Every close goes through the episode's single exit authority.** | A server crash or a cancel-then-replace gap leaves a position unprotected; a separate "sell now" races the resting stop and reverses the position. | Stop, target, timed exit, daily-limit flatten, strategy flat and manual close all act **within the episode's exit OCA group** (a forced close is a market order joined to that group). Version 1 uses a fixed stop and target and never modifies them. Proven in week 1 and at commissioning (§11.3); nothing executes during a market halt. |
+| 5 | **Change only while quiescent.** Go-live, new versions and size steps happen only with **zero positions, zero working orders and zero unresolved submissions**, under the execution lock. | A waiting order fills just after a new version starts; a restored second server trades alongside the first. | Each change is one signed, immutable package covering the complete executable identity (code, dependencies, settings, simulator version, account, contract family and roll schedule, limits). Scheduled rolls inside an active package happen while quiescent without a new signature. **One active executor:** a new or restored installation starts **disarmed**, fences the previous one, reconciles history and needs a fresh signed activation; trading authority is never restored from backup. |
+| 6 | **Real money sets the limits.** Loss limits, margin and funded drawdowns use **marked account equity**: actual fills, open positions at current prices, accrued fees, adjusted for deposits and withdrawals. | The simulator says −$300, slippage made it −$450, and the $400 limit never fires. | Deposits and futures settlement never reset loss budgets or peaks. Budgets and peaks belong to the account and the incubation, not to a row, deployment or approval, so none of those resets them. A stale mark blocks new entries and alerts. Simulated numbers only judge strategies. |
+| 7 | **Only answers cross into the executor.** Research-written strategy code runs unprivileged (no credentials, no network, no database writes); only its validated target crosses into a tiny trusted executor that holds the keys. | A buggy or malicious strategy touches the broker or the signing files. | **Validation contract:** side ∈ long/short/flat; finite, tick-aligned prices; stop on the correct side; approved contract; risk ≤ the package cap; fresh episode ID. Anything else is rejected and blocks entries. The worker runs under a timeout and resource limits; it can never delay the executor's exits. |
 
 What the rules do **not** remove: loss totals and equity peaks, fees, margin, approval replay
 protection, the order journal, and the safety tests. Where possible these are calculated from recorded
@@ -99,7 +99,7 @@ facts rather than tracked separately.
 
 | Word | Meaning |
 |---|---|
-| **strategy row** | Code + settings + simulator version, hashed. Insert-only; any change is a new row. |
+| **strategy row** | Code + settings + simulator version, hashed. Insert-only; any change, including a new simulator version, is a new row. |
 | **research** | Building and tuning on train + validation history, in a sandbox. |
 | **holdout** | One blind test per row on a sealed 2-year window. A screen, not proof. |
 | **paper** | The row runs on the IBKR paper account: real order handling, no money. Proves mechanics and gathers cheap forward evidence. |
@@ -127,8 +127,8 @@ evidence and active deployment, not stored as separately managed state *(call)*.
   on overlapping days before paper starts, and continuously after. Research qualification uses actual
   contract prices; continuous series are never execution prices. Every order names the exact contract
   (conId, expiry).
-- The same session definition (rule 5) drives data, contract choice and permitted exposure in the
-  backtester and the runner. UTC internally; Chicago time for schedules; clock-skew check.
+- One session definition drives data, contract choice and permitted exposure in the backtester and
+  the executor. UTC internally; Chicago time for schedules; clock-skew check.
 
 ---
 
@@ -168,13 +168,19 @@ files, and **no read access to the trading database**.
 - Turns every signal into a **complete modeled position path**: entry eligibility, fills and
   non-fills (limit orders need the price to trade through), latency, slipped stops, fees, forced
   flat, and the worse outcome when a minute bar cannot order stop and target.
-- Strategies decide from modeled state. Any simulator change **replays the whole strategy from the
-  immutable bars**; original decisions are kept, never overwritten.
+- Strategies decide from modeled state, so the simulator version is part of the row: a new simulator
+  version makes **new rows**, deployed only through a quiescent signed package. Replaying old rows
+  under the new version is diagnostic only; it never confers fresh qualification. Original decisions
+  are kept, never overwritten.
+- **Calibration schedule, declared in advance:** recalibration happens only at fixed calendar points
+  (e.g. month ends) on the preceding block; promotions are judged only on later, untouched blocks.
+  Neither the freeze date nor the winning calibration may be chosen after seeing confirmation data.
 - Scores backtest, holdout, paper and live signals identically. A signal traded on both paper and live
   counts once. Evidence keeps its label (train, validation, holdout, forward).
 - **Audit:** every real live order attempt, filled or not, is compared with the simulator. First
   review after ~30 live attempts, then continuously. If reality is worse, a new, more pessimistic
-  simulator version is calibrated, frozen, and everything is replayed. **Trades used for calibration
+  simulator version is calibrated at the next scheduled point and frozen, and strategies move to it
+  as new rows. **Trades used for calibration
   are not confirmation:** step-up evidence counts only forward trades after the last calibration
   freeze. A rescore can disqualify a strategy, never revive a retired one or raise its size. A large
   divergence stops new entries at once.
@@ -202,10 +208,18 @@ files, and **no read access to the trading database**.
   first). Until then the ladder's only step is step 1.
 - **Kill** when P(net expectancy > 0) falls below 20% after ≥60 forward trades, or after 250 forward
   trades without reaching the step-up bar. The 20% rule alone is permissive (only ~20% of zero-edge
-  strategies trigger it at the first look); the 250-trade expiry is the real filter.
-- **Fixed before implementation, not left to the builder:** the prior, session-block dependence
-  handling, the evaluation schedule (when looks happen) and the hurdle formula, written into the
-  evidence component spec and simulated under zero-edge and weak-edge strategies.
+  strategies trigger it at the first look). The 250-trade expiry is an **economic patience limit,
+  not statistical disproof**: a real +0.1R edge needs ~900 independent trades for 80% power (+0.2R:
+  ~230), so it will discard some modest profitable edges.
+- Repeated looks and selection among many rows raise false promotions beyond any single-look figure;
+  the protocol is judged by simulating the whole pipeline, not one test.
+- **Fixed before the evidence component is built, not left to the builder:** the prior, session-block
+  dependence handling, the evaluation schedule (when looks happen), calibration and confirmation
+  blocks, and the hurdle formula. They are the **first component spec of the build plan**, simulated
+  under zero-edge and weak-edge pipelines.
+- **One bet, not many:** rows on the same market with related mechanisms are not independent
+  evidence or diversification. Beyond version 1, capital is admitted against aggregate exposure per
+  market and strategy dependence, not the number of passing rows.
 - Size ≤ quarter Kelly, rounded down. Steps down and halts are automatic.
 
 ---
@@ -236,7 +250,10 @@ files, and **no read access to the trading database**.
   restored only by signed approval; $600 per strategy at step 1; margin checked before entry and while
   holding. All from marked equity; peaks survive restarts and are not reset by deposits.
 - **Quiet period:** from 2027-06-01 to 2027-08-31 no new deployments, step-ups or funded purchases.
-  Running strategies continue with their automatic limits.
+  Running strategies continue with their automatic limits, including the rolls their packages
+  already authorize.
+- **Restore:** a restored installation starts disarmed (rule 5); backups never carry trading
+  authority, unused approvals or a lifted halt.
 - **Approvals:** signed deployment packages (go-live, step-up, funded, limit restoration, payments).
   SSH signing from the phone, tested in week 1; passkey later *(call)*. Signer anchors live outside
   the agent-writable tree.
@@ -270,10 +287,10 @@ us, and why"), provenance on every idea, an owner Inbox, and a deterministic dup
 rewards use **research-window outcomes only** (rule 1); the bandit itself waits until after version 1.
 
 **First research batch** *(call)*: MES open-to-close continuation with one fixed stop and target at
-equal dollar risk, against random entries. Seeds from the Algovibes review: the Zarattini/Aziz/Barbon
-(2024) noise-band momentum on NQ (survived its random-direction control on NQ only; its drawdown would
-breach a ~$2,000 funded trailing limit), retested on MES and MNQ **research windows only** (before the
-sealed holdout), plus a half-size variant. MNQ trades after MES's version 1.
+equal dollar risk, against random entries. Seed from the Algovibes review: the Zarattini/Aziz/Barbon
+(2024) noise-band momentum (survived its random-direction control on NQ only; its drawdown would
+breach a ~$2,000 funded trailing limit), retested on **MES research windows only** (before the
+sealed holdout), with a daily-stop variant. Other markets wait until after version 1.
 
 ---
 
@@ -303,8 +320,11 @@ separate watchdog engine, the old gates and ceremonies.
   commissions. IBKR's state alone cannot tell "nothing happened" from "entry and stop both filled".
 - **One execution episode** owns all its orders until each is resolved; unresolved submissions block
   new entries; a real stop-out ends the episode and is never "replenished" toward the modeled target.
-- Protection is never modified while exposed (rule 4). Manual changes or broker liquidation: block
-  entries, alert; never undo a manual flatten.
+- Protection is never modified while exposed (rule 4). Every close, including the daily-limit
+  flatten and a strategy's flat target, is a market order joined to the episode's exit OCA group.
+- Manual changes or broker liquidation: block entries, alert, and keep owning the episode until every
+  child order is terminal (cancel orphaned exits once the position is confirmed zero); never undo a
+  manual flatten.
 - After restarts, the daily reset and the weekly login: full reconciliation before trading resumes.
 
 ### 11.3 Protection at IBKR (rule 4)
@@ -312,7 +332,9 @@ separate watchdog engine, the old gates and ceremonies.
   (stop, limit target, market order with Good-After-Time = that day's deadline − 5 minutes) sharing
   `parentId` and one exit-only OCA group in "block" mode; the final child transmits. Never put the
   entry in the exit group. Confirm every leg is acknowledged, the dormant timed child doesn't
-  interfere, and rejections and cancels behave.
+  interfere, and rejections and cancels behave. Also prove the **forced-close protocol**: a market
+  order joined to the same OCA group closes the position and cancels the resting stop and target
+  without ever reversing it, including when a child is rejected and during a gateway outage.
 - **Commissioning run:** paper cannot certify production behaviour, so before unattended operation a
   short, signed, owner-aware run on the live account at 1 MES confirms the same construction live.
 - **Fallback:** ordinary bracket plus an executor-sent timed close, which loses crash-proof timed
@@ -337,15 +359,17 @@ separate watchdog engine, the old gates and ceremonies.
 1. **Crash anywhere:** kill the executor before, during and after sending, and mid-trade; shut down
    the gateway through the timed exit. Nothing duplicates; the position stays protected and is flat on
    time.
-2. **Exits and races:** stop/target/timed exit together, rejections, an outstanding entry at the
-   deadline, an early-close day. Never overfill; never replenish after a stop; rejections block and
+2. **Exits and races:** stop/target/timed exit together, a daily-limit flatten while the stop rests,
+   a manual flatten leaving orphaned exits, rejections, an outstanding entry at the deadline, an
+   early-close day. Never overfill or reverse; never replenish after a stop; rejections block and
    alert.
 3. **Same decisions:** identical bars into backtester and executor across gaps, a roll and a DST
    change; a simulator change replays the whole policy exactly; unfilled attempts are kept.
 4. **Limits, boundaries and backups:** restart after a losing day; deposit without resetting peaks;
-   restore and replay; replay an old approval; edit a limit unsigned; strategy code tries to reach the
-   network, credentials or database; research tries to read a holdout result. All refused or
-   preserved.
+   restore an old backup (starts disarmed; no old approval, halt-lift or peak comes back); a second
+   installation tries to trade; replay an old approval; edit a limit unsigned; strategy code returns
+   an invalid target, hangs, or tries to reach the network, credentials or database; research tries
+   to read a holdout result. All refused or preserved.
 
 ### 11.6 Build
 About **3 weeks to a paper prototype with two agents** (history side, broker side); unattended live
@@ -363,9 +387,9 @@ limits and signer anchors, which need the owner's one-tap merge approval (no cod
 
 ## 12. Thesis review
 
-Opens automatically at the first of: the incubation loss budget is reached; 40 holdout submissions
-with none passing the step-up bar; 12 months after paper starts with none passing it; **2028-12-31**
-without a live strategy above its hurdle. It ends in one recorded decision: change approach, change
+Opens automatically at the first of: the incubation loss budget is reached; **12 months after paper
+starts** with no strategy passing the step-up bar (a fixed observation deadline, not a submission
+count); **2028-12-31** without a live strategy above its hurdle. It ends in one recorded decision: change approach, change
 scale, or stop. Adding features is not an allowed outcome.
 
 ---
@@ -441,6 +465,6 @@ No date lowers a bar.
 
 ## 18. Left to the builder
 
-Exact simulator parameters per contract, roll timing, module layout, schema and fixtures (FundedNext
-50K Rapid rules are the first rule-set fixture), each fixed in its component spec and covered by
-tests. The evidence statistics are **not** left to the builder (§6.5).
+Exact simulator parameters per contract, roll timing, module layout, schema and test fixtures, each
+fixed in its component spec and covered by tests. Funded rule-set fixtures (FundedNext 50K Rapid
+first) wait for the funded milestone. The evidence statistics are **not** left to the builder (§6.5).
