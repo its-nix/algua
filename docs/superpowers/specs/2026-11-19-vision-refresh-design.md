@@ -1,7 +1,8 @@
 # Vision refresh — intraday futures for funded payouts
 
-**Status:** Revision 6, 2026-11-26. The owner agreed this direction (the desk, per-strategy risk,
-the halt target); revision 5 was approved 2026-11-22. · **Owner:** Lior Nisimov
+**Status:** Revision 6, 2026-11-26 — **superseded as the current statement by [docs/PRD.md](../../PRD.md)
+(rewritten 2026-11-26); kept as decision history.** The owner agreed this direction (the desk,
+per-strategy risk, the halt target); revision 5 was approved 2026-11-22. · **Owner:** Lior Nisimov
 **Origin:** owner design session, 2026-11-16 → 2026-11-26, with Codex, Grok and Codex Astra reviews
 (debate on futures, prop-rule simulation, two hostile reviews, seven architecture reviews). Revisions
 4–6 apply Astra's reviews; revision 6 adds the profit-speed and stability review and the strategy-pool
