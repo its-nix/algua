@@ -209,8 +209,7 @@ facts rather than tracked separately.
    rate) under the honesty rules in §9.
 4. **Flat by end of day** for every strategy, for now.
 5. **Personal broker: IBKR**, with a weekly login.
-6. **Live step 1 loss budget: $600** — for the **desk pilot** *(the per-desk reading is Claude's call,
-   §22)*.
+6. **Live step 1 loss budget: $600 for the whole desk pilot** (owner-confirmed 2026-11-26).
 7. **No funded route → personal futures only.**
 8. **Stage 0 is our own research** of funded routes; we don't wait on firms. Fallbacks in order: API
    bridge → TradingView → the owner sends orders by hand (last resort). No home rig.
@@ -226,8 +225,8 @@ facts rather than tracked separately.
     account** and decides which proposals trade. The **desk as a whole** — members, priority order,
     risk per member and limits — qualifies for real money, is signed and is deployed. Version 1 has
     **one live MES slot**; more simultaneous trades come later on evidence.
-16. **Risk per trade is chosen per strategy** within a dollar range *(range is Claude's call:
-    $20–$50)*; the simulator charges real costs, so tight-stop strategies survive only if their edge
+16. **Risk per trade is chosen per strategy** within **$20–$50** (owner-confirmed
+    2026-11-26); the simulator charges real costs, so tight-stop strategies survive only if their edge
     beats the larger cost share.
 17. **Halt target:** the desk earns real money only while its predicted chance of hitting the drawdown
     halt within the next 20 sessions is **≤5%**, under dependence and cost stress.
@@ -751,8 +750,8 @@ Agents will meet these in old docs, code and history. They are **replaced**:
 
 1. Incubation budget $15,000 cumulative net loss through 2028-12-31, including running costs and fees.
 2. Daily loss $400; halt at $1,500 below peak.
-3. Risk per trade chosen per strategy within **$20–$50**.
-4. The $600 step-1 budget applies to the **desk pilot**, not to each strategy.
+3. ~~Risk per trade $20–$50~~ — confirmed by the owner 2026-11-26 (decision 16).
+4. ~~$600 for the desk pilot~~ — confirmed by the owner 2026-11-26 (decision 6).
 5. Funded fee cap $1,000; one challenge at a time; ≤$150 each.
 6. Session deadline: the earlier of 15:00 CT and the early close.
 7. Live data from IBKR; history from Databento ≤ $200.
