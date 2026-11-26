@@ -5,33 +5,46 @@
 
 # Algua
 
-Building a mostly autonomous quantitative trading company, with net trading profit as the product.
-Start with the [vision of record](docs/PRD.md), the [current architecture](docs/architecture.md),
-and the [dated September roadmap reconciliation](docs/vision-reconciliation.md).
-See `docs/agent/` for operating docs. Dated material in `docs/superpowers/` preserves design history.
-Brand assets and usage guidance live in [`docs/brand/`](docs/brand/README.md).
+Algua researches and tests systematic trading strategies. Its first intraday futures milestone is a
+paper desk that trades one Micro E-mini S&P 500 (MES) position at a time through Interactive Brokers
+(IBKR). The goal is to measure net dollars after costs before the owner decides whether to sign a
+real-money pilot. The futures implementation is under development on the roadmap branch. The default branch currently ships the daily-stock platform.
 
-The next milestone is one trustworthy **daily research-to-paper operating path**: qualified
-historical data, reproducible research that reuses prior findings, frozen paper execution,
-reconciliation, observed recovery and 72 hours unattended operation or a predefined safe halt.
-Research/data and deployment operations proceed in parallel; security and accounting correctness
-take priority over dashboard polish. A rejected strategy is a useful result. Strategy qualification
-and human-approved live activation remain separate from proving the operating machinery.
+## Run the daily-stock platform
 
-Todoist is the shared execution board for agents and Lior; the PRD governs vision, operating guides
-define present permissions, and GitHub holds code and evidence. See [PRD §25](docs/PRD.md#25-development-sequence)
-for priorities and the broader roadmap. Hourly operation, portfolio breadth and additional modalities
-remain targets after this daily milestone. Sharadar ingestion is merged; qualified PIT data and
-verified installation require their own evidence.
+From the repository root, with Python 3.12 and uv installed, run
 
-## Quickstart
-
-```
+```bash
 uv sync
 uv run algua doctor
 ```
 
-## Data snapshots
+## Preview the offline futures desk
+
+In a checkout of `roadmap/futures-20261126`, run `uv run algua futures synthetic-smoke`.
+The smoke command uses generated minute bars, two fixed-priority proposals and a temporary journal.
+Its JSON shows which proposal got the slot, when it filled, how the protective orders resolved and
+the result after fees. It runs locally without broker credentials or orders.
+
+| To exercise | Add to the smoke command |
+| --- | --- |
+| An opening gap through the stop | `--scenario gap_stop` |
+| An early close | `--session 2025-01-09` |
+| A $400 daily-limit breach | `--scenario daily_limit` (expected exit code 1 with a JSON incident) |
+
+## Futures qualification
+
+- **Market data.** The importer can pin dated-contract minute bars and verify them on readback. Qualifying the historical dataset still requires exchange calendar coverage, vendor contract mappings and a verified export.
+- **Research.** The simulator models fills, gaps, fees and skipped trades. The proposed scaling rule exceeded its false-positive target in rare-loss simulations, so statistical acceptance remains open.
+- **Paper execution.** An attended IBKR adapter exists. Broker-side protection, account recovery and forward performance still need observations on the intended paper installation.
+
+## Existing daily-stock platform
+
+The daily-stock lane is frozen during migration. Its data and research commands are documented
+below. The [architecture map](docs/architecture.md) describes the installation, and the
+[operating guide](docs/agent/operating.md) defines its authorization gates.
+
+### Stock data snapshots
 
 For EODHD daily US bars, see the [free demo ingestion and backtest recipe](docs/eodhd.md).
 For Sharadar daily US bars and selected ARQ facts, see the [Sharadar integration](docs/sharadar.md).
